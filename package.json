@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "phaser": "^4.0.0"
+    "phaser": "4.2.1"
   },
   "devDependencies": {
     "typescript": "^5.9.0",
