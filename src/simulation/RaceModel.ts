@@ -2,6 +2,7 @@ import { createTire, stepTire, type Compound, type PaceMode, type TireState } fr
 import { TRACK_LENGTH } from './TrackModel';
 
 export type BattleState = 'CLEAR' | 'FOLLOW' | 'ATTACK';
+export type StrategyIntent = 'PLAN' | 'UNDERCUT' | 'OVERCUT' | 'DONE';
 
 export interface DriverState {
   id: string;
@@ -12,7 +13,9 @@ export interface DriverState {
   tire: TireState;
   pace: PaceMode;
   usedCompounds: Set<Compound>;
+  plannedPitLap: number;
   pitLap: number;
+  strategyIntent: StrategyIntent;
   nextCompound: Compound;
   laneOffset: number;
   preferredLane: number;
@@ -43,7 +46,7 @@ export function createAiField(): DriverState[] {
     ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.0],
   ];
 
-  return plans.map(([name, start, pitLap, next, laneOffset, skill], index) => ({
+  return plans.map(([name, start, plannedPitLap, next, laneOffset, skill], index) => ({
     id: `ai-${index}`,
     name,
     progress: 0.065 - index * 0.008,
@@ -52,7 +55,9 @@ export function createAiField(): DriverState[] {
     tire: createTire(start),
     pace: 'BALANCED',
     usedCompounds: new Set<Compound>([start]),
-    pitLap,
+    plannedPitLap,
+    pitLap: plannedPitLap,
+    strategyIntent: 'PLAN',
     nextCompound: next,
     laneOffset,
     preferredLane: laneOffset,
@@ -85,6 +90,10 @@ export function stepAi(
     && driver.skill * driver.tire.grip > traffic.carAhead.skill * traffic.carAhead.tire.grip * 0.995;
   const battleState: BattleState = canAttack ? 'ATTACK' : following ? 'FOLLOW' : 'CLEAR';
 
+  const strategy = choosePitStrategy(driver, battleState, traffic.gapMetres, tireHealth, totalLaps);
+  const pitLap = strategy.pitLap;
+  let strategyIntent = strategy.intent;
+
   const trafficLoad = battleState === 'FOLLOW' ? 0.1 : battleState === 'ATTACK' ? 0.14 : 0;
   let tire = stepTire(driver.tire, pace, (pace === 'PUSH' ? 0.78 : 0.55) + trafficLoad, dt);
   let lap = driver.lap;
@@ -113,16 +122,49 @@ export function stepAi(
   if (progress >= 1) {
     progress -= 1;
     lap += 1;
-    if (lap === driver.pitLap + 1 && !usedCompounds.has(driver.nextCompound)) {
+    if (lap === pitLap + 1 && !usedCompounds.has(driver.nextCompound)) {
       tire = createTire(driver.nextCompound);
       usedCompounds = new Set(usedCompounds);
       usedCompounds.add(driver.nextCompound);
       progress = Math.max(0, progress - 0.055); // approximate pit-lane time loss
+      strategyIntent = 'DONE';
     }
   }
 
   const finished = lap > totalLaps;
-  return { ...driver, progress, lap, speed, tire, pace, usedCompounds, laneOffset, battleState, finished };
+  return { ...driver, progress, lap, speed, tire, pace, usedCompounds, pitLap, strategyIntent, laneOffset, battleState, finished };
+}
+
+function choosePitStrategy(
+  driver: DriverState,
+  battleState: BattleState,
+  gapMetres: number,
+  tireHealth: number,
+  totalLaps: number,
+): { pitLap: number; intent: StrategyIntent } {
+  if (driver.usedCompounds.has(driver.nextCompound)) {
+    return { pitLap: driver.pitLap, intent: 'DONE' };
+  }
+
+  const earliest = Math.max(2, driver.plannedPitLap - 1);
+  const latest = Math.min(totalLaps - 1, driver.plannedPitLap + 1);
+
+  // If trapped behind another car near the normal stop window, try fresh tyres one lap early.
+  if (driver.lap >= earliest && driver.lap < driver.plannedPitLap && battleState === 'FOLLOW' && gapMetres < 30 && tireHealth > 0.24) {
+    return { pitLap: earliest, intent: 'UNDERCUT' };
+  }
+
+  // In clean air with healthy tyres, extend one lap to exploit the current stint.
+  if (driver.lap >= driver.plannedPitLap && driver.lap < latest && battleState === 'CLEAR' && tireHealth > 0.52) {
+    return { pitLap: latest, intent: 'OVERCUT' };
+  }
+
+  // Preserve a decision once committed so it does not flap every simulation tick.
+  if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
+    return { pitLap: driver.pitLap, intent: driver.strategyIntent };
+  }
+
+  return { pitLap: driver.plannedPitLap, intent: 'PLAN' };
 }
 
 function trafficFor(driver: DriverState, field: DriverState[]): TrafficContext {
