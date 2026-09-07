@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { RaceEffects } from '../rendering/RaceEffects';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, type DriverState } from '../simulation/RaceModel';
@@ -10,6 +11,7 @@ const TOTAL_LAPS = 8;
 
 export class RaceScene extends Phaser.Scene {
   private car!: Phaser.GameObjects.Container;
+  private effects!: RaceEffects;
   private aiCars: Phaser.GameObjects.Container[] = [];
   private ai: DriverState[] = createAiField();
   private vehicle: VehicleState = createVehicle(520, 753, 0);
@@ -29,12 +31,16 @@ export class RaceScene extends Phaser.Scene {
   private pitTimer = 0;
   private raceFinished = false;
   private finishMessage = '';
+  private renderSteer = 0;
+  private renderBrake = 0;
+  private trackDistance = 0;
 
   constructor() { super('race'); }
 
   create(): void {
     this.cameras.main.setBackgroundColor('#101713');
     this.drawTrack();
+    this.effects = new RaceEffects(this);
     this.car = this.makeCar(520, 753, 0x4cc9ff, true);
     this.aiCars = this.ai.map((driver, i) => {
       const p = sampleTrack(driver.progress, driver.laneOffset);
@@ -42,7 +48,7 @@ export class RaceScene extends Phaser.Scene {
     });
 
     this.cameras.main.startFollow(this.car, true, 0.075, 0.075);
-    this.cameras.main.setZoom(1.02);
+    this.cameras.main.setZoom(1.05);
     this.cameras.main.setBounds(0, 0, W, H);
 
     const keyboard = this.input.keyboard!;
@@ -81,6 +87,8 @@ export class RaceScene extends Phaser.Scene {
       const p = sampleTrack(driver.progress, driver.laneOffset);
       this.aiCars[i].setPosition(p.x, p.y).setRotation(p.heading);
     });
+
+    this.updateCameraAndEffects(Math.min(deltaMs / 1000, 0.05));
     this.renderHud();
   }
 
@@ -99,6 +107,8 @@ export class RaceScene extends Phaser.Scene {
 
     if (this.pitTimer > 0) {
       this.pitTimer = Math.max(0, this.pitTimer - dt);
+      this.renderSteer = 0;
+      this.renderBrake = 1;
       this.vehicle = { ...this.vehicle, speed: 0, yawRate: 0 };
       if (this.pitTimer === 0) {
         this.tire = createTire(this.selectedCompound);
@@ -114,7 +124,11 @@ export class RaceScene extends Phaser.Scene {
     const throttle = this.keys.up.isDown ? 1 : 0;
     const brake = this.keys.down.isDown ? 1 : 0;
     const steer = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
+    this.renderSteer = steer;
+    this.renderBrake = brake;
+
     const track = nearestTrackProgress(this.vehicle.x, this.vehicle.y);
+    this.trackDistance = track.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = track.progress;
     this.updateLapAndCheckpoints(track.distance);
@@ -124,6 +138,19 @@ export class RaceScene extends Phaser.Scene {
     const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + offTrackLoad);
     this.tire = stepTire(this.tire, this.pace, load + aero.dirtyAir * 0.45, dt);
     this.vehicle = stepVehicle(this.vehicle, { throttle, brake, steer }, this.tire, dt, aero);
+  }
+
+  private updateCameraAndEffects(dt: number): void {
+    const speedNorm = Phaser.Math.Clamp(this.vehicle.speed / 100, 0, 1);
+    const lookAhead = 36 + speedNorm * 135;
+    this.cameras.main.setFollowOffset(
+      -Math.cos(this.vehicle.heading) * lookAhead,
+      -Math.sin(this.vehicle.heading) * lookAhead,
+    );
+
+    const targetZoom = Phaser.Math.Linear(1.08, 0.9, speedNorm);
+    this.cameras.main.setZoom(Phaser.Math.Linear(this.cameras.main.zoom, targetZoom, 0.035));
+    this.effects.update(this.vehicle, this.tire, this.renderSteer, this.renderBrake, this.trackDistance, dt);
   }
 
   private updateLapAndCheckpoints(distanceFromLine: number): void {
@@ -174,7 +201,7 @@ export class RaceScene extends Phaser.Scene {
   }
 
   private makeCar(x: number, y: number, color: number, player: boolean): Phaser.GameObjects.Container {
-    const c = this.add.container(x, y);
+    const c = this.add.container(x, y).setDepth(10);
     const shadow = this.add.rectangle(5, 5, 48, 19, 0x000000, 0.35).setOrigin(0.5);
     const body = this.add.polygon(0, 0, [24,0, 10,-8,-10,-7,-23,-11,-26,-7,-15,-3,-15,3,-26,7,-23,11,-10,7,10,8], color, 1);
     const cockpit = this.add.ellipse(-2, 0, 13, 10, 0x11171a, 1);
