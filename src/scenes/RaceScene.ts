@@ -1,11 +1,12 @@
 import Phaser from 'phaser';
 import { RaceEffects } from '../rendering/RaceEffects';
+import { drawTrackSurface } from '../rendering/TrackRenderer';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAiField, type DriverState } from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
-import { nearestTrackProgress, RACING_LINE, sampleTrack } from '../simulation/TrackModel';
+import { nearestTrackProgress, sampleTrack } from '../simulation/TrackModel';
 
 const W = 1600;
 const H = 1000;
@@ -43,7 +44,7 @@ export class RaceScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#101713');
-    this.drawTrack();
+    drawTrackSurface(this);
     this.effects = new RaceEffects(this);
     this.car = this.makeCar(520, 753, 0x4cc9ff, true);
     this.aiCars = this.ai.map((driver, i) => {
@@ -195,29 +196,6 @@ export class RaceScene extends Phaser.Scene {
       this.finishMessage = isTwoCompoundLegal(this.usedCompounds) ? 'FINISH' : 'DISQUALIFIED · TWO COMPOUNDS REQUIRED';
       this.vehicle = { ...this.vehicle, speed: 0 };
     }
-  }
-
-  private drawTrack(): void {
-    const g = this.add.graphics();
-    g.fillStyle(0x16251b, 1).fillRect(0, 0, W, H);
-    g.lineStyle(154, 0x34383b, 1);
-    g.strokeRoundedRect(250, 170, 1100, 660, 250);
-    g.lineStyle(4, 0x62686b, 0.9);
-    g.strokeRoundedRect(250, 170, 1100, 660, 250);
-    g.lineStyle(2, 0xf3f4e8, 0.18);
-    g.beginPath();
-    RACING_LINE.forEach((p, i) => i === 0 ? g.moveTo(p.x, p.y) : g.lineTo(p.x, p.y));
-    g.closePath();
-    g.strokePath();
-
-    for (let i = 0; i < 14; i++) {
-      const x = 470 + i * 55;
-      g.fillStyle(i % 2 ? 0xf4f0e8 : 0xe74343, 1).fillRect(x, 748, 55, 12);
-    }
-    g.lineStyle(4, 0xffffff, 0.8).lineBetween(520, 706, 520, 800);
-    g.fillStyle(0x20292a, 1).fillRect(590, 240, 420, 120);
-    g.fillStyle(0xd9ded6, 0.14).fillRect(610, 258, 380, 12);
-    this.add.text(630, 292, 'PITWALL // TEST CIRCUIT', { fontFamily: 'Arial', fontSize: '22px', color: '#7f8c83' });
   }
 
   private makeCar(x: number, y: number, color: number, player: boolean): Phaser.GameObjects.Container {
