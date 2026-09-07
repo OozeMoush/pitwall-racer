@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { RaceEffects } from '../rendering/RaceEffects';
+import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAiField, type DriverState } from '../simulation/RaceModel';
@@ -17,6 +18,7 @@ export class RaceScene extends Phaser.Scene {
   private ai: DriverState[] = createAiField();
   private vehicle: VehicleState = createVehicle(520, 753, 0);
   private tire: TireState = createTire('MEDIUM');
+  private energy: EnergyState = createEnergy();
   private timing: TimingState = createTiming();
   private pace: PaceMode = 'BALANCED';
   private selectedCompound: Compound = 'SOFT';
@@ -66,6 +68,7 @@ export class RaceScene extends Phaser.Scene {
       medium: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
       hard: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX),
       pit: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P),
+      overtake: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
     };
     this.hud = document.querySelector('#hud') ?? undefined;
   }
@@ -141,7 +144,19 @@ export class RaceScene extends Phaser.Scene {
     const offTrackLoad = Math.min(0.6, Math.max(0, track.distance - 55) / 100);
     const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + offTrackLoad);
     this.tire = stepTire(this.tire, this.pace, load + aero.dirtyAir * 0.45, dt);
-    this.vehicle = stepVehicle(this.vehicle, { throttle, brake, steer }, this.tire, dt, aero);
+    this.energy = stepEnergy(this.energy, {
+      throttle,
+      brake,
+      speed: this.vehicle.speed,
+      overtakeRequested: this.keys.overtake.isDown,
+    }, dt);
+    this.vehicle = stepVehicle(
+      this.vehicle,
+      { throttle, brake, steer },
+      this.tire,
+      dt,
+      { tow: aero.tow, dirtyAir: aero.dirtyAir, powerBoost: this.energy.powerBoost },
+    );
   }
 
   private updateCameraAndEffects(dt: number): void {
@@ -234,11 +249,13 @@ export class RaceScene extends Phaser.Scene {
     const delta = this.timing.deltaToBest === undefined ? '' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const timingLine = `NOW ${formatLapTime(this.timing.currentLapTime)} · LAST ${formatLapTime(this.timing.lastLapTime)} · BEST ${formatLapTime(this.timing.bestLapTime)}${delta ? ` · Δ ${delta}` : ''}`;
     const battleCount = this.ai.filter((driver) => driver.battleState === 'ATTACK').length;
+    const energyMode = this.energy.overtakeActive ? 'OVERTAKE' : this.energy.harvesting > this.energy.deployment ? 'HARVEST' : 'DEPLOY';
+    const energyPct = Math.round(this.energy.soc * 100);
 
-    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => {
+    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div><div><small>ENERGY</small><strong>${energyPct}%</strong><span>${energyMode} · HOLD SPACE</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => {
       const aiDriver = this.ai.find((driver) => driver.id === d.id);
       const marker = aiDriver?.battleState === 'ATTACK' ? ' ↗' : aiDriver?.battleState === 'FOLLOW' ? ' ·' : '';
       return `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}${marker}</span>`;
-    }).join('')}</div><div class="hint">WASD DRIVE · 1 CONSERVE · 2 BALANCED · 3 PUSH · P PIT</div>`;
+    }).join('')}</div><div class="hint">WASD DRIVE · 1/2/3 PACE · HOLD SPACE OVERTAKE · P PIT</div>`;
   }
 }
