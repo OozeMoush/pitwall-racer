@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { RaceEffects } from '../rendering/RaceEffects';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
-import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, type DriverState } from '../simulation/RaceModel';
+import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAiField, type DriverState } from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
 import { nearestTrackProgress, RACING_LINE, sampleTrack } from '../simulation/TrackModel';
 
@@ -88,6 +88,7 @@ export class RaceScene extends Phaser.Scene {
     this.ai.forEach((driver, i) => {
       const p = sampleTrack(driver.progress, driver.laneOffset);
       this.aiCars[i].setPosition(p.x, p.y).setRotation(p.heading);
+      this.aiCars[i].setScale(driver.battleState === 'ATTACK' ? 1.06 : 1);
     });
 
     this.updateCameraAndEffects(Math.min(deltaMs / 1000, 0.05));
@@ -106,7 +107,7 @@ export class RaceScene extends Phaser.Scene {
 
   private stepSimulation(dt: number): void {
     this.timing = stepTiming(this.timing, dt);
-    this.ai = this.ai.map((driver) => stepAi(driver, dt, TOTAL_LAPS));
+    this.ai = stepAiField(this.ai, dt, TOTAL_LAPS);
 
     if (this.pitTimer > 0) {
       this.pitTimer = Math.max(0, this.pitTimer - dt);
@@ -232,7 +233,12 @@ export class RaceScene extends Phaser.Scene {
     const finished = this.raceFinished ? `<div class="finish">${this.finishMessage}</div>` : '';
     const delta = this.timing.deltaToBest === undefined ? '' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const timingLine = `NOW ${formatLapTime(this.timing.currentLapTime)} · LAST ${formatLapTime(this.timing.lastLapTime)} · BEST ${formatLapTime(this.timing.bestLapTime)}${delta ? ` · Δ ${delta}` : ''}`;
+    const battleCount = this.ai.filter((driver) => driver.battleState === 'ATTACK').length;
 
-    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}</span>`).join('')}</div><div class="hint">WASD DRIVE · 1 CONSERVE · 2 BALANCED · 3 PUSH · P PIT</div>`;
+    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => {
+      const aiDriver = this.ai.find((driver) => driver.id === d.id);
+      const marker = aiDriver?.battleState === 'ATTACK' ? ' ↗' : aiDriver?.battleState === 'FOLLOW' ? ' ·' : '';
+      return `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}${marker}</span>`;
+    }).join('')}</div><div class="hint">WASD DRIVE · 1 CONSERVE · 2 BALANCED · 3 PUSH · P PIT</div>`;
   }
 }
