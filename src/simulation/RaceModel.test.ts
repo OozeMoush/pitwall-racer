@@ -66,4 +66,32 @@ describe('RaceModel', () => {
     expect(nextChaser.battleState).toBe('ATTACK');
     expect(Math.abs(nextChaser.laneOffset)).toBeGreaterThan(0);
   });
+
+  it('undercuts one lap early when trapped in traffic near the pit window', () => {
+    const [leader, chaser] = createAiField();
+    leader.lap = 3;
+    chaser.lap = 3;
+    leader.progress = 0.5 + 22 / TRACK_LENGTH;
+    chaser.progress = 0.5;
+    leader.skill = 1.04;
+    chaser.skill = 0.98;
+    chaser.plannedPitLap = 4;
+    chaser.pitLap = 4;
+
+    const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
+    expect(nextChaser.battleState).toBe('FOLLOW');
+    expect(nextChaser.strategyIntent).toBe('UNDERCUT');
+    expect(nextChaser.pitLap).toBe(3);
+  });
+
+  it('overcuts one lap when in clean air on healthy tyres', () => {
+    const [driver] = createAiField();
+    driver.lap = driver.plannedPitLap;
+    driver.progress = 0.4;
+
+    const next = stepAi(driver, 0.1, 8);
+    expect(next.battleState).toBe('CLEAR');
+    expect(next.strategyIntent).toBe('OVERCUT');
+    expect(next.pitLap).toBe(driver.plannedPitLap + 1);
+  });
 });
