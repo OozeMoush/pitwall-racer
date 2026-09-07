@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { Compound } from './TireModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi } from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
   it('requires two distinct dry compounds', () => {
-    expect(isTwoCompoundLegal(new Set(['MEDIUM']))).toBe(false);
-    expect(isTwoCompoundLegal(new Set(['MEDIUM', 'HARD']))).toBe(true);
+    expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM']))).toBe(false);
+    expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM', 'HARD']))).toBe(true);
   });
 
   it('classifies cars by completed race distance', () => {
