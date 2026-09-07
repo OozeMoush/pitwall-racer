@@ -19,6 +19,8 @@ The project deliberately starts with the dry-race core: the car must feel alive,
 - tow vs dirty-air interaction behind traffic
 - live position, tyre and strategy HUD
 
+The current pit stop is intentionally abstract: the stop applies time loss and rejoins the racing line. A physical pit-lane path comes after the core strategy loop is proven.
+
 ## Run
 
 ```bash
