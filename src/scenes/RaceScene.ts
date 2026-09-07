@@ -3,6 +3,7 @@ import { RaceEffects } from '../rendering/RaceEffects';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, type DriverState } from '../simulation/RaceModel';
+import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
 import { nearestTrackProgress, RACING_LINE, sampleTrack } from '../simulation/TrackModel';
 
 const W = 1600;
@@ -16,6 +17,7 @@ export class RaceScene extends Phaser.Scene {
   private ai: DriverState[] = createAiField();
   private vehicle: VehicleState = createVehicle(520, 753, 0);
   private tire: TireState = createTire('MEDIUM');
+  private timing: TimingState = createTiming();
   private pace: PaceMode = 'BALANCED';
   private selectedCompound: Compound = 'SOFT';
   private usedCompounds = new Set<Compound>(['MEDIUM']);
@@ -103,6 +105,7 @@ export class RaceScene extends Phaser.Scene {
   }
 
   private stepSimulation(dt: number): void {
+    this.timing = stepTiming(this.timing, dt);
     this.ai = this.ai.map((driver) => stepAi(driver, dt, TOTAL_LAPS));
 
     if (this.pitTimer > 0) {
@@ -163,6 +166,7 @@ export class RaceScene extends Phaser.Scene {
     const crossedStart = this.nextCheckpoint === 4 && this.lastTrackProgress > 0.88 && this.trackProgress < 0.12;
     if (!crossedStart) return;
 
+    this.timing = completeLap(this.timing);
     this.lap += 1;
     this.nextCheckpoint = 1;
     if (this.pitRequested && this.lap <= TOTAL_LAPS) {
@@ -226,7 +230,9 @@ export class RaceScene extends Phaser.Scene {
     const pit = this.pitTimer > 0 ? `PIT STOP ${this.pitTimer.toFixed(1)}s` : this.pitRequested ? `BOX THIS LAP → ${this.selectedCompound}` : `NEXT ${this.selectedCompound} · P TO BOX`;
     const effect = aero.dirtyAir > 0.01 ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}% · TOW ${(aero.tow * 100).toFixed(0)}%` : 'CLEAN AIR';
     const finished = this.raceFinished ? `<div class="finish">${this.finishMessage}</div>` : '';
+    const delta = this.timing.deltaToBest === undefined ? '' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
+    const timingLine = `NOW ${formatLapTime(this.timing.currentLapTime)} · LAST ${formatLapTime(this.timing.lastLapTime)} · BEST ${formatLapTime(this.timing.bestLapTime)}${delta ? ` · Δ ${delta}` : ''}`;
 
-    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}</span>`).join('')}</div><div class="hint">WASD DRIVE · 1 CONSERVE · 2 BALANCED · 3 PUSH · P PIT</div>`;
+    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}</span>`).join('')}</div><div class="hint">WASD DRIVE · 1 CONSERVE · 2 BALANCED · 3 PUSH · P PIT</div>`;
   }
 }
