@@ -65,7 +65,6 @@ export function stepAi(driver: DriverState, dt: number, totalLaps: number): Driv
   const compoundPace = tire.compound === 'SOFT' ? 1.025 : tire.compound === 'HARD' ? 0.985 : 1;
   const pacePace = pace === 'PUSH' ? 1.018 : pace === 'CONSERVE' ? 0.982 : 1;
   const speed = 72 * driver.skill * compoundPace * pacePace * tire.grip;
-  const previousProgress = progress;
   progress += (speed * dt) / TRACK_LENGTH;
 
   if (progress >= 1) {
@@ -79,7 +78,7 @@ export function stepAi(driver: DriverState, dt: number, totalLaps: number): Driv
     }
   }
 
-  const finished = lap > totalLaps || (lap === totalLaps && previousProgress > progress && previousProgress > 0.8);
+  const finished = lap > totalLaps;
   return { ...driver, progress, lap, speed, tire, pace, usedCompounds, finished };
 }
 
