@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound } from './TireModel';
-import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi } from './RaceModel';
+import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, stepAiField } from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
@@ -37,5 +37,33 @@ describe('RaceModel', () => {
     const stepped = stepAi(car, 0.1, 8);
     expect(stepped.lap).toBe(8);
     expect(stepped.finished).toBe(false);
+  });
+
+  it('settles into the tow when a car is ahead but not yet attackable', () => {
+    const [leader, chaser] = createAiField();
+    leader.progress = 0.5 + 32 / TRACK_LENGTH;
+    chaser.progress = 0.5;
+    leader.skill = 1;
+    chaser.skill = 1.02;
+    leader.laneOffset = 8;
+    chaser.laneOffset = -8;
+
+    const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
+    expect(nextChaser.battleState).toBe('FOLLOW');
+    expect(nextChaser.laneOffset).toBeGreaterThan(-8);
+  });
+
+  it('moves off line to attack a slower car at close range', () => {
+    const [leader, chaser] = createAiField();
+    leader.progress = 0.5 + 11 / TRACK_LENGTH;
+    chaser.progress = 0.5;
+    leader.skill = 0.94;
+    chaser.skill = 1.08;
+    leader.laneOffset = 0;
+    chaser.laneOffset = 0;
+
+    const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
+    expect(nextChaser.battleState).toBe('ATTACK');
+    expect(Math.abs(nextChaser.laneOffset)).toBeGreaterThan(0);
   });
 });
