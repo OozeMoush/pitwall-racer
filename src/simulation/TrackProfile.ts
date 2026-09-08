@@ -12,9 +12,12 @@ function metresToProgress(metres: number): number {
 }
 
 /**
- * AI pace profile derived from the authoritative spline. Compound grip is a
- * first-class pace input: a fresh Soft should carry obviously more speed in a
- * bend than a Medium, while a Hard or worn tyre has to brake earlier.
+ * AI pace profile derived from the authoritative spline.
+ *
+ * Tyres change how aggressively a car can attack a corner, not how much engine
+ * power it has on a straight. Fresh Soft rubber brakes later, carries more apex
+ * speed and reaches further toward the apex. Hard rubber takes a calmer, wider
+ * line but should still arrive at the next braking zone with comparable speed.
  */
 export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfileSample {
   const here = signedHeadingDelta(progress - metresToProgress(22), progress + metresToProgress(22));
@@ -30,24 +33,26 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
   );
 
   const safeSkill = clamp(skill, 0.94, 1.24);
-  const safeGrip = clamp(grip, 0.30, 1.42);
+  const safeGrip = clamp(grip, 0.38, 1.34);
 
+  // Straight speed intentionally has no compound term. Driver skill can still
+  // create a small pace spread, but S/M/H should not behave like engine modes.
   const straightSpeed = 112 + (safeSkill - 0.94) * 39;
-  const baseCornerFloor = 45 + (safeSkill - 0.94) * 62;
-  // Exaggerated by design: 1.3+ grip becomes a qualifying-lap weapon, while
-  // sub-0.8 grip gives away a huge amount in technical sectors.
-  const cornerGripFactor = clamp(Math.pow(safeGrip, 2.12), 0.34, 1.82);
+  const baseCornerFloor = 46 + (safeSkill - 0.94) * 58;
+  const cornerGripFactor = clamp(Math.pow(safeGrip, 1.58), 0.52, 1.50);
   const cornerFloor = baseCornerFloor * cornerGripFactor;
   const targetSpeed = clamp(
     straightSpeed - severity * (straightSpeed - cornerFloor),
-    24,
+    28,
     124,
   );
 
   const signedTurn = here * 0.62 + near * 0.38;
+  const lineGrip = clamp01((safeGrip - 0.55) / 0.78);
+  const apexReach = 0.74 + lineGrip * 0.34;
   const apexOffset = Math.abs(signedTurn) < 0.03
     ? 0
-    : Math.sign(signedTurn) * Math.min(14, 5 + severity * 9);
+    : Math.sign(signedTurn) * Math.min(15, (5 + severity * 9) * apexReach);
 
   return { signedTurn, severity, targetSpeed, apexOffset };
 }

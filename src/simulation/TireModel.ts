@@ -8,13 +8,14 @@ export interface TireState {
   grip: number;
 }
 
-// Pitwall Racer is an eight-lap arcade strategy race. The compounds are
-// intentionally exaggerated so the player can identify them from one corner:
-// Soft is qualifying rubber, Medium is the reference, Hard is survival rubber.
+// Pitwall Racer is an eight-lap arcade strategy race. Compound differences are
+// intentionally obvious, but they are tyre differences rather than engine
+// maps: Soft owns the corner, Hard survives the stint, and all three can still
+// run down a straight at comparable speed.
 const compound = {
-  SOFT: { baseGrip: 1.34, wear: 3.35, ideal: 103 },
-  MEDIUM: { baseGrip: 1.0, wear: 1.28, ideal: 97 },
-  HARD: { baseGrip: 0.75, wear: 0.44, ideal: 90 },
+  SOFT: { baseGrip: 1.28, wear: 2.65, ideal: 103 },
+  MEDIUM: { baseGrip: 1.0, wear: 1.15, ideal: 97 },
+  HARD: { baseGrip: 0.82, wear: 0.50, ideal: 90 },
 } satisfies Record<Compound, { baseGrip: number; wear: number; ideal: number }>;
 
 const pace = {
@@ -34,12 +35,12 @@ export function createTire(compoundName: Compound): TireState {
 }
 
 /**
- * Deliberately loud tyre model.
+ * Loud but progressive tyre model.
  *
- * Fresh Soft rubber gives absurdly obvious braking/turn-in advantage. The cost
- * is a short peak window. Once wear reaches roughly one third of the stint the
- * high-speed grip starts falling quickly, and after the halfway point it falls
- * off a cliff. That is intentional: this is a short game, not a tyre lab.
+ * Soft has a short peak window, but it should not suddenly become a slow car
+ * everywhere. Wear mainly removes braking and cornering authority. The cliff
+ * begins later than before and is steep enough to force a stop without making
+ * a used Soft look as if its engine has failed.
  */
 export function stepTire(state: TireState, mode: PaceMode, load: number, dt: number): TireState {
   const spec = compound[state.compound];
@@ -59,13 +60,13 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
     * heatWear;
   const wear = Math.min(1, state.wear + wearRate * dt);
 
-  const baseWearLoss = wear * 0.075;
-  const lateWear = Math.max(0, wear - 0.30);
-  const cliff = Math.pow(lateWear, 1.08) * 2.28;
+  const baseWearLoss = wear * 0.09;
+  const lateWear = Math.max(0, wear - 0.42);
+  const cliff = Math.pow(lateWear, 1.16) * 1.55;
   const temperatureLoss = Math.max(0, tempDelta - 5) * 0.0058;
-  const tempGrip = Math.max(0.72, 1 - temperatureLoss);
-  const wearGrip = Math.max(0.30, 1 - baseWearLoss - cliff);
-  const grip = Math.max(0.30, spec.baseGrip * map.grip * tempGrip * wearGrip);
+  const tempGrip = Math.max(0.74, 1 - temperatureLoss);
+  const wearGrip = Math.max(0.38, 1 - baseWearLoss - cliff);
+  const grip = Math.max(0.38, spec.baseGrip * map.grip * tempGrip * wearGrip);
 
   return { ...state, wear, temperature, grip };
 }

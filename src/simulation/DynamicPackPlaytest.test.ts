@@ -147,14 +147,15 @@ describe('dynamic field playtest telemetry', () => {
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
     expect(metrics.maxPlayerKmh).toBeLessThan(410);
-    // The simulated player uses the same improved controller as the AI and gets
-    // a six-second DEPLOY window, so a relative average-speed gap is a poor
-    // difficulty gate. Lock the opponent field to a genuinely fast absolute
-    // envelope instead, while requiring it to retain a clear top-speed threat.
-    expect(metrics.maxAiKmh).toBeGreaterThan(370);
-    expect(metrics.maxAiKmh).toBeLessThan(410);
-    expect(metrics.maxAiKmh).toBeGreaterThan(metrics.maxPlayerKmh + 20);
-    expect(metrics.avgAiKmh).toBeGreaterThan(255);
+    // Difficulty should come from carrying pace through the lap, not from a
+    // fake engine advantage. Keep top speeds in the same broad envelope while
+    // demanding that the AI sustains a materially higher average speed.
+    expect(metrics.maxAiKmh).toBeGreaterThan(360);
+    expect(metrics.maxAiKmh).toBeLessThan(400);
+    expect(metrics.maxAiKmh - metrics.maxPlayerKmh).toBeGreaterThan(3);
+    expect(metrics.maxAiKmh - metrics.maxPlayerKmh).toBeLessThan(20);
+    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 12);
+    expect(metrics.avgAiKmh).toBeGreaterThan(260);
     expect(metrics.offTrackRatio).toBeLessThan(0.02);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);

@@ -27,9 +27,9 @@ export interface ArcadeCarControlResult {
 }
 
 /**
- * Arcade handling with a deliberately huge tyre window. Fresh Soft rubber can
- * be thrown into a fast bend at a speed that a Medium only survives with good
- * technique. A worn tyre then loses that high-speed authority very quickly.
+ * Arcade handling where tyre grip primarily changes braking, rotation and
+ * combined traction. Compound choice should not behave like an engine map:
+ * with the wheel straight, S/M/H accelerate almost the same way.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -62,7 +62,9 @@ export function controlArcadeCar(
   const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.85));
 
   const steeringLoad = Math.abs(steer) * clamp01(speed / 84);
-  const straightTraction = 0.91 + normalizedGrip * 0.09;
+  // Keep compound influence tiny with a straight steering wheel. The large
+  // difference should appear once the tyre is asked to brake or turn.
+  const straightTraction = 0.985 + normalizedGrip * 0.015;
   const combinedTraction = 1 - steeringLoad * throttle * (0.10 + (1 - normalizedGrip) * 0.58);
   const engineAcceleration = throttle
     * 13.8
