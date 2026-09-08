@@ -2,9 +2,6 @@ import type { DriverState } from './RaceModel';
 import { raceDistance } from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
-// The rendered formula car is about 5.4 world units long. At WORLD_SCALE 0.085
-// that is roughly 64 simulation units, so the old 18-unit buffer literally
-// allowed three quarters of one car to sit inside another.
 const LANE_OPTIONS = [-42, 0, 42] as const;
 const CONFLICT_LONGITUDINAL = 105;
 const REQUIRED_LATERAL = 31;
@@ -13,9 +10,8 @@ const HARD_LONGITUDINAL_BUFFER = 68;
 /**
  * Lightweight race-game occupancy resolver for the abstract AI field.
  * Cars may run side by side, but they may not occupy the same body volume.
- * A third car with no safe lane is held behind rather than rendered inside the
- * pack. This is intentionally stronger than a tiny collision impulse because
- * readable racecraft matters more than pretending the 1D AI has rigid bodies.
+ * Dense packs form additional longitudinal rows rather than stacking multiple
+ * cars into the same fallback position.
  */
 export function resolveAiOccupancy(drivers: DriverState[], _dt?: number): DriverState[] {
   const result = drivers.map((driver) => ({ ...driver }));
@@ -27,9 +23,9 @@ export function resolveAiOccupancy(drivers: DriverState[], _dt?: number): Driver
 
   for (const driver of order) {
     let working = driver;
-    const workingDistance = raceDistance(working.lap, working.progress) * TRACK_LENGTH;
+    const workingDistance = raceMetres(working);
     const nearbyAhead = placed.filter((other) => {
-      const gap = raceDistance(other.lap, other.progress) * TRACK_LENGTH - workingDistance;
+      const gap = raceMetres(other) - workingDistance;
       return gap >= 0 && gap < CONFLICT_LONGITUDINAL;
     });
 
@@ -43,16 +39,21 @@ export function resolveAiOccupancy(drivers: DriverState[], _dt?: number): Driver
       if (freeLane !== undefined) {
         working.laneOffset = freeLane;
       } else {
-        const nearest = nearbyAhead
-          .map((other) => ({
-            other,
-            gap: raceDistance(other.lap, other.progress) * TRACK_LENGTH - workingDistance,
-          }))
-          .sort((a, b) => a.gap - b.gap)[0];
+        working.speed = Math.min(working.speed, Math.min(...nearbyAhead.map((other) => other.speed)) * 0.97);
 
-        working.speed = Math.min(working.speed, nearest.other.speed * 0.97);
-        const leaderDistance = raceDistance(nearest.other.lap, nearest.other.progress) * TRACK_LENGTH;
-        working = placeAtRaceMetres(working, Math.max(0, leaderDistance - HARD_LONGITUDINAL_BUFFER));
+        // Start one body length behind the rearmost occupied row, then keep
+        // stepping back until the new slot is safe from every already-placed car.
+        let targetDistance = Math.min(...nearbyAhead.map(raceMetres)) - HARD_LONGITUDINAL_BUFFER;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const conflicts = placed.some((other) => {
+            const longitudinal = Math.abs(raceMetres(other) - targetDistance);
+            const lateral = Math.abs(other.laneOffset - working.laneOffset);
+            return longitudinal < HARD_LONGITUDINAL_BUFFER && lateral < REQUIRED_LATERAL;
+          });
+          if (!conflicts) break;
+          targetDistance -= HARD_LONGITUDINAL_BUFFER;
+        }
+        working = placeAtRaceMetres(working, Math.max(0, targetDistance));
       }
     }
 
@@ -62,6 +63,10 @@ export function resolveAiOccupancy(drivers: DriverState[], _dt?: number): Driver
   }
 
   return result;
+}
+
+function raceMetres(driver: Pick<DriverState, 'lap' | 'progress'>): number {
+  return raceDistance(driver.lap, driver.progress) * TRACK_LENGTH;
 }
 
 function placeAtRaceMetres(driver: DriverState, metres: number): DriverState {
