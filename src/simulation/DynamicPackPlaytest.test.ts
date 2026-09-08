@@ -147,17 +147,19 @@ describe('dynamic field playtest telemetry', () => {
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
     expect(metrics.maxPlayerKmh).toBeLessThan(410);
-    // The user should be chasing this field, not cruising past it. This is a
-    // deliberately aggressive gate: even a simulated Medium player gets a six
-    // second DEPLOY window and the AI field still needs materially more pace.
-    expect(metrics.maxAiKmh).toBeGreaterThan(345);
+    // The simulated player uses the same improved controller as the AI and gets
+    // a six-second DEPLOY window, so a relative average-speed gap is a poor
+    // difficulty gate. Lock the opponent field to a genuinely fast absolute
+    // envelope instead, while requiring it to retain a clear top-speed threat.
+    expect(metrics.maxAiKmh).toBeGreaterThan(370);
     expect(metrics.maxAiKmh).toBeLessThan(410);
-    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 15);
-    expect(metrics.offTrackRatio).toBeLessThan(0.035);
+    expect(metrics.maxAiKmh).toBeGreaterThan(metrics.maxPlayerKmh + 20);
+    expect(metrics.avgAiKmh).toBeGreaterThan(255);
+    expect(metrics.offTrackRatio).toBeLessThan(0.02);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
-    expect(metrics.avgAiLongitudinalJerk).toBeLessThan(10);
-    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(25);
-    expect(metrics.highJerkRatio).toBeLessThan(0.009);
+    expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
+    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(22);
+    expect(metrics.highJerkRatio).toBeLessThan(0.008);
   }, 20_000);
 });
 
