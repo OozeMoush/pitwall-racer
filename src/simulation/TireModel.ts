@@ -62,8 +62,8 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
   const wear = Math.min(1, state.wear + wearRate * dt);
 
   const baseWearLoss = wear * 0.10;
-  const lateWear = Math.max(0, wear - 0.58);
-  const cliff = Math.pow(lateWear, 1.4) * 0.9;
+  const lateWear = Math.max(0, wear - 0.56);
+  const cliff = Math.pow(lateWear, 1.4) * 1.15;
   const temperatureLoss = Math.max(0, tempDelta - 6) * 0.0045;
   const tempGrip = Math.max(0.78, 1 - temperatureLoss);
   const wearGrip = Math.max(0.58, 1 - baseWearLoss - cliff);
