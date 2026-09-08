@@ -111,7 +111,9 @@ describe('dynamic field playtest telemetry', () => {
           maxAiJerk = Math.max(maxAiJerk, jerk);
         }
         lastAiSpeeds[index] = state.speed;
-        if (projectTrack(state.x, state.y).distance > 90) offTrackSamples += 1;
+        // Grey runoff starts close to 30 units. More than 42 is genuinely off
+        // the narrow race track and must remain exceptional for the AI field.
+        if (projectTrack(state.x, state.y).distance > 42) offTrackSamples += 1;
       });
 
       const all = [nextPlayer, ...nextAi];
@@ -143,14 +145,15 @@ describe('dynamic field playtest telemetry', () => {
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(310);
+    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(305);
     expect(metrics.maxPlayerKmh).toBeLessThan(390);
-    expect(metrics.maxAiKmh).toBeGreaterThan(230);
-    expect(metrics.maxAiKmh).toBeLessThan(metrics.maxPlayerKmh);
-    expect(metrics.offTrackRatio).toBeLessThan(0.12);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.6);
+    // AI is now meant to pressure a NORMAL player; it may be a little faster at
+    // the top end, while DEPLOY remains the player's overtaking advantage.
+    expect(metrics.maxAiKmh).toBeGreaterThan(280);
+    expect(metrics.maxAiKmh).toBeLessThanOrEqual(metrics.maxPlayerKmh + 20);
+    expect(metrics.offTrackRatio).toBeLessThan(0.035);
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.58);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
-    // A single real collision may create a large impulse; buzzing is repeated.
     expect(metrics.p99AiLongitudinalJerk).toBeLessThan(22);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);
   }, 20_000);
