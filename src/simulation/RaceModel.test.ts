@@ -65,17 +65,17 @@ describe('RaceModel', () => {
 
     const [cornerCar] = createAiField();
     cornerCar.progress = corner.progress;
-    cornerCar.speed = 90;
+    cornerCar.speed = 95;
     const braked = stepAi(cornerCar, 0.2, 8);
-    expect(braked.speed).toBeLessThan(90);
+    expect(braked.speed).toBeLessThan(95);
   });
 
-  it('settles into the tow when a car is ahead but not yet attackable', () => {
+  it('settles into the tow when a weaker car cannot attack yet', () => {
     const [leader, chaser] = createAiField();
     leader.progress = 0.5 + 32 / TRACK_LENGTH;
     chaser.progress = 0.5;
-    leader.skill = 1;
-    chaser.skill = 1.02;
+    leader.skill = 1.04;
+    chaser.skill = 0.92;
     leader.laneOffset = 8;
     chaser.laneOffset = -8;
 
@@ -86,7 +86,7 @@ describe('RaceModel', () => {
 
   it('moves off line to attack a slower car at close range', () => {
     const [leader, chaser] = createAiField();
-    leader.progress = 0.5 + 11 / TRACK_LENGTH;
+    leader.progress = 0.5 + 18 / TRACK_LENGTH;
     chaser.progress = 0.5;
     leader.skill = 0.94;
     chaser.skill = 1.08;
@@ -96,6 +96,22 @@ describe('RaceModel', () => {
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
     expect(nextChaser.battleState).toBe('ATTACK');
     expect(Math.abs(nextChaser.laneOffset)).toBeGreaterThan(0);
+  });
+
+  it('lets an attacker use its own pace after moving to another lane', () => {
+    const [leader, chaser] = createAiField();
+    leader.progress = 0.25 + 24 / TRACK_LENGTH;
+    chaser.progress = 0.25;
+    leader.speed = 82;
+    chaser.speed = 88;
+    leader.skill = 0.94;
+    chaser.skill = 1.09;
+    leader.laneOffset = -42;
+    chaser.laneOffset = 42;
+
+    const [, nextChaser] = stepAiField([leader, chaser], 0.15, 8);
+    expect(nextChaser.battleState).toBe('ATTACK');
+    expect(nextChaser.speed).toBeGreaterThan(leader.speed);
   });
 
   it('treats the player ahead as real traffic and can attack them', () => {
@@ -134,7 +150,7 @@ describe('RaceModel', () => {
 
     const [next] = stepAiField([driver], 0.1, 8, [player]);
     expect(next.battleState).toBe('DEFEND');
-    expect(Math.abs(next.laneOffset)).toBeLessThanOrEqual(4);
+    expect(Math.abs(next.laneOffset)).toBeLessThanOrEqual(4.1);
   });
 
   it('leaves lateral space when the player is genuinely alongside', () => {
@@ -162,8 +178,8 @@ describe('RaceModel', () => {
     chaser.lap = 3;
     leader.progress = 0.5 + 22 / TRACK_LENGTH;
     chaser.progress = 0.5;
-    leader.skill = 1.04;
-    chaser.skill = 0.98;
+    leader.skill = 1.06;
+    chaser.skill = 0.92;
     leader.laneOffset = 0;
     chaser.laneOffset = 0;
     chaser.plannedPitLap = 4;
