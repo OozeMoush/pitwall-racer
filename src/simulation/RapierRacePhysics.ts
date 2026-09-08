@@ -51,23 +51,23 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
-      // The field should be genuinely difficult even when the player has a
-      // short DEPLOY window. Soft is already close to the controller's boost
-      // ceiling, so this pass mainly lifts Medium/Hard race pace instead of
-      // creating absurd Soft top speed.
+      // Raw power alone made the faster field run wide. Give AI a small
+      // execution margin in the physical tyre model instead: it can actually
+      // carry the target speed it asks for, while compound grip still dominates
+      // the target-speed calculation and Soft remains the reference tyre.
       const compoundBoost = driver.tire.compound === 'SOFT'
-        ? 0.32
+        ? 0.31
         : driver.tire.compound === 'MEDIUM'
-          ? 0.255
-          : 0.165;
-      const skillBoost = Math.max(0, driver.skill - 1) * 0.78;
-      const attackBoost = control.battleState === 'ATTACK' ? 0.09 : 0;
+          ? 0.235
+          : 0.145;
+      const skillBoost = Math.max(0, driver.skill - 1) * 0.75;
+      const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
 
       this.driveAi(index, {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip,
+        tireGrip: driver.tire.grip * 1.08,
         surfaceGrip: 1,
         powerBoost: compoundBoost + skillBoost + attackBoost,
         powerMultiplier: 1,
