@@ -81,18 +81,20 @@ describe('dynamic field playtest telemetry', () => {
       ];
 
       const playerControl = dynamicAiControl(playerDriver, player, traffic);
+      const deployWindow = tick > 12 / DT && tick < 18 / DT;
       physics.drivePlayer({
         throttle: playerControl.throttle,
         brake: playerControl.brake,
         steer: playerControl.steer,
         tireGrip: playerDriver.tire.grip,
         surfaceGrip: 1,
-        powerBoost: tick > 12 / DT && tick < 18 / DT ? 0.22 : 0.065,
+        // Match the live EnergyModel rather than the older pre-retune values.
+        powerBoost: deployWindow ? 0.38 : 0.075,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, DT);
 
-      physics.syncAiKinematics(ai, DT);
+      physics.syncAiKinematics(ai, DT, playerLap);
       physics.step(DT);
 
       const nextPlayer = physics.playerState();
@@ -111,8 +113,6 @@ describe('dynamic field playtest telemetry', () => {
           maxAiJerk = Math.max(maxAiJerk, jerk);
         }
         lastAiSpeeds[index] = state.speed;
-        // Grey runoff starts close to 30 units. More than 42 is genuinely off
-        // the narrow race track and must remain exceptional for the AI field.
         if (projectTrack(state.x, state.y).distance > 42) offTrackSamples += 1;
       });
 
@@ -145,14 +145,15 @@ describe('dynamic field playtest telemetry', () => {
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(305);
-    expect(metrics.maxPlayerKmh).toBeLessThan(390);
-    // AI is now meant to pressure a NORMAL player; it may be a little faster at
-    // the top end, while DEPLOY remains the player's overtaking advantage.
-    expect(metrics.maxAiKmh).toBeGreaterThan(280);
-    expect(metrics.maxAiKmh).toBeLessThanOrEqual(metrics.maxPlayerKmh + 20);
+    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
+    expect(metrics.maxPlayerKmh).toBeLessThan(400);
+    // The AI should pressure NORMAL pace, while a real DEPLOY window lets a
+    // skilled player reach the same top-speed territory rather than cruise past.
+    expect(metrics.maxAiKmh).toBeGreaterThan(310);
+    expect(metrics.maxAiKmh).toBeLessThanOrEqual(metrics.maxPlayerKmh + 25);
+    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh);
     expect(metrics.offTrackRatio).toBeLessThan(0.035);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.58);
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
     expect(metrics.p99AiLongitudinalJerk).toBeLessThan(22);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);
