@@ -11,13 +11,13 @@ function oneLap(compound: 'SOFT' | 'MEDIUM' | 'HARD') {
 }
 
 describe('compound contrast', () => {
-  it('makes fresh Soft obviously faster and fresh Hard obviously slower than Medium', () => {
+  it('makes fresh Soft dramatically faster and Hard dramatically slower than Medium', () => {
     const soft = oneLap('SOFT');
     const medium = oneLap('MEDIUM');
     const hard = oneLap('HARD');
 
-    expect(soft.lapTime).toBeLessThan(medium.lapTime - 4);
-    expect(hard.lapTime).toBeGreaterThan(medium.lapTime + 4);
+    expect(soft.lapTime).toBeLessThan(medium.lapTime - 7);
+    expect(hard.lapTime).toBeGreaterThan(medium.lapTime + 7);
   });
 
   it('charges Soft much more tyre life for that opening pace', () => {
@@ -25,7 +25,7 @@ describe('compound contrast', () => {
     const medium = oneLap('MEDIUM');
     const hard = oneLap('HARD');
 
-    expect(soft.wearAtEnd).toBeGreaterThan(medium.wearAtEnd * 1.8);
-    expect(hard.wearAtEnd).toBeLessThan(medium.wearAtEnd * 0.65);
+    expect(soft.wearAtEnd).toBeGreaterThan(medium.wearAtEnd * 2.1);
+    expect(hard.wearAtEnd).toBeLessThan(medium.wearAtEnd * 0.55);
   });
 });
