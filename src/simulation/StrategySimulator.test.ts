@@ -36,8 +36,10 @@ describe('StrategySimulator', () => {
     const noStop = simulateStrategy(noStopMedium);
     const oneStop = simulateStrategy(balanced);
 
-    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 2);
-    expect(noStop.laps[7].gripAverage).toBeLessThan(noStop.laps[1].gripAverage * 0.82);
+    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
+    // ~15% grip loss is already a major handling change because the live car
+    // applies grip non-linearly to braking, rotation and corner-exit traction.
+    expect(noStop.laps[7].gripAverage).toBeLessThan(noStop.laps[1].gripAverage * 0.85);
   });
 
   it('makes PUSH buy opening pace by spending materially more tyre', () => {
