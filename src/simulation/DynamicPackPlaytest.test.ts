@@ -88,7 +88,6 @@ describe('dynamic field playtest telemetry', () => {
         steer: playerControl.steer,
         tireGrip: playerDriver.tire.grip,
         surfaceGrip: 1,
-        // Match the live EnergyModel rather than the older pre-retune values.
         powerBoost: deployWindow ? 0.38 : 0.075,
         powerMultiplier: 1,
         rollingResistance: 0,
@@ -147,11 +146,12 @@ describe('dynamic field playtest telemetry', () => {
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
     expect(metrics.maxPlayerKmh).toBeLessThan(400);
-    // The AI should pressure NORMAL pace, while a real DEPLOY window lets a
-    // skilled player reach the same top-speed territory rather than cruise past.
-    expect(metrics.maxAiKmh).toBeGreaterThan(310);
-    expect(metrics.maxAiKmh).toBeLessThanOrEqual(metrics.maxPlayerKmh + 25);
-    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh);
+    // This gate deliberately no longer requires the AI to be slower than the
+    // player. The user wants fresh Soft rivals to be daunting; DEPLOY and skill
+    // are how the player fights them rather than a built-in top-speed advantage.
+    expect(metrics.maxAiKmh).toBeGreaterThan(330);
+    expect(metrics.maxAiKmh).toBeLessThan(385);
+    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 8);
     expect(metrics.offTrackRatio).toBeLessThan(0.035);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
