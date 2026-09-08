@@ -3,6 +3,7 @@ import { RaceEffects } from '../rendering/RaceEffects';
 import { drawTrackSurface } from '../rendering/TrackRenderer';
 import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
+import { stepSteering } from '../simulation/InputModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
@@ -40,6 +41,7 @@ export class RaceScene extends Phaser.Scene {
   private pitRequested = false;
   private pitTimer = 0;
   private finishMessage = '';
+  private steerInput = 0;
   private renderSteer = 0;
   private renderBrake = 0;
   private trackDistance = 0;
@@ -135,6 +137,7 @@ export class RaceScene extends Phaser.Scene {
     this.flow = stepRaceFlow(this.flow, dt);
     if (this.flow.phase !== 'RACING') {
       this.vehicle = { ...this.vehicle, speed: 0, yawRate: 0 };
+      this.steerInput = 0;
       this.renderSteer = 0;
       this.renderBrake = 0;
       return;
@@ -145,6 +148,7 @@ export class RaceScene extends Phaser.Scene {
 
     if (this.pitTimer > 0) {
       this.pitTimer = Math.max(0, this.pitTimer - dt);
+      this.steerInput = 0;
       this.renderSteer = 0;
       this.renderBrake = 1;
       this.trafficPressure = 0;
@@ -163,7 +167,9 @@ export class RaceScene extends Phaser.Scene {
 
     const throttle = this.keys.up.isDown ? 1 : 0;
     const brake = this.keys.down.isDown ? 1 : 0;
-    const steer = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
+    const rawSteer = (this.keys.right.isDown ? 1 : 0) - (this.keys.left.isDown ? 1 : 0);
+    this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
+    const steer = this.steerInput;
     this.renderSteer = steer;
     this.renderBrake = brake;
 
