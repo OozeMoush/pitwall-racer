@@ -1,6 +1,16 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import { dynamicAiControl } from './DynamicAiController';
+import {
+  PIT_SPEED,
+  beginPitStop,
+  createPitStopState,
+  isPitActive,
+  pitLanePose,
+  shouldEnterPit,
+  stepPitStop,
+  type PitStopState,
+} from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
 import { createTire } from './TireModel';
 import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
@@ -15,6 +25,7 @@ export class RapierRacePhysics {
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
+  private readonly aiPitStops: PitStopState[];
   private latestAi: DriverState[] = [];
   private playerLap = 0;
 
@@ -30,6 +41,7 @@ export class RapierRacePhysics {
     });
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
+    this.aiPitStops = ai.map(() => createPitStopState());
   }
 
   drivePlayer(input: ArcadeCarInput, dt: number): void {
@@ -48,6 +60,12 @@ export class RapierRacePhysics {
         if (driver.finished) this.stopBody(this.aiBodies[index]);
         return;
       }
+
+      if (isPitActive(this.aiPitStops[index])) {
+        this.stepAiPit(index, driver, dt);
+        return;
+      }
+
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
@@ -99,6 +117,10 @@ export class RapierRacePhysics {
     return this.aiBodies.map((body) => this.bodyState(body));
   }
 
+  isAiPitting(index: number): boolean {
+    return isPitActive(this.aiPitStops[index] ?? createPitStopState());
+  }
+
   setPlayerState(state: VehicleState): void {
     this.setBodyState(this.playerBody, state);
   }
@@ -132,7 +154,53 @@ export class RapierRacePhysics {
       });
       this.aiLaps[index] = driver.lap;
       this.lastAiProgress[index] = driver.progress;
+      this.aiPitStops[index] = createPitStopState();
     });
+  }
+
+  private stepAiPit(index: number, driver: DriverState, dt: number): void {
+    const previous = this.aiPitStops[index];
+    const next = stepPitStop(previous, dt);
+    this.aiPitStops[index] = next;
+
+    if (!previous.tyreChanged && next.tyreChanged) {
+      driver.tire = createTire(driver.nextCompound);
+      driver.usedCompounds = new Set(driver.usedCompounds);
+      driver.usedCompounds.add(driver.nextCompound);
+      driver.strategyIntent = 'DONE';
+    }
+
+    const pose = pitLanePose(next.t);
+    const speed = next.phase === 'SERVICE' ? 0 : PIT_SPEED;
+    const pitVehicle: VehicleState = {
+      x: pose.x,
+      y: pose.y,
+      heading: pose.heading,
+      speed,
+      yawRate: 0,
+    };
+    this.setAiState(index, pitVehicle);
+    driver.progress = pose.raceProgress;
+    driver.laneOffset = pose.laneOffset;
+    driver.speed = speed;
+    driver.battleState = 'CLEAR';
+
+    if (next.phase === 'DONE') {
+      const exit = pitLanePose(1);
+      const exitVehicle: VehicleState = {
+        x: exit.x,
+        y: exit.y,
+        heading: exit.heading,
+        speed: PIT_SPEED,
+        yawRate: 0,
+      };
+      this.setAiState(index, exitVehicle);
+      driver.progress = exit.raceProgress;
+      driver.laneOffset = exit.laneOffset;
+      driver.speed = PIT_SPEED;
+      this.lastAiProgress[index] = exit.raceProgress;
+      this.aiPitStops[index] = createPitStopState();
+    }
   }
 
   private actualTraffic(ai: readonly DriverState[], states: readonly VehicleState[]): RaceTrafficCar[] {
@@ -172,21 +240,26 @@ export class RapierRacePhysics {
       const state = this.bodyState(body);
       const projection = projectTrack(state.x, state.y);
       const previous = this.lastAiProgress[index] ?? projection.progress;
+
       if (previous > 0.88 && projection.progress < 0.12) {
         this.aiLaps[index] = (this.aiLaps[index] ?? driver.lap) + 1;
       }
+
+      const currentLap = this.aiLaps[index] ?? driver.lap;
+      const wantsPit = currentLap > 0
+        && currentLap >= driver.pitLap
+        && !driver.usedCompounds.has(driver.nextCompound);
+      if (!isPitActive(this.aiPitStops[index])
+        && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit)) {
+        this.aiPitStops[index] = beginPitStop();
+        driver.battleState = 'CLEAR';
+      }
+
       this.lastAiProgress[index] = projection.progress;
       driver.progress = projection.progress;
-      driver.lap = this.aiLaps[index] ?? driver.lap;
+      driver.lap = currentLap;
       driver.laneOffset = projection.laneOffset;
       driver.speed = state.speed;
-
-      if (driver.lap > driver.pitLap && !driver.usedCompounds.has(driver.nextCompound)) {
-        driver.tire = createTire(driver.nextCompound);
-        driver.usedCompounds = new Set(driver.usedCompounds);
-        driver.usedCompounds.add(driver.nextCompound);
-        driver.strategyIntent = 'DONE';
-      }
     });
   }
 
