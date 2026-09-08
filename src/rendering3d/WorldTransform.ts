@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-// Render scale is intentionally larger than the first 3D prototype. The car is
-// now smaller as well, so a 300-350 km/h run covers several visible car lengths
-// per second instead of looking like a slow tabletop crawl.
-export const WORLD_SCALE = 0.15;
+// Fixed-direction top-down cameras hide longitudinal motion because the camera
+// follows the player. Deliberately render simulation metres larger so track
+// detail crosses the viewport quickly while keeping HUD speed honest.
+export const WORLD_SCALE = 0.30;
 export const WORLD_CENTER_X = 1110;
 export const WORLD_CENTER_Y = 600;
 

@@ -28,13 +28,7 @@ export interface ArcadeCarControlResult {
 
 /**
  * Arcade race-car controller used on top of a real rigid-body solver.
- *
- * The physics engine owns integration and contacts. This controller only
- * describes the tyre/engine intent for one fixed step: longitudinal drive and
- * braking, lateral tyre scrub and a speed-dependent target yaw rate.
- *
- * Units are intentionally metres/seconds-ish so the HUD and track scale have a
- * coherent relationship. It is tuned for game feel, not an F1 telemetry model.
+ * Rapier owns integration/contact; this describes engine, brake and tyre intent.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -59,21 +53,22 @@ export function controlArcadeCar(
   const lateralSpeed = motion.vx * rightX + motion.vy * rightY;
   const speed = Math.hypot(motion.vx, motion.vy);
 
-  // The useful speed envelope changes with hybrid mode, but acceleration still
-  // has to take time. This replaces the old almost-instant jump to a speed cap.
-  const usefulTopSpeed = 92 + powerBoost * 43;
+  // A proper long-straight envelope: NORMAL can reach the mid-300s km/h,
+  // DEPLOY can clearly pull beyond it, and HARVEST gives that speed away.
+  // Acceleration still tapers over several seconds instead of teleporting to cap.
+  const usefulTopSpeed = 110 + powerBoost * 60;
   const positiveForward = Math.max(0, forwardSpeed);
-  const speedRatio = clamp01(positiveForward / Math.max(55, usefulTopSpeed));
-  const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.75));
+  const speedRatio = clamp01(positiveForward / Math.max(60, usefulTopSpeed));
+  const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.85));
   const engineAcceleration = throttle
-    * 13.2
+    * 13.8
     * powerTaper
     * (1 + powerBoost * 0.58)
     * powerMultiplier;
 
-  const aeroDrag = 0.00036 * speed * speed;
-  const rollingDrag = 0.72 + rollingResistance;
-  const brakingAcceleration = brake * 24.5 * (0.82 + tireGrip * 0.18) * surfaceGrip;
+  const aeroDrag = 0.00025 * speed * speed;
+  const rollingDrag = 0.55 + rollingResistance;
+  const brakingAcceleration = brake * 29 * (0.82 + tireGrip * 0.18) * surfaceGrip;
 
   let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
@@ -86,27 +81,23 @@ export function controlArcadeCar(
   if (brake > 0 && forwardSpeed > 0 && nextForward < 0) nextForward = 0;
   if (throttle >= 0 && nextForward < -3) nextForward = -3;
 
-  // Real velocity has a lateral component now. Tyres progressively scrub that
-  // component instead of the car being mathematically welded to its heading.
-  // At high speed the scrub is intentionally a little weaker, so asking too
-  // much steering creates visible understeer rather than a magic tight turn.
-  const highSpeedSlip = clamp01(speed / 115);
-  const lateralGripRate = 8.4 * tireGrip * surfaceGrip * (1 - highSpeedSlip * 0.28);
+  const highSpeedSlip = clamp01(speed / 120);
+  const lateralGripRate = 8.1 * tireGrip * surfaceGrip * (1 - highSpeedSlip * 0.34);
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
-  // Steering authority falls hard with speed. Roughly: responsive in a hairpin,
-  // moderate around 200 km/h, and a large-radius arc above 300 km/h.
-  const speedAuthority = 1.65 / (1 + Math.pow(speed / 38, 1.85)) + 0.055;
-  const lowSpeedBuild = clamp01(speed / 14);
-  const brakingRotation = 1 + brake * 0.16;
+  // High speed now demands an actual braking decision. Above ~300 km/h, holding
+  // A/D produces a very large radius rather than a magic full-speed corner.
+  const speedAuthority = 1.75 / (1 + Math.pow(speed / 32, 2.1)) + 0.02;
+  const lowSpeedBuild = clamp01(speed / 13);
+  const brakingRotation = 1 + brake * 0.22;
   const targetAngularVelocity = steer
     * speedAuthority
     * lowSpeedBuild
     * tireGrip
     * surfaceGrip
     * brakingRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.2 + (1 - highSpeedSlip) * 2.4));
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.0 + (1 - highSpeedSlip) * 2.3));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 

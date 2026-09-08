@@ -93,9 +93,10 @@ export function createFormulaCar(color: number, compound: Compound, player = fal
     }
   });
 
-  // Slightly smaller cars make the circuit read larger and increase perceived
-  // speed in car-lengths per second without turning the HUD into fantasy speeds.
-  root.scale.setScalar(0.82);
+  // The original 3D car was visually larger than its new Rapier collider. A
+  // smaller car both matches physical contact and gives the fixed top-down view
+  // more speed in visible car-lengths per second.
+  root.scale.setScalar(0.68);
 
   return {
     root,
