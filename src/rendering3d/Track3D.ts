@@ -46,6 +46,7 @@ export function createTrack3D(): THREE.Group {
   addGrandstands(root);
   addTracksideMarkers(root);
   addSpeedReferencePosts(root);
+  addRoadEdgeSpeedTicks(root);
 
   return root;
 }
@@ -197,16 +198,49 @@ function addTracksideMarkers(root: THREE.Group): void {
 }
 
 function addSpeedReferencePosts(root: THREE.Group): void {
+  const count = 360;
   const material = new THREE.MeshStandardMaterial({ color: 0xd8dcd7, roughness: 0.92 });
-  const geometry = new THREE.BoxGeometry(0.11, 0.6, 0.11);
-  const count = 144;
+  const geometry = new THREE.BoxGeometry(0.09, 0.55, 0.09);
+  const posts = new THREE.InstancedMesh(geometry, material, count);
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3(1, 1, 1);
+
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
     const p = sampleTrack((i + 0.35) / count, side * 101);
     const world = toWorld(p.x, p.y, 0);
-    const post = new THREE.Mesh(geometry, material);
-    post.position.set(world.x, 0.3, world.z);
-    post.castShadow = true;
-    root.add(post);
+    matrix.compose(new THREE.Vector3(world.x, 0.275, world.z), quaternion, scale);
+    posts.setMatrixAt(i, matrix);
   }
+  posts.instanceMatrix.needsUpdate = true;
+  posts.castShadow = true;
+  root.add(posts);
+}
+
+function addRoadEdgeSpeedTicks(root: THREE.Group): void {
+  const perSide = 320;
+  const material = new THREE.MeshStandardMaterial({ color: 0xf2f2ed, roughness: 0.78 });
+  const geometry = new THREE.BoxGeometry(0.52, 0.018, 0.075);
+  const ticks = new THREE.InstancedMesh(geometry, material, perSide * 2);
+  const matrix = new THREE.Matrix4();
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  const scale = new THREE.Vector3(1, 1, 1);
+  const yAxis = new THREE.Vector3(0, 1, 0);
+  let index = 0;
+
+  for (let i = 0; i < perSide; i++) {
+    const progress = (i + 0.2) / perSide;
+    for (const side of [-1, 1] as const) {
+      const p = sampleTrack(progress, side * (ROAD_HALF_WIDTH - 5));
+      const world = toWorld(p.x, p.y, 0.073);
+      position.set(world.x, world.y, world.z);
+      quaternion.setFromAxisAngle(yAxis, headingToYaw(p.heading));
+      matrix.compose(position, quaternion, scale);
+      ticks.setMatrixAt(index++, matrix);
+    }
+  }
+  ticks.instanceMatrix.needsUpdate = true;
+  root.add(ticks);
 }
