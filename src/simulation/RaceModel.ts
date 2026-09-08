@@ -1,3 +1,4 @@
+import { aiGridSlot } from './GridModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import { TRACK_LENGTH } from './TrackModel';
@@ -58,34 +59,39 @@ const EMPTY_TRAFFIC: TrafficContext = {
 
 export function createAiField(): DriverState[] {
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 4, 'MEDIUM', -5, 1.062],
-    ['APEX', 'MEDIUM', 6, 'SOFT', 5, 1.082],
-    ['VOLT', 'HARD', 7, 'SOFT', -4, 1.032],
-    ['ORBIT', 'MEDIUM', 5, 'HARD', 4, 1.054],
-    ['KITE', 'SOFT', 3, 'HARD', -5, 1.024],
-    ['RIFT', 'HARD', 6, 'MEDIUM', 4, 1.043],
-    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.038],
+    ['NOVA', 'SOFT', 4, 'MEDIUM', -5, 1.115],
+    ['APEX', 'MEDIUM', 6, 'SOFT', 5, 1.125],
+    ['VOLT', 'HARD', 7, 'SOFT', -4, 1.088],
+    ['ORBIT', 'MEDIUM', 5, 'HARD', 4, 1.108],
+    ['KITE', 'SOFT', 3, 'HARD', -5, 1.102],
+    ['RIFT', 'HARD', 6, 'MEDIUM', 4, 1.092],
+    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.105],
   ];
 
-  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => ({
-    id: `ai-${index}`,
-    name,
-    progress: 0.052 - Math.floor(index / 2) * 0.0135,
-    lap: 1,
-    speed: 0,
-    tire: createTire(start),
-    pace: 'BALANCED',
-    usedCompounds: new Set<Compound>([start]),
-    plannedPitLap,
-    pitLap: plannedPitLap,
-    strategyIntent: 'PLAN',
-    nextCompound: next,
-    laneOffset: index % 2 === 0 ? -22 : 22,
-    preferredLane,
-    battleState: 'CLEAR',
-    skill,
-    finished: false,
-  }));
+  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => {
+    const grid = aiGridSlot(index);
+    return {
+      id: `ai-${index}`,
+      name,
+      progress: grid.progress,
+      // Lap zero means 'on the starting grid, before crossing the line'. The
+      // first crossing starts lap one; it must not complete lap one.
+      lap: 0,
+      speed: 0,
+      tire: createTire(start),
+      pace: 'BALANCED',
+      usedCompounds: new Set<Compound>([start]),
+      plannedPitLap,
+      pitLap: plannedPitLap,
+      strategyIntent: 'PLAN',
+      nextCompound: next,
+      laneOffset: grid.laneOffset,
+      preferredLane,
+      battleState: 'CLEAR',
+      skill,
+      finished: false,
+    };
+  });
 }
 
 export function stepAiField(
@@ -93,8 +99,15 @@ export function stepAiField(
   dt: number,
   totalLaps: number,
   externalTraffic: RaceTrafficCar[] = [],
+  advanceProgress = true,
 ): DriverState[] {
-  return drivers.map((driver) => stepAi(driver, dt, totalLaps, trafficFor(driver, drivers, externalTraffic)));
+  return drivers.map((driver) => stepAi(
+    driver,
+    dt,
+    totalLaps,
+    trafficFor(driver, drivers, externalTraffic),
+    advanceProgress,
+  ));
 }
 
 export function stepAi(
@@ -102,10 +115,11 @@ export function stepAi(
   dt: number,
   totalLaps: number,
   traffic: TrafficContext = EMPTY_TRAFFIC,
+  advanceProgress = true,
 ): DriverState {
   if (driver.finished) return driver;
 
-  const remaining = totalLaps - driver.lap;
+  const remaining = totalLaps - Math.max(1, driver.lap);
   const tireHealth = 1 - driver.tire.wear;
   const pace: PaceMode = remaining <= 2 && tireHealth > 0.35 ? 'PUSH' : tireHealth < 0.28 ? 'CONSERVE' : 'BALANCED';
   const ownPerformance = driver.skill * driver.tire.grip;
@@ -152,32 +166,27 @@ export function stepAi(
   const paceFactor = pace === 'PUSH' ? 1.035 : pace === 'CONSERVE' ? 0.968 : 1;
   const towFactor = battleState === 'FOLLOW' ? 1.022 : battleState === 'ATTACK' ? 1.058 : 1;
   const attackKick = battleState === 'ATTACK' && profile.severity < 0.28 ? 6.5 : 0;
-  let targetSpeed = Math.min(116, profile.targetSpeed * paceFactor * towFactor + attackKick);
+  let targetSpeed = Math.min(120, profile.targetSpeed * paceFactor * towFactor + attackKick);
 
-  // Only queue behind a car that is genuinely occupying the same lane. Once an
-  // attacker has moved out, it is allowed to use its own pace and complete the
-  // pass instead of being permanently speed-capped into a train.
   if (traffic.carAhead && traffic.gapMetres < 72 && laneBlocked && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
     targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.994);
   }
 
   if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
     if (profile.severity < 0.35) {
-      targetSpeed = Math.max(targetSpeed, Math.min(116, traffic.alongside.speed + 6));
+      targetSpeed = Math.max(targetSpeed, Math.min(120, traffic.alongside.speed + 6));
     } else {
       targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 2));
     }
   }
 
-  const speed = approachSpeed(driver.speed, targetSpeed, dt, 44, 108);
+  const speed = approachSpeed(driver.speed, targetSpeed, dt, 48, 112);
 
   const attackSide = stableSide(driver.id) * 46;
   const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
   let targetLane = normalLine;
 
   if (battleState === 'ATTACK') {
-    // If the leader already occupies our stable side, choose the other side so
-    // two attackers do not all pile onto one identical passing line.
     const leaderLane = traffic.carAhead?.laneOffset ?? 0;
     const preferredAttack = Math.abs(leaderLane - attackSide) > 21 ? attackSide : -attackSide;
     targetLane = clamp(profile.apexOffset + preferredAttack, -50, 50);
@@ -202,17 +211,19 @@ export function stepAi(
         : 48;
   const laneOffset = approach(driver.laneOffset, targetLane, dt * laneRate);
 
-  progress += (speed * dt) / TRACK_LENGTH;
+  if (advanceProgress) {
+    progress += (speed * dt) / TRACK_LENGTH;
 
-  if (progress >= 1) {
-    progress -= 1;
-    lap += 1;
-    if (lap === pitLap + 1 && !usedCompounds.has(driver.nextCompound)) {
-      tire = createTire(driver.nextCompound);
-      usedCompounds = new Set(usedCompounds);
-      usedCompounds.add(driver.nextCompound);
-      progress = Math.max(0, progress - 0.055);
-      strategyIntent = 'DONE';
+    if (progress >= 1) {
+      progress -= 1;
+      lap += 1;
+      if (lap === pitLap + 1 && !usedCompounds.has(driver.nextCompound)) {
+        tire = createTire(driver.nextCompound);
+        usedCompounds = new Set(usedCompounds);
+        usedCompounds.add(driver.nextCompound);
+        progress = Math.max(0, progress - 0.055);
+        strategyIntent = 'DONE';
+      }
     }
   }
 
@@ -317,8 +328,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * Lap zero is the short launch from the physical grid to the start line.
+ * Adding lap directly makes the ordering continuous across that first crossing:
+ * P1 at lap 0 / 0.996 is behind P1 at lap 1 / 0.002.
+ */
 export function raceDistance(lap: number, progress: number): number {
-  return Math.max(0, lap - 1) + progress;
+  return Math.max(0, lap) + progress;
 }
 
 export function classify<T extends { lap: number; progress: number; id: string }>(drivers: T[]): T[] {
