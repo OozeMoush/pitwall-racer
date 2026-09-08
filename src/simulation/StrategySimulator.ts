@@ -110,11 +110,14 @@ export function pushAlways(): PaceMode {
 
 export function benchmarkStrategies(totalLaps = 8): BalanceSnapshot {
   const plans: StrategyPlan[] = [
-    { name: 'M→S balanced', startCompound: 'MEDIUM', stopAfterLap: 5, nextCompound: 'SOFT', paceForLap: attackFinish },
-    { name: 'S→M early', startCompound: 'SOFT', stopAfterLap: 3, nextCompound: 'MEDIUM', paceForLap: balancedPace },
-    { name: 'M→H steady', startCompound: 'MEDIUM', stopAfterLap: 4, nextCompound: 'HARD', paceForLap: balancedPace },
-    { name: 'M→S push always', startCompound: 'MEDIUM', stopAfterLap: 4, nextCompound: 'SOFT', paceForLap: pushAlways },
-    { name: 'H→S late', startCompound: 'HARD', stopAfterLap: 6, nextCompound: 'SOFT', paceForLap: attackFinish },
+    // With deliberately large compound differences, compare sensible tyre
+    // windows rather than forcing every plan to push the final two laps. The
+    // important strategic fork is start fast then survive vs extend then attack.
+    { name: 'M→S lap5', startCompound: 'MEDIUM', stopAfterLap: 5, nextCompound: 'SOFT', paceForLap: balancedPace },
+    { name: 'S→M lap3', startCompound: 'SOFT', stopAfterLap: 3, nextCompound: 'MEDIUM', paceForLap: balancedPace },
+    { name: 'M→S lap4', startCompound: 'MEDIUM', stopAfterLap: 4, nextCompound: 'SOFT', paceForLap: balancedPace },
+    { name: 'M→H steady', startCompound: 'MEDIUM', stopAfterLap: 5, nextCompound: 'HARD', paceForLap: balancedPace },
+    { name: 'H→S late', startCompound: 'HARD', stopAfterLap: 5, nextCompound: 'SOFT', paceForLap: balancedPace },
   ];
 
   const legalResults = plans
@@ -124,7 +127,7 @@ export function benchmarkStrategies(totalLaps = 8): BalanceSnapshot {
 
   const fastest = legalResults[0];
   const second = legalResults[1] ?? fastest;
-  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 8);
+  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 14);
 
   return {
     fastest,
