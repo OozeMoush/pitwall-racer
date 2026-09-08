@@ -1,10 +1,21 @@
 import * as THREE from 'three';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
+import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, headingVector, toWorld } from '../rendering3d/WorldTransform';
 import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
+import {
+  PIT_SPEED,
+  beginPitStop,
+  createPitStopState,
+  isPitActive,
+  pitLanePose,
+  shouldEnterPit,
+  stepPitStop,
+  type PitStopState,
+} from '../simulation/PitLaneModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
 import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
@@ -39,6 +50,7 @@ export class ThreeRaceGame {
   private energy: EnergyState = createEnergy();
   private timing: TimingState = createTiming();
   private flow: RaceFlowState = createRaceFlow();
+  private pitStop: PitStopState = createPitStopState();
   private pace: PaceMode = 'BALANCED';
   private selectedCompound: Compound = 'SOFT';
   private usedCompounds = new Set<Compound>(['MEDIUM']);
@@ -47,7 +59,6 @@ export class ThreeRaceGame {
   private lastTrackProgress = 0;
   private nextCheckpoint = 1;
   private pitRequested = false;
-  private pitTimer = 0;
   private finishMessage = '';
   private steerInput = 0;
   private trackDistance = 0;
@@ -103,6 +114,7 @@ export class ThreeRaceGame {
     this.scene.add(sun);
 
     this.scene.add(createTrack3D());
+    this.scene.add(createPitLane3D());
   }
 
   private bindInput(): void {
@@ -117,7 +129,7 @@ export class ThreeRaceGame {
       if (event.code === 'Digit4') this.chooseCompound('SOFT');
       if (event.code === 'Digit5') this.chooseCompound('MEDIUM');
       if (event.code === 'Digit6') this.chooseCompound('HARD');
-      if (event.code === 'KeyP' && this.flow.phase === 'RACING') this.pitRequested = !this.pitRequested;
+      if (event.code === 'KeyP' && this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.pitRequested = !this.pitRequested;
       if (event.code === 'KeyR') this.handleRecoveryOrRestart();
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
@@ -162,23 +174,7 @@ export class ThreeRaceGame {
     this.timing = stepTiming(this.timing, dt);
     this.ai = stepAiField(this.ai, dt, TOTAL_LAPS);
 
-    if (this.pitTimer > 0) {
-      this.pitTimer = Math.max(0, this.pitTimer - dt);
-      this.vehicle = { ...this.vehicle, speed: 0, yawRate: 0 };
-      this.steerInput = 0;
-      this.trafficPressure = 0;
-      this.contactIntensity = 0;
-      if (this.pitTimer === 0) {
-        this.tire = createTire(this.selectedCompound);
-        this.usedCompounds.add(this.selectedCompound);
-        this.playerCar.setCompound(this.selectedCompound);
-        const release = sampleTrack(0.025, 38);
-        this.vehicle = createVehicle(release.x, release.y, release.heading);
-        this.trackProgress = 0.025;
-        this.lastTrackProgress = 0.025;
-      }
-      return;
-    }
+    if (this.stepPhysicalPit(dt)) return;
 
     const throttle = this.keys.has('KeyW') ? 1 : 0;
     const brake = this.keys.has('KeyS') ? 1 : 0;
@@ -191,6 +187,13 @@ export class ThreeRaceGame {
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = track.progress;
     this.updateLapAndCheckpoints(track.distance);
+
+    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, track.distance, this.pitRequested)) {
+      this.pitStop = beginPitStop();
+      this.pitRequested = false;
+      this.steerInput = 0;
+      return;
+    }
 
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const battleLoad = this.trafficPressure * 0.16;
@@ -228,6 +231,37 @@ export class ThreeRaceGame {
     this.contactIntensity = resolved.contact;
   }
 
+  private stepPhysicalPit(dt: number): boolean {
+    if (!isPitActive(this.pitStop)) return false;
+
+    const previous = this.pitStop;
+    this.pitStop = stepPitStop(this.pitStop, dt);
+    if (!previous.tyreChanged && this.pitStop.tyreChanged) {
+      this.tire = createTire(this.selectedCompound);
+      this.usedCompounds.add(this.selectedCompound);
+      this.playerCar.setCompound(this.selectedCompound);
+    }
+
+    this.lastTrackProgress = this.trackProgress;
+    const pose = pitLanePose(this.pitStop.t);
+    this.trackProgress = pose.raceProgress;
+    this.trackDistance = 0;
+    this.updateLapAndCheckpoints(0);
+    this.steerInput = 0;
+    this.trafficPressure = 0;
+    this.contactIntensity = 0;
+
+    const speed = this.pitStop.phase === 'SERVICE' ? 0 : PIT_SPEED;
+    this.vehicle = { ...createVehicle(pose.x, pose.y, pose.heading), speed };
+
+    if (this.pitStop.phase === 'DONE') {
+      const exit = pitLanePose(1);
+      this.vehicle = { ...createVehicle(exit.x, exit.y, exit.heading), speed: PIT_SPEED };
+      this.pitStop = createPitStopState();
+    }
+    return true;
+  }
+
   private updateLapAndCheckpoints(distanceFromLine: number): void {
     if (distanceFromLine > 105) return;
     const thresholds = [0, 0.24, 0.49, 0.74];
@@ -239,11 +273,6 @@ export class ThreeRaceGame {
     this.timing = completeLap(this.timing);
     this.lap += 1;
     this.nextCheckpoint = 1;
-
-    if (this.pitRequested && this.lap <= TOTAL_LAPS) {
-      this.pitRequested = false;
-      this.pitTimer = 3.8;
-    }
 
     if (this.lap > TOTAL_LAPS) {
       const legal = isTwoCompoundLegal(this.usedCompounds);
@@ -305,7 +334,7 @@ export class ThreeRaceGame {
       this.playerCar.setCompound(selection.startCompound);
       return;
     }
-    if (this.flow.phase === 'RACING') this.selectedCompound = compound;
+    if (this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.selectedCompound = compound;
   }
 
   private handleRecoveryOrRestart(): void {
@@ -313,6 +342,7 @@ export class ThreeRaceGame {
       this.resetRace();
       return;
     }
+    if (isPitActive(this.pitStop)) return;
     if (this.flow.phase !== 'RACING' || !canRecover(this.trackDistance, this.vehicle.speed)) return;
     const p = sampleTrack(this.trackProgress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
@@ -327,6 +357,7 @@ export class ThreeRaceGame {
     this.energy = createEnergy();
     this.timing = createTiming();
     this.flow = createRaceFlow();
+    this.pitStop = createPitStopState();
     this.pace = 'BALANCED';
     this.selectedCompound = 'SOFT';
     this.usedCompounds = new Set(['MEDIUM']);
@@ -335,7 +366,6 @@ export class ThreeRaceGame {
     this.lastTrackProgress = 0;
     this.nextCheckpoint = 1;
     this.pitRequested = false;
-    this.pitTimer = 0;
     this.finishMessage = '';
     this.steerInput = 0;
     this.trackDistance = 0;
@@ -366,9 +396,9 @@ export class ThreeRaceGame {
     const banner = raceBanner(this.flow);
     const legal = isTwoCompoundLegal(this.usedCompounds);
     const obligation = this.flow.phase === 'RACING'
-      ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, this.lap, TOTAL_LAPS, this.pitRequested)
+      ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, this.lap, TOTAL_LAPS, this.pitRequested || isPitActive(this.pitStop))
       : undefined;
-    const recovery = this.flow.phase === 'RACING' && canRecover(this.trackDistance, this.vehicle.speed);
+    const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
     const speed = Math.round(this.vehicle.speed * 3.6);
     const energyPct = Math.round(this.energy.soc * 100);
     const wearPct = Math.round(this.tire.wear * 100);
@@ -376,11 +406,13 @@ export class ThreeRaceGame {
     const delta = this.timing.deltaToBest === undefined ? '—' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const pitLabel = this.flow.phase === 'COUNTDOWN'
       ? `START ${this.tire.compound} · 4/5/6`
-      : this.pitTimer > 0
-        ? `STOP ${this.pitTimer.toFixed(1)}s`
-        : this.pitRequested
-          ? `BOX THIS LAP → ${this.selectedCompound}`
-          : `NEXT ${this.selectedCompound} · P TO BOX`;
+      : this.pitStop.phase === 'SERVICE'
+        ? `PIT BOX · ${this.pitStop.serviceRemaining.toFixed(1)}s`
+        : isPitActive(this.pitStop)
+          ? `PIT LANE · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
+          : this.pitRequested
+            ? `BOX THIS LAP → ${this.selectedCompound}`
+            : `NEXT ${this.selectedCompound} · P TO BOX`;
     const raceState = surface.label !== 'TRACK'
       ? surface.label
       : this.contactIntensity > 0.08
