@@ -44,7 +44,7 @@ export class ThreeRaceGame {
   private readonly hud: HTMLElement;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.1, 350);
+  private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
   private readonly keys = new Set<string>();
   private readonly playerCar: FormulaCar3D;
   private readonly aiCars: FormulaCar3D[];
@@ -104,21 +104,21 @@ export class ThreeRaceGame {
 
   private setupWorld(): void {
     this.scene.background = new THREE.Color(0x8fb0ba);
-    this.scene.fog = new THREE.Fog(0x8fb0ba, 75, 180);
+    this.scene.fog = new THREE.Fog(0x8fb0ba, 130, 340);
 
     const hemisphere = new THREE.HemisphereLight(0xdceef3, 0x29402d, 1.45);
     this.scene.add(hemisphere);
 
     const sun = new THREE.DirectionalLight(0xfff1d5, 3.2);
-    sun.position.set(-38, 68, 24);
+    sun.position.set(-58, 88, 38);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -75;
-    sun.shadow.camera.right = 75;
-    sun.shadow.camera.top = 60;
-    sun.shadow.camera.bottom = -60;
+    sun.shadow.camera.left = -110;
+    sun.shadow.camera.right = 110;
+    sun.shadow.camera.top = 90;
+    sun.shadow.camera.bottom = -90;
     sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 160;
+    sun.shadow.camera.far = 240;
     this.scene.add(sun);
 
     this.scene.add(createTrack3D());
@@ -328,8 +328,8 @@ export class ThreeRaceGame {
 
     if (initial) {
       const forward = headingVector(this.vehicle.heading);
-      this.camera.position.copy(playerPos).addScaledVector(forward, -13).add(new THREE.Vector3(0, 15, 0));
-      this.cameraTarget.copy(playerPos).addScaledVector(forward, 5);
+      this.camera.position.copy(playerPos).addScaledVector(forward, -2.2).add(new THREE.Vector3(0, 30, 0));
+      this.cameraTarget.copy(playerPos).addScaledVector(forward, 3.8);
       this.camera.lookAt(this.cameraTarget);
     }
   }
@@ -338,15 +338,18 @@ export class ThreeRaceGame {
     const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
     const forward = headingVector(this.vehicle.heading);
     const speedRatio = Math.min(1, this.vehicle.speed / 100);
+
+    // Almost-overhead perspective keeps the 3D cars readable without turning
+    // the game into a chase camera. A small lead shows more of the next corner.
     const desired = position.clone()
-      .addScaledVector(forward, -(11.5 + speedRatio * 4.5))
-      .add(new THREE.Vector3(0, 13.5 + speedRatio * 2.5, 0));
-    const desiredTarget = position.clone().addScaledVector(forward, 5.5 + speedRatio * 5.5);
-    const cameraLerp = 1 - Math.exp(-dt * 4.5);
-    const targetLerp = 1 - Math.exp(-dt * 6.2);
+      .addScaledVector(forward, -(1.8 + speedRatio * 1.4))
+      .add(new THREE.Vector3(0, 29 + speedRatio * 3.5, 0));
+    const desiredTarget = position.clone().addScaledVector(forward, 3.8 + speedRatio * 3.2);
+    const cameraLerp = 1 - Math.exp(-dt * 4.0);
+    const targetLerp = 1 - Math.exp(-dt * 5.4);
     this.camera.position.lerp(desired, cameraLerp);
     this.cameraTarget.lerp(desiredTarget, targetLerp);
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, 49 + speedRatio * 7, 1 - Math.exp(-dt * 3));
+    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, 41 + speedRatio * 2.5, 1 - Math.exp(-dt * 3.5));
     this.camera.updateProjectionMatrix();
     this.camera.lookAt(this.cameraTarget);
   }
