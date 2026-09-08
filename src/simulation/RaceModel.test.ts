@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound } from './TireModel';
+import { trackProfile } from './TrackProfile';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, stepAiField } from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
@@ -34,9 +35,31 @@ describe('RaceModel', () => {
     const [car] = createAiField();
     car.lap = 7;
     car.progress = 0.999;
+    car.speed = 90;
     const stepped = stepAi(car, 0.1, 8);
     expect(stepped.lap).toBe(8);
     expect(stepped.finished).toBe(false);
+  });
+
+  it('accelerates on a straight and brakes for a demanding corner', () => {
+    const samples = Array.from({ length: 240 }, (_, index) => ({
+      progress: index / 240,
+      profile: trackProfile(index / 240),
+    }));
+    const straight = samples.reduce((best, sample) => sample.profile.targetSpeed > best.profile.targetSpeed ? sample : best);
+    const corner = samples.reduce((best, sample) => sample.profile.targetSpeed < best.profile.targetSpeed ? sample : best);
+
+    const [straightCar] = createAiField();
+    straightCar.progress = straight.progress;
+    straightCar.speed = 75;
+    const accelerated = stepAi(straightCar, 0.2, 8);
+    expect(accelerated.speed).toBeGreaterThan(75);
+
+    const [cornerCar] = createAiField();
+    cornerCar.progress = corner.progress;
+    cornerCar.speed = 90;
+    const braked = stepAi(cornerCar, 0.2, 8);
+    expect(braked.speed).toBeLessThan(90);
   });
 
   it('settles into the tow when a car is ahead but not yet attackable', () => {
