@@ -98,10 +98,10 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
 
-  // Previous AI deliberately ran below its own skill score. That made a careful
-  // Medium player able to drive away from fresh Soft cars. Skill now translates
-  // directly into race pace; compound grip still decides where the time appears.
-  const skillPace = 1 + clamp(driver.skill - 1, -0.08, 0.13) * 0.88;
+  // AI must create race pressure. A cautious Medium player should not simply
+  // drive away from a fresh Soft rival; DEPLOY, braking skill and tyre timing are
+  // the player's tools for winning, not an intentionally slow computer field.
+  const skillPace = 1.025 + clamp(driver.skill - 1, -0.08, 0.13) * 0.88;
   let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 10) * skillPace;
 
   if (battleState === 'ATTACK' && profile.severity < 0.34) targetSpeed += 6.5;
