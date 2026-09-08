@@ -7,7 +7,7 @@ describe('TrackModel', () => {
     expect(TRACK_LENGTH).toBeGreaterThan(1000);
   });
 
-  it('keeps heading changes small between nearby samples', () => {
+  it('has no discontinuous heading jumps around the closed circuit', () => {
     let worst = 0;
     for (let i = 0; i < 200; i++) {
       const a = sampleTrack(i / 200);
@@ -16,7 +16,11 @@ describe('TrackModel', () => {
       if (delta > Math.PI) delta = Math.PI * 2 - delta;
       worst = Math.max(worst, delta);
     }
-    expect(worst).toBeLessThan(0.22);
+
+    // A technical circuit can legitimately rotate far more quickly than the
+    // original oval. This threshold catches spline cusps/jumps while allowing
+    // a real hairpin to exist over a small fraction of the lap.
+    expect(worst).toBeLessThan(0.9);
   });
 
   it('projects sampled points back close to their source progress', () => {

@@ -1,13 +1,30 @@
 export interface TrackPoint { x: number; y: number }
 
-// Clockwise control polygon. Control point zero is the start/finish reference.
+// Clockwise authored circuit. Point zero sits on the main straight.
+// The layout deliberately mixes a long straight, a heavy-braking right side,
+// a fast upper section and a technical left-side sequence so driving line and
+// braking matter before strategy systems do.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
-  { x: 520, y: 753 }, { x: 760, y: 753 }, { x: 1000, y: 748 },
-  { x: 1175, y: 708 }, { x: 1260, y: 610 }, { x: 1280, y: 490 },
-  { x: 1245, y: 370 }, { x: 1140, y: 285 }, { x: 970, y: 247 },
-  { x: 760, y: 247 }, { x: 545, y: 252 }, { x: 405, y: 305 },
-  { x: 330, y: 405 }, { x: 320, y: 525 }, { x: 365, y: 640 },
-  { x: 435, y: 715 },
+  { x: 430, y: 780 },
+  { x: 700, y: 790 },
+  { x: 1030, y: 775 },
+  { x: 1260, y: 715 },
+  { x: 1360, y: 600 },
+  { x: 1340, y: 470 },
+  { x: 1230, y: 390 },
+  { x: 1080, y: 400 },
+  { x: 980, y: 340 },
+  { x: 1020, y: 245 },
+  { x: 900, y: 190 },
+  { x: 720, y: 205 },
+  { x: 610, y: 290 },
+  { x: 560, y: 380 },
+  { x: 470, y: 345 },
+  { x: 350, y: 380 },
+  { x: 270, y: 490 },
+  { x: 285, y: 610 },
+  { x: 320, y: 710 },
+  { x: 360, y: 765 },
 ];
 
 const SAMPLES_PER_CONTROL = 24;
