@@ -10,35 +10,41 @@ export interface TrackProjection {
 }
 
 // Clockwise fictional circuit built around the actual driving game rather than
-// around a compact technical demo. The long bottom straight lets the car reach
-// meaningful speed before a real braking event. The upper half mixes a fast
-// sweep with slower direction changes, while the left side finishes with an S
-// sequence that feeds cleanly back onto the straight without a spline cusp.
+// around a compact technical demo. The bottom straight is deliberately long,
+// but the lap now also contains a proper braking corner, a technical upper
+// sector and a late S sequence so holding W is not a complete driving strategy.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
   { x: 582, y: 930 },
   { x: 1100, y: 930 },
-  { x: 1560, y: 925 },
-  { x: 1848, y: 900 },
-  { x: 2020, y: 840 },
-  { x: 2100, y: 740 },
-  { x: 2089, y: 640 },
-  { x: 2020, y: 560 },
-  { x: 1905, y: 500 },
-  { x: 1732, y: 470 },
-  { x: 1560, y: 470 },
-  { x: 1399, y: 520 },
-  { x: 1261, y: 540 },
-  { x: 1100, y: 500 },
-  { x: 962, y: 400 },
-  { x: 801, y: 300 },
-  { x: 594, y: 260 },
-  { x: 410, y: 300 },
-  { x: 238, y: 380 },
-  { x: 134, y: 500 },
-  { x: 180, y: 620 },
-  { x: 123, y: 720 },
-  { x: 215, y: 820 },
-  { x: 410, y: 880 },
+  { x: 1580, y: 930 },
+  { x: 1900, y: 920 },
+  { x: 2070, y: 900 },
+  { x: 2160, y: 840 },
+  { x: 2180, y: 760 },
+  { x: 2140, y: 690 },
+  { x: 2050, y: 640 },
+  { x: 1920, y: 620 },
+  { x: 1760, y: 620 },
+  { x: 1620, y: 590 },
+  { x: 1500, y: 520 },
+  { x: 1435, y: 430 },
+  { x: 1485, y: 345 },
+  { x: 1410, y: 285 },
+  { x: 1260, y: 285 },
+  { x: 1140, y: 350 },
+  { x: 1040, y: 440 },
+  { x: 910, y: 485 },
+  { x: 800, y: 435 },
+  { x: 715, y: 340 },
+  { x: 590, y: 285 },
+  { x: 440, y: 300 },
+  { x: 310, y: 365 },
+  { x: 225, y: 470 },
+  { x: 230, y: 585 },
+  { x: 300, y: 665 },
+  { x: 245, y: 745 },
+  { x: 300, y: 835 },
+  { x: 430, y: 900 },
 ];
 
 const SAMPLES_PER_CONTROL = 24;
