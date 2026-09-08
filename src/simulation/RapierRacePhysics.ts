@@ -73,7 +73,7 @@ export class RapierRacePhysics {
       // baseline on a straight; tyre grip earns time through braking, line and
       // corner speed instead. Driver skill and an active attack may still add a
       // small power edge so racecraft remains visible.
-      const baseHybridBoost = 0.235;
+      const baseHybridBoost = 0.31;
       const skillBoost = Math.max(0, driver.skill - 1) * 0.75;
       const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
 
