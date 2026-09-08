@@ -5,6 +5,7 @@ import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
+import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
@@ -295,6 +296,9 @@ export class RaceScene extends Phaser.Scene {
         : this.pitRequested
           ? `BOX THIS LAP → ${this.selectedCompound}`
           : `NEXT ${this.selectedCompound} · P TO BOX`;
+    const obligation = this.flow.phase === 'RACING'
+      ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, this.lap, TOTAL_LAPS, this.pitRequested)
+      : undefined;
     const effect = aero.dirtyAir > 0.01 ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}% · TOW ${(aero.tow * 100).toFixed(0)}%` : 'CLEAN AIR';
     const delta = this.timing.deltaToBest === undefined ? '' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const timingLine = `NOW ${formatLapTime(this.timing.currentLapTime)} · LAST ${formatLapTime(this.timing.lastLapTime)} · BEST ${formatLapTime(this.timing.bestLapTime)}${delta ? ` · Δ ${delta}` : ''}`;
@@ -314,8 +318,9 @@ export class RaceScene extends Phaser.Scene {
       ? `<div class="finish"><div><strong>${this.finishMessage}</strong><span>BEST ${formatLapTime(this.timing.bestLapTime)} · ${[...this.usedCompounds].join(' → ')}</span><small>PRESS R TO RACE AGAIN</small></div></div>`
       : '';
     const tyreHint = this.flow.phase === 'COUNTDOWN' ? '4/5/6 START TYRE' : '4/5/6 NEXT TYRE';
+    const obligationHtml = obligation ? `<span class="warning">${obligation}</span>` : '';
 
-    this.hud.innerHTML = `${startOverlay}${finishOverlay}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div><div><small>ENERGY</small><strong>${energyPct}%</strong><span>${energyMode} · HOLD SPACE</span></div></div><div class="strategy"><b>${pit}</b><span>${battle}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>${tyreHint}</span></div><div class="timing">${standings.map((d, i) => {
+    this.hud.innerHTML = `${startOverlay}${finishOverlay}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div><div><small>ENERGY</small><strong>${energyPct}%</strong><span>${energyMode} · HOLD SPACE</span></div></div><div class="strategy"><b>${pit}</b>${obligationHtml}<span>${battle}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>${tyreHint}</span></div><div class="timing">${standings.map((d, i) => {
       const aiDriver = this.ai.find((driver) => driver.id === d.id);
       const marker = aiDriver?.battleState === 'ATTACK' ? ' ↗' : aiDriver?.battleState === 'FOLLOW' ? ' ·' : '';
       return `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}${marker}</span>`;
