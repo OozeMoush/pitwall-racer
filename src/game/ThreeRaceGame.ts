@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
-import { headingToYaw, headingVector, toWorld } from '../rendering3d/WorldTransform';
+import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
+import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
@@ -37,6 +38,8 @@ import { projectTrack, sampleTrack } from '../simulation/TrackModel';
 
 const TOTAL_LAPS = 8;
 const FIXED_DT = 1 / 120;
+const CAMERA_HALF_HEIGHT = 28;
+const CAMERA_OFFSET = new THREE.Vector3(22, 36, 22);
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 
 export class ThreeRaceGame {
@@ -44,7 +47,7 @@ export class ThreeRaceGame {
   private readonly hud: HTMLElement;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
+  private readonly camera = new THREE.OrthographicCamera(-40, 40, CAMERA_HALF_HEIGHT, -CAMERA_HALF_HEIGHT, 0.1, 420);
   private readonly keys = new Set<string>();
   private readonly playerCar: FormulaCar3D;
   private readonly aiCars: FormulaCar3D[];
@@ -147,8 +150,12 @@ export class ThreeRaceGame {
   private readonly resize = (): void => {
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
+    const aspect = width / height;
     this.renderer.setSize(width, height, false);
-    this.camera.aspect = width / height;
+    this.camera.left = -CAMERA_HALF_HEIGHT * aspect;
+    this.camera.right = CAMERA_HALF_HEIGHT * aspect;
+    this.camera.top = CAMERA_HALF_HEIGHT;
+    this.camera.bottom = -CAMERA_HALF_HEIGHT;
     this.camera.updateProjectionMatrix();
   };
 
@@ -193,6 +200,7 @@ export class ThreeRaceGame {
           isPlayer: true,
         }];
     this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
+    this.ai = resolveAiOccupancy(this.ai, dt);
 
     if (this.stepPhysicalPit(dt)) return;
 
@@ -327,30 +335,23 @@ export class ThreeRaceGame {
     });
 
     if (initial) {
-      const forward = headingVector(this.vehicle.heading);
-      this.camera.position.copy(playerPos).addScaledVector(forward, -2.2).add(new THREE.Vector3(0, 30, 0));
-      this.cameraTarget.copy(playerPos).addScaledVector(forward, 3.8);
+      this.cameraTarget.copy(playerPos);
+      this.camera.position.copy(playerPos).add(CAMERA_OFFSET);
       this.camera.lookAt(this.cameraTarget);
     }
   }
 
   private updateCamera(dt: number): void {
     const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
-    const forward = headingVector(this.vehicle.heading);
-    const speedRatio = Math.min(1, this.vehicle.speed / 100);
 
-    // Almost-overhead perspective keeps the 3D cars readable without turning
-    // the game into a chase camera. A small lead shows more of the next corner.
-    const desired = position.clone()
-      .addScaledVector(forward, -(1.8 + speedRatio * 1.4))
-      .add(new THREE.Vector3(0, 29 + speedRatio * 3.5, 0));
-    const desiredTarget = position.clone().addScaledVector(forward, 3.8 + speedRatio * 3.2);
-    const cameraLerp = 1 - Math.exp(-dt * 4.0);
-    const targetLerp = 1 - Math.exp(-dt * 5.4);
-    this.camera.position.lerp(desired, cameraLerp);
+    // GeneRally-style camera: the world has a stable orientation. The camera
+    // follows position only and never rotates with the player's heading.
+    const desiredTarget = position;
+    const desired = desiredTarget.clone().add(CAMERA_OFFSET);
+    const cameraLerp = 1 - Math.exp(-dt * 5.0);
+    const targetLerp = 1 - Math.exp(-dt * 6.0);
     this.cameraTarget.lerp(desiredTarget, targetLerp);
-    this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, 41 + speedRatio * 2.5, 1 - Math.exp(-dt * 3.5));
-    this.camera.updateProjectionMatrix();
+    this.camera.position.lerp(desired, cameraLerp);
     this.camera.lookAt(this.cameraTarget);
   }
 
