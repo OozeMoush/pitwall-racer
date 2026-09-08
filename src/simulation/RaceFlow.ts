@@ -7,7 +7,7 @@ export interface RaceFlowState {
 }
 
 export function createRaceFlow(): RaceFlowState {
-  return { phase: 'COUNTDOWN', countdown: 3.2, goFlash: 0 };
+  return { phase: 'COUNTDOWN', countdown: 3, goFlash: 0 };
 }
 
 export function stepRaceFlow(state: RaceFlowState, dt: number): RaceFlowState {
