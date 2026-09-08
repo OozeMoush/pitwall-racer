@@ -17,7 +17,7 @@ export interface EnergyInputs {
   overtakeRequested: boolean;
 }
 
-export function createEnergy(soc = 0.68): EnergyState {
+export function createEnergy(soc = 0.72): EnergyState {
   return {
     soc: clamp01(soc),
     deployment: 0,
@@ -30,38 +30,44 @@ export function createEnergy(soc = 0.68): EnergyState {
 /**
  * Game-facing hybrid energy model.
  *
- * It intentionally models the important trade rather than exact FIA electrical
- * limits: braking/lifting can recover charge, normal acceleration spends a
- * little, and OVERTAKE spends charge much faster for a larger power gain.
+ * This is deliberately not a FIA electrical simulation. It exists to create a
+ * readable race-game trade: charged battery = useful straight-line assistance;
+ * OVERTAKE = a much bigger short burst; braking = the main way to earn it back.
+ * Running the battery flat now has a visible pace cost instead of leaving the
+ * car effectively unchanged.
  */
 export function stepEnergy(state: EnergyState, inputs: EnergyInputs, dt: number): EnergyState {
   const throttle = clamp01(inputs.throttle);
   const brake = clamp01(inputs.brake);
-  const speedFactor = clamp01(inputs.speed / 42);
+  const speedFactor = clamp01(inputs.speed / 58);
 
-  const brakingHarvestRate = brake * speedFactor * 0.115;
-  const liftHarvestRate = throttle < 0.05 && brake < 0.05 && inputs.speed > 25 ? 0.014 : 0;
+  const brakingHarvestRate = brake * speedFactor * 0.068;
+  const liftHarvestRate = throttle < 0.05 && brake < 0.05 && inputs.speed > 35 ? 0.006 : 0;
   const harvestRate = brakingHarvestRate + liftHarvestRate;
 
-  const wantsOvertake = inputs.overtakeRequested && throttle > 0.15 && state.soc > 0.012;
-  const normalDeployRate = throttle * 0.025;
-  const overtakeDeployRate = throttle * 0.118;
+  const canDeploy = state.soc > 0.012 && throttle > 0.12;
+  const wantsOvertake = inputs.overtakeRequested && state.soc > 0.055 && throttle > 0.2;
+  const normalDeployRate = canDeploy ? throttle * 0.012 : 0;
+  const overtakeDeployRate = throttle * 0.095;
   const requestedDeployRate = wantsOvertake ? overtakeDeployRate : normalDeployRate;
   const maxAffordableRate = dt > 0 ? state.soc / dt : 0;
   const deployRate = Math.min(requestedDeployRate, maxAffordableRate);
 
   const soc = clamp01(state.soc + (harvestRate - deployRate) * dt);
-  const deploymentFraction = overtakeDeployRate > 0 ? deployRate / 0.118 : 0;
+  const normalFraction = normalDeployRate > 0 ? Math.min(1, deployRate / normalDeployRate) : 0;
+  const overtakeFraction = wantsOvertake ? Math.min(1, deployRate / overtakeDeployRate) : 0;
   const powerBoost = wantsOvertake
-    ? 0.12 * deploymentFraction
-    : 0.025 * Math.min(1, deploymentFraction * (0.118 / 0.025));
+    ? 0.24 * overtakeFraction
+    : canDeploy
+      ? 0.075 * normalFraction
+      : 0;
 
   return {
     soc,
     deployment: deployRate,
     harvesting: harvestRate,
     powerBoost,
-    overtakeActive: wantsOvertake && deployRate > normalDeployRate,
+    overtakeActive: wantsOvertake && overtakeFraction > 0.25,
   };
 }
 
