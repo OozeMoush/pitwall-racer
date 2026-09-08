@@ -73,11 +73,14 @@ function raceMetres(driver: Pick<DriverState, 'lap' | 'progress'>): number {
 
 function placeAtRaceMetres(driver: DriverState, metres: number): DriverState {
   const normalized = metres / TRACK_LENGTH;
-  const completedLaps = Math.floor(normalized);
+  // raceDistance is now lap + progress because lap 0 represents the physical
+  // grid before the start line. Inverting it therefore uses floor(normalized)
+  // directly; the old +1 would silently jump an occupancy-adjusted car a lap.
+  const lap = Math.floor(normalized);
   return {
     ...driver,
-    lap: completedLaps + 1,
-    progress: normalized - completedLaps,
+    lap,
+    progress: normalized - lap,
   };
 }
 
