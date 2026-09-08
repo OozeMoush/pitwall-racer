@@ -1,0 +1,20 @@
+import { describe, expect, it } from 'vitest';
+import { resolvePlayerTraffic } from './BattleModel';
+import { createVehicle } from './VehicleModel';
+
+describe('BattleModel', () => {
+  it('reports pressure before contact', () => {
+    const player = { ...createVehicle(100, 100, 0), speed: 60 };
+    const result = resolvePlayerTraffic(player, [{ x: 136, y: 100, heading: 0, speed: 58 }]);
+    expect(result.pressure).toBeGreaterThan(0);
+    expect(result.contact).toBe(0);
+  });
+
+  it('separates overlapping cars and scrubs speed', () => {
+    const player = { ...createVehicle(100, 100, 0), speed: 70 };
+    const result = resolvePlayerTraffic(player, [{ x: 118, y: 100, heading: 0, speed: 55 }]);
+    expect(result.contact).toBeGreaterThan(0);
+    expect(result.vehicle.x).toBeLessThan(100);
+    expect(result.vehicle.speed).toBeLessThan(70);
+  });
+});

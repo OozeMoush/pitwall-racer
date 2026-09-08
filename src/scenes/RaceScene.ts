@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { RaceEffects } from '../rendering/RaceEffects';
 import { drawTrackSurface } from '../rendering/TrackRenderer';
+import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
@@ -39,6 +40,8 @@ export class RaceScene extends Phaser.Scene {
   private renderSteer = 0;
   private renderBrake = 0;
   private trackDistance = 0;
+  private trafficPressure = 0;
+  private contactIntensity = 0;
 
   constructor() { super('race'); }
 
@@ -117,6 +120,8 @@ export class RaceScene extends Phaser.Scene {
       this.pitTimer = Math.max(0, this.pitTimer - dt);
       this.renderSteer = 0;
       this.renderBrake = 1;
+      this.trafficPressure = 0;
+      this.contactIntensity = 0;
       this.vehicle = { ...this.vehicle, speed: 0, yawRate: 0 };
       if (this.pitTimer === 0) {
         this.tire = createTire(this.selectedCompound);
@@ -143,7 +148,8 @@ export class RaceScene extends Phaser.Scene {
 
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const offTrackLoad = Math.min(0.6, Math.max(0, track.distance - 55) / 100);
-    const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + offTrackLoad);
+    const battleLoad = this.trafficPressure * 0.16;
+    const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + offTrackLoad + battleLoad);
     this.tire = stepTire(this.tire, this.pace, load + aero.dirtyAir * 0.45, dt);
     this.energy = stepEnergy(this.energy, {
       throttle,
@@ -158,6 +164,17 @@ export class RaceScene extends Phaser.Scene {
       dt,
       { tow: aero.tow, dirtyAir: aero.dirtyAir, powerBoost: this.energy.powerBoost },
     );
+
+    const traffic = this.ai
+      .filter((driver) => !driver.finished)
+      .map((driver) => {
+        const p = sampleTrack(driver.progress, driver.laneOffset);
+        return { x: p.x, y: p.y, heading: p.heading, speed: driver.speed };
+      });
+    const resolved = resolvePlayerTraffic(this.vehicle, traffic);
+    this.vehicle = resolved.vehicle;
+    this.trafficPressure = resolved.pressure;
+    this.contactIntensity = resolved.contact;
   }
 
   private updateCameraAndEffects(dt: number): void {
@@ -170,6 +187,9 @@ export class RaceScene extends Phaser.Scene {
 
     const targetZoom = Phaser.Math.Linear(1.08, 0.9, speedNorm);
     this.cameras.main.setZoom(Phaser.Math.Linear(this.cameras.main.zoom, targetZoom, 0.035));
+    if (this.contactIntensity > 0.08) {
+      this.cameras.main.shake(45, 0.0012 + this.contactIntensity * 0.0018);
+    }
     this.effects.update(this.vehicle, this.tire, this.renderSteer, this.renderBrake, this.trackDistance, dt);
   }
 
@@ -229,8 +249,9 @@ export class RaceScene extends Phaser.Scene {
     const battleCount = this.ai.filter((driver) => driver.battleState === 'ATTACK').length;
     const energyMode = this.energy.overtakeActive ? 'OVERTAKE' : this.energy.harvesting > this.energy.deployment ? 'HARVEST' : 'DEPLOY';
     const energyPct = Math.round(this.energy.soc * 100);
+    const battle = this.contactIntensity > 0.08 ? 'CONTACT' : this.trafficPressure > 0.18 ? 'SIDE BY SIDE' : effect;
 
-    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div><div><small>ENERGY</small><strong>${energyPct}%</strong><span>${energyMode} · HOLD SPACE</span></div></div><div class="strategy"><b>${pit}</b><span>${effect}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => {
+    this.hud.innerHTML = `${finished}<div class="brand">PITWALL <b>RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div><div class="telemetry"><div><small>SPEED</small><strong>${speed}</strong><span>km/h</span></div><div><small>PACE</small><strong>${this.pace}</strong><span>1 / 2 / 3</span></div><div><small>TYRE</small><strong style="color:${color}">${this.tire.compound}</strong><span>${wear}% used · ${compoundHistory}</span></div><div><small>TEMP</small><strong>${this.tire.temperature.toFixed(0)}°</strong><span>grip ${(this.tire.grip * 100).toFixed(0)}%</span></div><div><small>ENERGY</small><strong>${energyPct}%</strong><span>${energyMode} · HOLD SPACE</span></div></div><div class="strategy"><b>${pit}</b><span>${battle}</span><span>${timingLine}</span><span>${battleCount ? `${battleCount} AI BATTLE${battleCount > 1 ? 'S' : ''}` : 'FIELD SETTLED'}</span><span>4 SOFT · 5 MEDIUM · 6 HARD</span></div><div class="timing">${standings.map((d, i) => {
       const aiDriver = this.ai.find((driver) => driver.id === d.id);
       const marker = aiDriver?.battleState === 'ATTACK' ? ' ↗' : aiDriver?.battleState === 'FOLLOW' ? ' ·' : '';
       return `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}${marker}</span>`;
