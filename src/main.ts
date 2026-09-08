@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { ThreeRaceGame } from './game/ThreeRaceGame';
+import { installHudEnhancer } from './ui/HudEnhancer';
 import './style.css';
 
 async function bootstrap(): Promise<void> {
@@ -10,6 +11,7 @@ async function bootstrap(): Promise<void> {
   hud.innerHTML = '<div class="physics-loading">INITIALIZING PHYSICS…</div>';
   await RAPIER.init();
   hud.innerHTML = '';
+  installHudEnhancer(hud);
   new ThreeRaceGame(game, hud);
 }
 
