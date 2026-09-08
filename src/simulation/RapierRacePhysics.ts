@@ -83,7 +83,10 @@ export class RapierRacePhysics {
   driveAi(index: number, input: ArcadeCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.driveBody(body, input, dt, 1);
+    // A small control blend stops the controller from immediately overwriting
+    // the contact solver's velocity response on the very next 120 Hz tick.
+    // This keeps real impacts while removing the repeated push-pull buzz.
+    this.driveBody(body, input, dt, 0.92);
   }
 
   step(dt: number): void {
