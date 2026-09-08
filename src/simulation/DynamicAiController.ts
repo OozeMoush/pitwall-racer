@@ -87,8 +87,6 @@ export function dynamicAiControl(
   }
 
   const speed = vehicle.speed;
-  // The previous controller looked too far ahead and braked like a cautious
-  // road car. Shorter look-ahead lets a high-grip AI actually use the tyre.
   const lookAheadMetres = clamp(42 + speed * 0.62, 50, 118);
   const target = sampleTrack(projection.progress + lookAheadMetres / TRACK_LENGTH, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
@@ -103,11 +101,15 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
 
-  const usableGrip = clamp((driver.tire.grip - 0.5) / 0.84, 0, 1);
+  const usableGrip = clamp((driver.tire.grip - 0.55) / 0.79, 0, 1);
   const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.92;
-  const predictionAllowance = 14 + usableGrip * 18;
+  const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.86);
+  // Tyre advantage only grows as a corner approaches. On a clear straight,
+  // every compound asks for effectively the same terminal speed.
+  const cornerPaceFactor = 1.03 + profile.severity * usableGrip * 0.065;
+  const predictionAllowance = 12 + cornerDemand * (6 + usableGrip * 18);
   let targetSpeed = Math.min(
-    profile.targetSpeed * (1.035 + usableGrip * 0.055),
+    profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace;
 
