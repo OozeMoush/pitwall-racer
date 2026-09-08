@@ -12,13 +12,6 @@ export interface DynamicAiControl {
   battleState: BattleState;
 }
 
-/**
- * Pure steering/throttle planner for a physically simulated AI car.
- *
- * The controller chooses a point on the real spline ahead of the car and asks
- * the same rigid-body car model used by the player to reach it. It never moves
- * the AI by changing track progress directly.
- */
 export function dynamicAiControl(
   driver: DriverState,
   vehicle: VehicleState,
@@ -56,18 +49,20 @@ export function dynamicAiControl(
   }
 
   const laneBlocked = ahead !== undefined
-    && aheadGap < 58
+    && aheadGap < 68
     && Math.abs(ahead.laneOffset - projection.laneOffset) < 22;
+  const emergencyGap = laneBlocked && aheadGap < 24;
   const canAttack = laneBlocked
+    && !emergencyGap
     && ahead !== undefined
-    && aheadGap < 44
+    && aheadGap < 50
     && driver.tire.wear < 0.86;
   const playerThreat = behind?.isPlayer === true && behindGap < 34;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
   else if (canAttack) battleState = 'ATTACK';
-  else if (laneBlocked && aheadGap < 72) battleState = 'FOLLOW';
+  else if (laneBlocked && aheadGap < 76) battleState = 'FOLLOW';
   else if (playerThreat) battleState = 'DEFEND';
 
   let targetLane = profile.apexOffset + driver.preferredLane * 0.28;
@@ -79,8 +74,7 @@ export function dynamicAiControl(
     const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
     targetLane = clamp(alongside.laneOffset + side * 30, -48, 48);
   } else if (battleState === 'FOLLOW' && ahead) {
-    // Offset slightly rather than sitting exactly on the leader's centreline.
-    targetLane = clamp(ahead.laneOffset + stableSide(driver.id) * 8, -38, 38);
+    targetLane = clamp(ahead.laneOffset + stableSide(driver.id) * 10, -38, 38);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.035
       ? Math.sign(profile.signedTurn) * 18
@@ -88,22 +82,18 @@ export function dynamicAiControl(
     targetLane = clamp(inside, -26, 26);
   }
 
-  // If the car has left the road, priority becomes a calm return to the centre.
   if (projection.distance > 82) targetLane = 0;
 
   const speed = vehicle.speed;
-  const lookAheadMetres = clamp(42 + speed * 0.72, 48, 116);
+  const lookAheadMetres = clamp(46 + speed * 0.74, 52, 122);
   const target = sampleTrack(projection.progress + lookAheadMetres / TRACK_LENGTH, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
-
-  // A small cross-track term lets the car commit to overtaking lanes instead of
-  // endlessly pointing at the next spline sample from the wrong side.
-  const lateralError = clamp((targetLane - projection.laneOffset) / 42, -1, 1);
-  const steer = clamp(headingError * 2.15 + lateralError * 0.28, -1, 1);
+  const lateralError = clamp((targetLane - projection.laneOffset) / 44, -1, 1);
+  const steer = clamp(headingError * 1.86 + lateralError * 0.22, -1, 1);
 
   const nextProfile = trackProfile(
-    projection.progress + clamp(55 + speed * 0.58, 60, 120) / TRACK_LENGTH,
+    projection.progress + clamp(58 + speed * 0.6, 64, 126) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
@@ -111,23 +101,31 @@ export function dynamicAiControl(
   let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 9) * skillPace;
 
   if (battleState === 'ATTACK' && profile.severity < 0.34) targetSpeed += 5.5;
-  if (battleState === 'FOLLOW' && ahead && aheadGap < 30) {
-    targetSpeed = Math.min(targetSpeed, ahead.speed + clamp((aheadGap - 13) * 0.35, -3, 4));
+  if (laneBlocked && ahead) {
+    // Physical cars are about 15-20 simulation metres long. Keeping 30m here
+    // means FOLLOW is a real gap rather than an instruction to sit inside the
+    // leader's collider. Below 24m we brake decisively instead of buzzing.
+    const desiredGap = 30;
+    if (aheadGap < desiredGap + 12) {
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.28, -8, 3.5);
+      targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
+    }
+    if (aheadGap < 24) targetSpeed = Math.min(targetSpeed, Math.max(26, ahead.speed - 7));
   }
   if (projection.distance > 82) targetSpeed = Math.min(targetSpeed, 54);
-  targetSpeed = clamp(targetSpeed, 34, 104);
+  targetSpeed = clamp(targetSpeed, 34, 101);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -2
-    ? clamp((-speedError - 1) / 18, 0.16, 1)
+  const brake = speedError < -1.5
+    ? clamp((-speedError - 0.5) / 16, 0.18, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
     : speedError > 8
       ? 1
       : speedError > 1
-        ? clamp(0.34 + speedError / 13, 0.34, 0.92)
-        : 0.18;
+        ? clamp(0.3 + speedError / 14, 0.3, 0.9)
+        : 0.12;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
