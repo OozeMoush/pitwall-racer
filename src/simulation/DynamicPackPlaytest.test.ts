@@ -136,10 +136,13 @@ describe('dynamic field playtest telemetry', () => {
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.maxPlayerKmh).toBeGreaterThan(260);
-    expect(metrics.maxAiKmh).toBeGreaterThan(220);
-    expect(metrics.maxAiKmh).toBeLessThan(410);
-    expect(metrics.offTrackRatio).toBeLessThan(0.2);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.4);
+    expect(metrics.maxPlayerKmh).toBeGreaterThan(315);
+    expect(metrics.maxPlayerKmh).toBeLessThan(390);
+    expect(metrics.maxAiKmh).toBeGreaterThan(230);
+    expect(metrics.maxAiKmh).toBeLessThan(metrics.maxPlayerKmh);
+    expect(metrics.offTrackRatio).toBeLessThan(0.12);
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.6);
+    expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
+    expect(metrics.maxAiLongitudinalJerk).toBeLessThan(90);
   }, 20_000);
 });
