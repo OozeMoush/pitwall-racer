@@ -44,6 +44,7 @@ export interface AeroEffect {
 interface TrafficContext {
   carAhead?: RaceTrafficCar;
   gapMetres: number;
+  lateralGapAhead: number;
   carBehind?: RaceTrafficCar;
   gapBehindMetres: number;
   alongside?: RaceTrafficCar;
@@ -51,26 +52,26 @@ interface TrafficContext {
 
 const EMPTY_TRAFFIC: TrafficContext = {
   gapMetres: Number.POSITIVE_INFINITY,
+  lateralGapAhead: Number.POSITIVE_INFINITY,
   gapBehindMetres: Number.POSITIVE_INFINITY,
 };
 
 export function createAiField(): DriverState[] {
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 4, 'MEDIUM', -3, 1.018],
-    ['APEX', 'MEDIUM', 6, 'SOFT', 3, 1.028],
-    ['VOLT', 'HARD', 7, 'SOFT', -2, 1.002],
-    ['ORBIT', 'MEDIUM', 5, 'HARD', 2, 1.012],
-    ['KITE', 'SOFT', 3, 'HARD', -3, 0.994],
-    ['RIFT', 'HARD', 6, 'MEDIUM', 2, 1.008],
-    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.004],
+    ['NOVA', 'SOFT', 4, 'MEDIUM', -4, 1.032],
+    ['APEX', 'MEDIUM', 6, 'SOFT', 4, 1.045],
+    ['VOLT', 'HARD', 7, 'SOFT', -3, 1.008],
+    ['ORBIT', 'MEDIUM', 5, 'HARD', 3, 1.026],
+    ['KITE', 'SOFT', 3, 'HARD', -4, 1.002],
+    ['RIFT', 'HARD', 6, 'MEDIUM', 3, 1.016],
+    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.012],
   ];
 
   return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => ({
     id: `ai-${index}`,
     name,
-    // A real staggered grid. The old 0.8%-lap spacing was shorter than the
-    // rendered car body, which made the field visibly overlap before turn one.
-    progress: 0.135 - index * 0.018,
+    // Roughly one rendered car length plus a safety gap on the enlarged circuit.
+    progress: 0.145 - index * 0.019,
     lap: 1,
     speed: 0,
     tire: createTire(start),
@@ -80,7 +81,7 @@ export function createAiField(): DriverState[] {
     pitLap: plannedPitLap,
     strategyIntent: 'PLAN',
     nextCompound: next,
-    laneOffset: index % 2 === 0 ? -16 : 16,
+    laneOffset: index % 2 === 0 ? -22 : 22,
     preferredLane,
     battleState: 'CLEAR',
     skill,
@@ -109,15 +110,21 @@ export function stepAi(
   const tireHealth = 1 - driver.tire.wear;
   const pace: PaceMode = remaining <= 2 && tireHealth > 0.35 ? 'PUSH' : tireHealth < 0.28 ? 'CONSERVE' : 'BALANCED';
   const ownPerformance = driver.skill * driver.tire.grip;
+  const profile = trackProfile(driver.progress, driver.skill, driver.tire.grip);
 
-  const following = traffic.gapMetres < 48;
+  // Cars only form a train when they are actually occupying the same lane.
+  // Once an attacker moves laterally, it is allowed to keep its speed and try
+  // to complete the pass instead of inheriting the leader's speed forever.
+  const laneBlocked = traffic.lateralGapAhead < 27;
+  const following = traffic.gapMetres < 62 && laneBlocked;
   const canAttack = traffic.carAhead !== undefined
-    && traffic.gapMetres < 17
-    && tireHealth > 0.2
-    && ownPerformance > traffic.carAhead.performance * 0.995;
+    && traffic.gapMetres < 32
+    && tireHealth > 0.18
+    && profile.severity < 0.62
+    && ownPerformance > traffic.carAhead.performance * 0.965;
   const playerThreatBehind = traffic.carBehind?.isPlayer === true
-    && traffic.gapBehindMetres < 30
-    && traffic.gapBehindMetres > 7;
+    && traffic.gapBehindMetres < 34
+    && traffic.gapBehindMetres > 8;
   const playerAlongside = traffic.alongside?.isPlayer === true;
 
   const battleState: BattleState = playerAlongside
@@ -146,47 +153,47 @@ export function stepAi(
   let progress = driver.progress;
   let usedCompounds = driver.usedCompounds;
 
-  const profile = trackProfile(progress, driver.skill, tire.grip);
-  const paceFactor = pace === 'PUSH' ? 1.025 : pace === 'CONSERVE' ? 0.975 : 1;
-  const towFactor = battleState === 'FOLLOW' ? 1.012 : battleState === 'ATTACK' ? 1.025 : 1;
-  let targetSpeed = Math.min(111, profile.targetSpeed * paceFactor * towFactor);
+  const updatedProfile = trackProfile(progress, driver.skill, tire.grip);
+  const paceFactor = pace === 'PUSH' ? 1.03 : pace === 'CONSERVE' ? 0.97 : 1;
+  const towFactor = battleState === 'FOLLOW' ? 1.018 : battleState === 'ATTACK' ? 1.045 : 1;
+  const attackKick = battleState === 'ATTACK' && updatedProfile.severity < 0.25 ? 3.5 : 0;
+  let targetSpeed = Math.min(112, updatedProfile.targetSpeed * paceFactor * towFactor + attackKick);
 
-  if (traffic.carAhead && traffic.gapMetres < 10 && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
-    targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.995);
+  if (traffic.carAhead && traffic.gapMetres < 72 && laneBlocked && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
+    targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.992);
   }
 
   if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
-    targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 4));
+    targetSpeed = Math.min(targetSpeed, Math.max(42, traffic.alongside.speed + 5));
   }
 
-  const speed = approachSpeed(driver.speed, targetSpeed, dt, 33, 82);
+  const speed = approachSpeed(driver.speed, targetSpeed, dt, 37, 96);
 
-  const attackSide = stableSide(driver.id) * 25;
-  const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
+  const attackSide = stableSide(driver.id) * 42;
+  const normalLine = updatedProfile.apexOffset + driver.preferredLane * 0.35;
   let targetLane = normalLine;
 
   if (battleState === 'ATTACK') {
-    targetLane = profile.apexOffset + attackSide;
+    targetLane = clamp(updatedProfile.apexOffset + attackSide, -46, 46);
   } else if (battleState === 'FOLLOW' && traffic.carAhead) {
     targetLane = traffic.carAhead.laneOffset;
   } else if (battleState === 'DEFEND') {
-    const inside = Math.abs(profile.signedTurn) > 0.04
-      ? Math.sign(profile.signedTurn) * (9 + profile.severity * 8)
-      : stableSide(driver.id) * 8;
-    targetLane = clamp(inside, -19, 19);
+    const inside = Math.abs(updatedProfile.signedTurn) > 0.04
+      ? Math.sign(updatedProfile.signedTurn) * (12 + updatedProfile.severity * 10)
+      : stableSide(driver.id) * 10;
+    targetLane = clamp(inside, -24, 24);
   } else if (battleState === 'SIDE_BY_SIDE' && traffic.alongside) {
     const separationSide = driver.laneOffset >= traffic.alongside.laneOffset ? 1 : -1;
-    const desiredSeparation = traffic.alongside.laneOffset + separationSide * 28;
-    targetLane = clamp(desiredSeparation, -35, 35);
+    targetLane = clamp(traffic.alongside.laneOffset + separationSide * 38, -46, 46);
   }
 
   const laneRate = battleState === 'ATTACK'
-    ? 54
+    ? 76
     : battleState === 'SIDE_BY_SIDE'
-      ? 62
+      ? 72
       : battleState === 'DEFEND'
-        ? 34
-        : 38;
+        ? 38
+        : 42;
   const laneOffset = approach(driver.laneOffset, targetLane, dt * laneRate);
 
   progress += (speed * dt) / TRACK_LENGTH;
@@ -245,6 +252,7 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
 
   let carAhead: RaceTrafficCar | undefined;
   let gapMetres = Number.POSITIVE_INFINITY;
+  let lateralGapAhead = Number.POSITIVE_INFINITY;
   let carBehind: RaceTrafficCar | undefined;
   let gapBehindMetres = Number.POSITIVE_INFINITY;
   let alongside: RaceTrafficCar | undefined;
@@ -255,6 +263,7 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
     if (deltaMetres > 0 && deltaMetres < gapMetres) {
       gapMetres = deltaMetres;
       carAhead = other;
+      lateralGapAhead = Math.abs(other.laneOffset - driver.laneOffset);
     }
     if (deltaMetres < 0 && -deltaMetres < gapBehindMetres) {
       gapBehindMetres = -deltaMetres;
@@ -262,15 +271,13 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
     }
     const absolute = Math.abs(deltaMetres);
     const lateralGap = Math.abs(other.laneOffset - driver.laneOffset);
-    // SIDE_BY_SIDE means the car bodies overlap longitudinally and occupy
-    // distinct lanes. A car directly 10-15m ahead is still ATTACK/FOLLOW.
-    if (absolute <= 8 && lateralGap >= 8 && lateralGap <= 42 && absolute < alongsideDistance) {
+    if (absolute <= 9 && lateralGap >= 10 && lateralGap <= 50 && absolute < alongsideDistance) {
       alongsideDistance = absolute;
       alongside = other;
     }
   }
 
-  return { carAhead, gapMetres, carBehind, gapBehindMetres, alongside };
+  return { carAhead, gapMetres, lateralGapAhead, carBehind, gapBehindMetres, alongside };
 }
 
 function toTrafficCar(driver: DriverState): RaceTrafficCar {
@@ -327,12 +334,12 @@ export function aeroEffect(playerLap: number, playerProgress: number, ai: Driver
 
   if (!nearest) return { tow: 0, dirtyAir: 0 };
   const metres = delta * TRACK_LENGTH;
-  if (metres > 55) return { tow: 0, dirtyAir: 0 };
+  if (metres > 70) return { tow: 0, dirtyAir: 0 };
 
-  const proximity = 1 - metres / 55;
+  const proximity = 1 - metres / 70;
   return {
-    tow: 0.07 * proximity,
-    dirtyAir: 0.18 * proximity,
+    tow: 0.085 * proximity,
+    dirtyAir: 0.17 * proximity,
     carAhead: nearest,
   };
 }
