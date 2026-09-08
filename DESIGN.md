@@ -26,9 +26,22 @@ When choosing work, use this order:
 
 Every proposed feature must pass one question: **does this make the race more fun, or merely more realistic?** If the answer is only realism, defer it.
 
+## Balance gates
+
+Game design is treated as testable behaviour, not just tuning by intuition. A lightweight headless strategy simulator runs without Phaser so CI can protect the core decision loop.
+
+The balance suite should fail when any of these become true:
+
+- the dry two-compound rule can be bypassed,
+- PUSH stops buying immediate pace or stops costing meaningfully more tyre,
+- one legal strategy separates so far from the field that alternative pit/compound choices stop mattering,
+- future tuning accidentally turns a single compound or fixed stop lap into the obvious answer.
+
+These tests are **guardrails, not an oracle**. Human play feel remains authoritative; the simulator exists to catch obvious dominant strategies before they become baked into the game.
+
 ## Architecture
 
-The simulation is independent from rendering. `simulation/` owns authoritative vehicle, tyre, energy, track, timing and race state; Phaser consumes that state and renders it. This lets us later run headless strategy simulations for balancing.
+The simulation is independent from rendering. `simulation/` owns authoritative vehicle, tyre, energy, track, timing and race state; Phaser consumes that state and renders it. This also allows headless strategy simulation for balancing.
 
 - Simulation: fixed 120 Hz for the player model
 - Rendering: display refresh rate
@@ -38,6 +51,7 @@ The simulation is independent from rendering. `simulation/` owns authoritative v
 - AI: racing-line progress model, intentionally cheaper than the player vehicle model
 - Track: closed Catmull–Rom spline shared by projection, AI motion and presentation
 - Race truth: lap, compound legality, order, traffic state, energy and strategy live outside Phaser rendering
+- Balance harness: deterministic headless stint/race model reusing the tyre model
 
 The asymmetric player/AI model is deliberate. The player needs tactile handling; the field needs believable race behaviour at low CPU cost.
 
@@ -73,6 +87,8 @@ The asymmetric player/AI model is deliberate. The player needs tactile handling;
 - driving balance and difficulty tuning ⏳
 
 ### M3 — strategy polish
+- deterministic headless strategy simulator ✅ first model
+- balance-regression tests for tyre cost / legal strategies ✅ first model
 - dirty air vs tow ✅ first model
 - undercut / overcut reaction to traffic ✅ first model
 - tyre warm-up after pit stops ✅ implicit, needs tuning
@@ -113,4 +129,5 @@ These are not priorities until the basic race is demonstrably fun:
 3. Dirty air must create tension without making following frustrating.
 4. Manual steering must remain forgiving enough that strategy decisions still fit in the player's mental bandwidth.
 5. Energy deployment must not become a second always-on throttle button.
-6. Tire effects must be strong enough to feel, but not so strong that a worn car becomes unpleasant or impossible to recover.
+6. Tyre effects must be strong enough to feel, but not so strong that a worn car becomes unpleasant or impossible to recover.
+7. Headless balance results must never replace actual playtesting; they only detect obvious regressions and dominant-strategy failures.
