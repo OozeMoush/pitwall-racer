@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-// The fixed isometric camera follows position but not heading, so apparent
-// speed comes mostly from how quickly track detail crosses the viewport. Keep
-// the simulation in metre-ish units and deliberately enlarge the rendered
-// world instead of faking the HUD speed.
-export const WORLD_SCALE = 0.22;
+// Fixed-direction top-down cameras hide longitudinal motion because the camera
+// follows the player. Deliberately render simulation metres larger so track
+// detail crosses the viewport quickly while keeping HUD speed honest.
+export const WORLD_SCALE = 0.30;
 export const WORLD_CENTER_X = 1110;
 export const WORLD_CENTER_Y = 600;
 
