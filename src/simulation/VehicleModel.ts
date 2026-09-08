@@ -22,37 +22,47 @@ export function stepVehicle(
   dt: number,
   aero: AeroModifiers = {},
 ): VehicleState {
-  const dirtyAir = Math.max(0, Math.min(0.35, aero.dirtyAir ?? 0));
-  const tow = Math.max(0, Math.min(0.2, aero.tow ?? 0));
-  const powerBoost = Math.max(0, Math.min(0.15, aero.powerBoost ?? 0));
-  const surfaceGrip = Math.max(0.5, Math.min(1, aero.surfaceGrip ?? 1));
-  const powerMultiplier = Math.max(0.35, Math.min(1, aero.powerMultiplier ?? 1));
-  const rollingResistance = Math.max(0, Math.min(14, aero.rollingResistance ?? 0));
+  const dirtyAir = clamp(aero.dirtyAir ?? 0, 0, 0.35);
+  const tow = clamp(aero.tow ?? 0, 0, 0.2);
+  const powerBoost = clamp(aero.powerBoost ?? 0, 0, 0.3);
+  const surfaceGrip = clamp(aero.surfaceGrip ?? 1, 0.5, 1);
+  const powerMultiplier = clamp(aero.powerMultiplier ?? 1, 0.35, 1);
+  const rollingResistance = clamp(aero.rollingResistance ?? 0, 0, 14);
 
-  // Wear is deliberately felt through the controls, not just through a HUD number.
-  // A tired tyre turns in less eagerly and asks for a slightly longer braking zone.
   const lateWear = Math.max(0, (tire.wear - 0.45) / 0.55);
-  const steeringConfidence = 1 - lateWear * 0.24;
-  const brakingConfidence = 1 - lateWear * 0.18;
+  const steeringConfidence = 1 - lateWear * 0.28;
+  const brakingConfidence = 1 - lateWear * 0.2;
   const cornerGrip = tire.grip * (1 - dirtyAir) * steeringConfidence * surfaceGrip;
 
-  const drag = 0.00034 * v.speed * v.speed * (1 - tow * 0.7);
+  const drag = 0.00038 * v.speed * v.speed * (1 - tow * 0.72);
+  const powerTaper = Math.max(0.12, 1 - v.speed / 118);
   const engine = c.throttle
-    * 92
-    * Math.max(0.28, 1 - v.speed / 112)
-    * (1 + tow * 0.35 + powerBoost)
+    * 108
+    * powerTaper
+    * (1 + tow * 0.32 + powerBoost)
     * powerMultiplier;
-  const braking = c.brake * 132 * brakingConfidence;
-  const acceleration = engine - braking - drag - 1.1 - rollingResistance;
-  const speed = Math.max(0, Math.min(112, v.speed + acceleration * dt));
-  const speedFactor = Math.min(1, speed / 34);
+  const braking = c.brake * 145 * brakingConfidence;
+  const acceleration = engine - braking - drag - 1.15 - rollingResistance;
 
-  const highSpeedWearPush = lateWear * Math.min(1, speed / 80) * 0.08;
+  // Stored electrical energy changes the useful end of the speed envelope.
+  // With no battery assistance the car is still drivable, but it loses enough
+  // straight-line performance that harvesting and timed OVERTAKE deployment
+  // matter against a competitive AI field.
+  const speedLimit = clamp(92 + powerBoost * 70 + tow * 30, 86, 112);
+  const speed = Math.max(0, Math.min(speedLimit, v.speed + acceleration * dt));
+  const speedFactor = Math.min(1, speed / 32);
+
+  // High speed must create a braking decision. The old linear steering formula
+  // still allowed nearly full cornering authority above 300 km/h, making every
+  // bend effectively flat. This curve deliberately makes radius grow quickly
+  // with speed while keeping low-speed hairpins responsive on a keyboard.
+  const highSpeedAuthority = 1.95 / (1 + Math.pow(speed / 58, 1.8));
+  const trailBrakeRotation = c.brake * Math.min(0.12, speed / 700);
   const desiredYaw = c.steer
-    * (1.7 - Math.min(speed, 90) * 0.008 - highSpeedWearPush)
+    * (highSpeedAuthority + trailBrakeRotation)
     * cornerGrip
     * speedFactor;
-  const response = 8 * (1 - lateWear * 0.18);
+  const response = 8.5 * (1 - lateWear * 0.2);
   const yawRate = v.yawRate + (desiredYaw - v.yawRate) * Math.min(1, dt * response);
   const heading = v.heading + yawRate * dt;
 
@@ -63,4 +73,8 @@ export function stepVehicle(
     speed,
     yawRate,
   };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
