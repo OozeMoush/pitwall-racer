@@ -7,7 +7,7 @@ describe('GridModel', () => {
     expect(PLAYER_GRID.progress).toBeGreaterThan(0.9);
     expect(PLAYER_GRID.progress).toBeLessThan(1);
     for (const slot of slots) {
-      expect(slot.progress).toBeGreaterThan(PLAYER_GRID.progress - 0.001);
+      expect(slot.progress).toBeGreaterThan(PLAYER_GRID.progress);
       expect(slot.progress).toBeLessThan(1);
     }
   });
@@ -18,9 +18,10 @@ describe('GridModel', () => {
     expect(gridLongitudinalGap(front, secondRow)).toBeGreaterThan(20);
   });
 
-  it('starts the player in P8 beside the final AI row, not on top of it', () => {
+  it('starts the player in P8 just behind and beside P7', () => {
     const p7 = aiGridSlot(6);
-    expect(p7.progress).toBeCloseTo(PLAYER_GRID.progress, 6);
+    expect(p7.progress).toBeGreaterThan(PLAYER_GRID.progress);
+    expect(gridLongitudinalGap(p7, PLAYER_GRID)).toBeLessThan(5);
     expect(Math.abs(p7.laneOffset - PLAYER_GRID.laneOffset)).toBeGreaterThan(12);
   });
 });
