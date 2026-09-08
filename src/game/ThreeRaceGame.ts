@@ -5,7 +5,7 @@ import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { resolvePlayerTraffic } from '../simulation/BattleModel';
-import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
+import { createEnergy, stepEnergy, type EnergyMode, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
 import {
   PIT_SPEED,
@@ -22,7 +22,7 @@ import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
-import { createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
+import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import {
   aeroEffect,
@@ -38,7 +38,7 @@ import { projectTrack, sampleTrack } from '../simulation/TrackModel';
 
 const TOTAL_LAPS = 8;
 const FIXED_DT = 1 / 120;
-const CAMERA_HALF_HEIGHT = 28;
+const CAMERA_HALF_HEIGHT = 24.5;
 const CAMERA_OFFSET = new THREE.Vector3(22, 36, 22);
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 
@@ -59,10 +59,10 @@ export class ThreeRaceGame {
   private vehicle: VehicleState = this.startVehicle();
   private tire: TireState = createTire('MEDIUM');
   private energy: EnergyState = createEnergy();
+  private energyMode: EnergyMode = 'NORMAL';
   private timing: TimingState = createTiming();
   private flow: RaceFlowState = createRaceFlow();
   private pitStop: PitStopState = createPitStopState();
-  private pace: PaceMode = 'BALANCED';
   private selectedCompound: Compound = 'SOFT';
   private usedCompounds = new Set<Compound>(['MEDIUM']);
   private lap = 1;
@@ -107,7 +107,7 @@ export class ThreeRaceGame {
 
   private setupWorld(): void {
     this.scene.background = new THREE.Color(0x8fb0ba);
-    this.scene.fog = new THREE.Fog(0x8fb0ba, 130, 340);
+    this.scene.fog = new THREE.Fog(0x8fb0ba, 160, 420);
 
     const hemisphere = new THREE.HemisphereLight(0xdceef3, 0x29402d, 1.45);
     this.scene.add(hemisphere);
@@ -130,18 +130,20 @@ export class ThreeRaceGame {
 
   private bindInput(): void {
     window.addEventListener('keydown', (event) => {
-      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
       this.keys.add(event.code);
       if (event.repeat) return;
 
-      if (event.code === 'Digit1') this.pace = 'CONSERVE';
-      if (event.code === 'Digit2') this.pace = 'BALANCED';
-      if (event.code === 'Digit3') this.pace = 'PUSH';
-      if (event.code === 'Digit4') this.chooseCompound('SOFT');
-      if (event.code === 'Digit5') this.chooseCompound('MEDIUM');
-      if (event.code === 'Digit6') this.chooseCompound('HARD');
-      if (event.code === 'KeyP' && this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.pitRequested = !this.pitRequested;
-      if (event.code === 'KeyR') this.handleRecoveryOrRestart();
+      // One-hand layout. Driving remains WASD; every race action is reachable
+      // around the left side of a standard keyboard.
+      if (event.code === 'Digit1') this.energyMode = 'HARVEST';
+      if (event.code === 'Digit2') this.energyMode = 'NORMAL';
+      if (event.code === 'Digit3') this.energyMode = 'DEPLOY';
+      if (event.code === 'KeyQ') this.chooseCompound('SOFT');
+      if (event.code === 'KeyE') this.chooseCompound('MEDIUM');
+      if (event.code === 'KeyR') this.chooseCompound('HARD');
+      if (event.code === 'KeyF' && this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.pitRequested = !this.pitRequested;
+      if (event.code === 'KeyC') this.handleRecoveryOrRestart();
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
     window.addEventListener('blur', () => this.keys.clear());
@@ -188,6 +190,7 @@ export class ThreeRaceGame {
 
     this.timing = stepTiming(this.timing, dt);
     const playerProjection = projectTrack(this.vehicle.x, this.vehicle.y);
+    const playerModePerformance = this.energyMode === 'DEPLOY' ? 1.07 : this.energyMode === 'HARVEST' ? 0.9 : 1;
     const playerTraffic: RaceTrafficCar[] = isPitActive(this.pitStop)
       ? []
       : [{
@@ -196,7 +199,7 @@ export class ThreeRaceGame {
           progress: playerProjection.progress,
           speed: this.vehicle.speed,
           laneOffset: playerProjection.laneOffset,
-          performance: this.tire.grip * (this.pace === 'PUSH' ? 1.03 : this.pace === 'CONSERVE' ? 0.97 : 1),
+          performance: this.tire.grip * playerModePerformance,
           isPlayer: true,
         }];
     this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
@@ -224,14 +227,21 @@ export class ThreeRaceGame {
     }
 
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
-    const battleLoad = this.trafficPressure * 0.16;
-    const load = Math.min(1, Math.abs(this.steerInput) * 0.7 + throttle * 0.35 + brake * 0.55 + surface.severity * 0.6 + battleLoad);
-    this.tire = stepTire(this.tire, this.pace, load + aero.dirtyAir * 0.45, dt);
+    const speedLoad = Math.min(1, this.vehicle.speed / 105);
+    const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.82;
+    const brakingLoad = brake * speedLoad * 0.72;
+    const battleLoad = this.trafficPressure * 0.17;
+    const load = Math.min(1.15, corneringLoad + brakingLoad + throttle * 0.14 + surface.severity * 0.65 + battleLoad);
+
+    // Player tyre management now comes primarily from how the car is driven.
+    // We keep the internal BALANCED map rather than asking the player to operate
+    // a second three-way pace switch on top of hybrid mode.
+    this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.45, dt);
     this.energy = stepEnergy(this.energy, {
       throttle,
       brake,
       speed: this.vehicle.speed,
-      overtakeRequested: this.keys.has('Space'),
+      mode: this.energyMode,
     }, dt);
 
     this.vehicle = stepVehicle(
@@ -316,7 +326,7 @@ export class ThreeRaceGame {
     const playerPos = toWorld(this.vehicle.x, this.vehicle.y, 0.08);
     this.playerCar.root.position.copy(playerPos);
     this.playerCar.root.rotation.y = headingToYaw(this.vehicle.heading);
-    this.playerCar.root.rotation.z = -this.steerInput * Math.min(0.055, this.vehicle.speed / 1800);
+    this.playerCar.root.rotation.z = -this.steerInput * Math.min(0.045, this.vehicle.speed / 2300);
 
     this.ai.forEach((driver, index) => {
       const p = sampleTrack(driver.progress, driver.laneOffset);
@@ -325,11 +335,11 @@ export class ThreeRaceGame {
       car.root.position.copy(world);
       car.root.rotation.y = headingToYaw(p.heading);
       car.root.rotation.z = driver.battleState === 'ATTACK'
-        ? 0.025
+        ? 0.018
         : driver.battleState === 'DEFEND'
-          ? -0.015
+          ? -0.012
           : driver.battleState === 'SIDE_BY_SIDE'
-            ? 0.012
+            ? 0.009
             : 0;
       car.setCompound(driver.tire.compound);
     });
@@ -344,12 +354,12 @@ export class ThreeRaceGame {
   private updateCamera(dt: number): void {
     const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
 
-    // GeneRally-style camera: the world has a stable orientation. The camera
-    // follows position only and never rotates with the player's heading.
+    // Fixed-direction GeneRally camera. A slightly softer positional follow also
+    // filters the tiny corrections that happen during wheel-to-wheel contact.
     const desiredTarget = position;
     const desired = desiredTarget.clone().add(CAMERA_OFFSET);
-    const cameraLerp = 1 - Math.exp(-dt * 5.0);
-    const targetLerp = 1 - Math.exp(-dt * 6.0);
+    const cameraLerp = 1 - Math.exp(-dt * 3.8);
+    const targetLerp = 1 - Math.exp(-dt * 4.2);
     this.cameraTarget.lerp(desiredTarget, targetLerp);
     this.camera.position.lerp(desired, cameraLerp);
     this.camera.lookAt(this.cameraTarget);
@@ -385,10 +395,10 @@ export class ThreeRaceGame {
     this.vehicle = this.startVehicle();
     this.tire = createTire('MEDIUM');
     this.energy = createEnergy();
+    this.energyMode = 'NORMAL';
     this.timing = createTiming();
     this.flow = createRaceFlow();
     this.pitStop = createPitStopState();
-    this.pace = 'BALANCED';
     this.selectedCompound = 'SOFT';
     this.usedCompounds = new Set(['MEDIUM']);
     this.lap = 1;
@@ -435,14 +445,14 @@ export class ThreeRaceGame {
     const compoundHistory = [...this.usedCompounds].join(' → ');
     const delta = this.timing.deltaToBest === undefined ? '—' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const pitLabel = this.flow.phase === 'COUNTDOWN'
-      ? `START ${this.tire.compound} · 4/5/6`
+      ? `START ${this.tire.compound} · Q/E/R`
       : this.pitStop.phase === 'SERVICE'
         ? `PIT BOX · ${this.pitStop.serviceRemaining.toFixed(1)}s`
         : isPitActive(this.pitStop)
           ? `PIT LANE · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
           : this.pitRequested
             ? `BOX THIS LAP → ${this.selectedCompound}`
-            : `NEXT ${this.selectedCompound} · P TO BOX`;
+            : `NEXT ${this.selectedCompound} · F TO BOX`;
     const raceState = surface.label !== 'TRACK'
       ? surface.label
       : this.contactIntensity > 0.08
@@ -452,14 +462,18 @@ export class ThreeRaceGame {
           : aero.dirtyAir > 0.01
             ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
             : 'CLEAN AIR';
-    const energyMode = this.energy.overtakeActive ? 'OVERTAKE' : this.energy.harvesting > this.energy.deployment ? 'HARVEST' : 'DEPLOY';
+    const energyFlow = this.energy.harvesting > this.energy.deployment + 0.002
+      ? 'CHARGING'
+      : this.energy.deployment > this.energy.harvesting + 0.002
+        ? 'USING'
+        : 'HOLD';
 
     const bannerHtml = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
     const finishHtml = this.flow.phase === 'FINISHED'
-      ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS R TO RACE AGAIN</small></div>`
+      ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
-    const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS R TO RECOVER</div>` : '';
+    const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS C TO RECOVER</div>` : '';
 
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
@@ -470,12 +484,12 @@ export class ThreeRaceGame {
       <div class="hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div class="race-data">
-          <div><small>PACE</small><b>${this.pace}</b></div>
+          <div><small>HYBRID</small><b class="energy-${this.energyMode.toLowerCase()}">${this.energyMode}</b><span>1 / 2 / 3</span></div>
           <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED</span></div>
-          <div><small>ENERGY</small><b>${energyPct}%</b><span>${energyMode}</span></div>
+          <div><small>ENERGY</small><b>${energyPct}%</b><span>${energyFlow}</span></div>
           <div><small>RACE</small><b>${raceState}</b><span>${pitLabel}</span></div>
         </div>
       </div>
-      <div class="controls">WASD DRIVE · 1/2/3 PACE · SPACE OVERTAKE · 4/5/6 TYRE · P PIT</div>`;
+      <div class="controls">WASD DRIVE · 1 HARVEST · 2 NORMAL · 3 DEPLOY · Q/E/R SOFT/MEDIUM/HARD · F BOX · C RECOVER</div>`;
   }
 }

@@ -5,28 +5,31 @@ Automated tests protect rules and obvious balance regressions. They cannot tell 
 ## 1. First 30 seconds
 
 - Can a new player keep the car roughly on the circuit with WASD?
-- Does steering feel immediate without becoming twitchy at speed?
+- Does steering feel immediate at low speed but require real braking at high speed?
 - Does going wide cost time without making recovery miserable?
-- Is it obvious what `1/2/3`, `4/5/6`, `Space` and `P` do from the HUD?
+- Can every race action be reached comfortably with the left hand?
+- Is it obvious that `1/2/3` are HARVEST / NORMAL / DEPLOY and `Q/E/R` are Soft / Medium / Hard?
 
 If basic driving is frustrating, do not add more race systems. Fix handling first.
 
 ## 2. Racing another car
 
 - Can the player deliberately place the car beside an AI rival?
-- Does contact cost time without instantly ruining the race?
+- Does contact cost time without visible buzzing or repeated positional snapping?
 - Does following feel different from clean air?
-- Does OVERTAKE create a satisfying pass opportunity rather than acting as a permanent extra throttle button?
+- Do AI cars actually leave the train and complete passes?
+- Is the AI quick enough that NORMAL alone cannot simply drive away from the field?
 
 The desired emotion is **“I can try that move again”**, not “the collision model cheated me”.
 
 ## 3. Tyres without staring at telemetry
 
-Run one stint mostly BALANCED and one stint mostly PUSH.
+Run one stint cleanly and one stint with repeated late braking / high-speed steering / wheel-to-wheel fighting.
 
-- Is PUSH immediately useful?
-- After repeated PUSH laps, can the player feel weaker turn-in or longer braking before reading the wear number?
-- Can CONSERVE rescue a tyre without becoming boring waiting?
+- Does the harder-driven stint wear the tyre materially faster?
+- Can the player feel weaker turn-in or longer braking before reading the wear number?
+- Does Soft create obvious early pace while asking for an earlier stop?
+- Does Hard sacrifice enough immediate grip to make its life advantage a real choice?
 - Is the late-life cliff noticeable but recoverable?
 
 If the tyre HUD can be hidden and the player still notices tyre state, the model is doing its job.
@@ -50,19 +53,22 @@ Ask:
 
 There should be no obvious “always choose this tyre and pit on this lap” answer.
 
-## 5. Energy
+## 5. Hybrid energy
 
-- Is holding OVERTAKE everywhere clearly wasteful?
-- Is saving charge for a straight or pass visibly useful?
-- Does braking/harvesting make the next deployment feel earned?
+- Does HARVEST visibly charge even while W remains held?
+- Is HARVEST slow enough that leaving it on forever loses race time?
+- Does NORMAL preserve energy well enough for ordinary keyboard driving?
+- Does DEPLOY produce an obvious pass/defence opportunity?
+- Does leaving DEPLOY on drain the battery quickly enough to be a bad default?
+- At 0% charge, is the player clearly vulnerable to the AI on a straight?
 
-If the player holds Space by default, rebalance before adding more energy features.
+If one of the three modes can be left on permanently with no meaningful downside, rebalance before adding more energy features.
 
 ## 6. One-more-race test
 
 At the finish, the most important question is simple:
 
-> Do I want to press R and try a different tyre, pit lap, attack or driving line?
+> Do I want to press C and try a different tyre, pit lap, hybrid plan, attack or driving line?
 
 If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre feedback or decision quality** before adding realism.
 

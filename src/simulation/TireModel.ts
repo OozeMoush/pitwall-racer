@@ -44,5 +44,5 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
 }
 
 export function compoundColor(name: Compound): number {
-  return name === 'SOFT' ? 0xff4054 : name === 'MEDIUM' ? 0xfff3d6 : 0xffd43b;
+  return name === 'SOFT' ? 0xff4054 : name === 'MEDIUM' ? 0xffd326 : 0xf4f5f2;
 }

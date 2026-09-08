@@ -13,10 +13,12 @@ export interface TrafficResolution {
   contact: number;
 }
 
-const BODY_LONGITUDINAL = 58;
-const BODY_LATERAL = 25;
-const PRESSURE_LONGITUDINAL = 82;
-const PRESSURE_LATERAL = 40;
+// Sized for the smaller 3D cars at the current world scale. These are race-game
+// occupancy dimensions, not literal F1 metres.
+const BODY_LONGITUDINAL = 38;
+const BODY_LATERAL = 18;
+const PRESSURE_LONGITUDINAL = 64;
+const PRESSURE_LATERAL = 32;
 
 export function resolvePlayerTraffic(
   vehicle: VehicleState,
@@ -51,21 +53,25 @@ export function resolvePlayerTraffic(
     const contactStrength = Math.min(1, Math.max(longOverlap / BODY_LONGITUDINAL, latOverlap / BODY_LATERAL));
     contact = Math.max(contact, contactStrength);
 
-    // Resolve through the cheapest axis. A nose-to-tail overlap pushes the
-    // player longitudinally and scrubs speed; side contact mainly creates
-    // lateral separation. This avoids radial "magnet" collisions.
-    if (latOverlap < longOverlap * 0.65) {
+    // The previous resolver teleported the player by most of the overlap every
+    // 120 Hz tick. AI immediately moved back onto its abstract line, producing
+    // visible buzzing. We now treat contact as soft space ownership: side rubs
+    // nudge gently; nose-to-tail contact mostly caps closing speed.
+    if (latOverlap < longOverlap * 0.7) {
       const side = lateral >= 0 ? 1 : -1;
-      const separation = latOverlap + 1.5;
+      const separation = Math.min(1.2, latOverlap * 0.18);
       x += -sin * side * separation;
       y += cos * side * separation;
+      speed = Math.max(0, speed - contactStrength * 0.5);
     } else {
+      const playerBehind = longitudinal < 0;
+      if (playerBehind) speed = Math.min(speed, car.speed + 1.2);
+      else speed = Math.max(0, speed - contactStrength * 0.8);
+
       const direction = longitudinal >= 0 ? 1 : -1;
-      const separation = longOverlap * 0.72;
+      const separation = Math.min(1.4, longOverlap * 0.1);
       x += cos * direction * separation;
       y += sin * direction * separation;
-      const relativeSpeed = Math.max(0, speed - car.speed);
-      speed = Math.max(0, speed - (1.2 + contactStrength * 4.8 + relativeSpeed * 0.12));
     }
   }
 

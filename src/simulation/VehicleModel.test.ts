@@ -41,28 +41,36 @@ describe('VehicleModel tyre feel', () => {
     expect(Math.abs(grass.yawRate)).toBeLessThan(Math.abs(track.yawRate));
   });
 
-  it('has materially less steering authority at very high speed', () => {
+  it('has much less steering authority at very high speed', () => {
     const tire = createTire('MEDIUM');
-    const controls = { throttle: 0, brake: 0, steer: 1 };
+    const controls = { throttle: 1, brake: 0, steer: 1 };
     const mediumSpeed = { ...createVehicle(0, 0, 0), speed: 55 };
     const highSpeed = { ...createVehicle(0, 0, 0), speed: 100 };
 
     const mediumNext = stepVehicle(mediumSpeed, controls, tire, 0.1);
     const highNext = stepVehicle(highSpeed, controls, tire, 0.1);
 
-    expect(Math.abs(highNext.yawRate)).toBeLessThan(Math.abs(mediumNext.yawRate) * 0.72);
+    expect(Math.abs(highNext.yawRate)).toBeLessThan(Math.abs(mediumNext.yawRate) * 0.52);
   });
 
-  it('gets a higher useful speed ceiling with hybrid assistance', () => {
+  it('makes braking at high speed produce a large immediate speed change', () => {
+    const tire = createTire('MEDIUM');
+    const vehicle = { ...createVehicle(0, 0, 0), speed: 105 };
+    const next = stepVehicle(vehicle, { throttle: 0, brake: 1, steer: 0 }, tire, 0.2);
+
+    expect(vehicle.speed - next.speed).toBeGreaterThan(24);
+  });
+
+  it('creates clearly separated HARVEST NORMAL and DEPLOY speed envelopes', () => {
     const tire = createTire('MEDIUM');
     const controls = { throttle: 1, brake: 0, steer: 0 };
-    const fast = { ...createVehicle(0, 0, 0), speed: 99 };
+    const fast = { ...createVehicle(0, 0, 0), speed: 108 };
 
-    const emptyBattery = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0 });
-    const charged = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0.1 });
-    const overtake = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0.24 });
+    const harvest = stepVehicle(fast, controls, tire, 0.2, { powerBoost: -0.16 });
+    const normal = stepVehicle(fast, controls, tire, 0.2, { powerBoost: 0.065 });
+    const deploy = stepVehicle(fast, controls, tire, 0.2, { powerBoost: 0.31 });
 
-    expect(charged.speed).toBeGreaterThan(emptyBattery.speed);
-    expect(overtake.speed).toBeGreaterThan(charged.speed);
+    expect(harvest.speed).toBeLessThan(normal.speed - 10);
+    expect(deploy.speed).toBeGreaterThan(normal.speed + 5);
   });
 });

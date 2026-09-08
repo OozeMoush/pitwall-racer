@@ -10,7 +10,7 @@ export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
 
   const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(240, 160, 1, 1),
+    new THREE.PlaneGeometry(390, 220, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0x244b32, roughness: 1, metalness: 0 }),
   );
   grass.rotation.x = -Math.PI / 2;
@@ -82,10 +82,10 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
 }
 
 function addKerbs(root: THREE.Group): void {
-  const geometry = new THREE.BoxGeometry(0.78, 0.08, 0.24);
+  const geometry = new THREE.BoxGeometry(0.72, 0.08, 0.22);
   const red = new THREE.MeshStandardMaterial({ color: 0xe94747, roughness: 0.72 });
   const white = new THREE.MeshStandardMaterial({ color: 0xf0f1ec, roughness: 0.72 });
-  const pieces = 168;
+  const pieces = 224;
 
   for (let i = 0; i < pieces; i++) {
     const progress = i / pieces;
@@ -198,14 +198,14 @@ function addTracksideMarkers(root: THREE.Group): void {
 
 function addSpeedReferencePosts(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0xd8dcd7, roughness: 0.92 });
-  const geometry = new THREE.BoxGeometry(0.12, 0.7, 0.12);
-  const count = 72;
+  const geometry = new THREE.BoxGeometry(0.11, 0.6, 0.11);
+  const count = 144;
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
     const p = sampleTrack((i + 0.35) / count, side * 101);
     const world = toWorld(p.x, p.y, 0);
     const post = new THREE.Mesh(geometry, material);
-    post.position.set(world.x, 0.35, world.z);
+    post.position.set(world.x, 0.3, world.z);
     post.castShadow = true;
     root.add(post);
   }
