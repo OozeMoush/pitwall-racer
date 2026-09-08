@@ -24,4 +24,20 @@ describe('VehicleModel tyre feel', () => {
     const wornNext = stepVehicle(vehicle, controls, worn, 0.1);
     expect(wornNext.speed).toBeGreaterThan(freshNext.speed);
   });
+
+  it('loses acceleration and steering confidence off track', () => {
+    const vehicle = { ...createVehicle(0, 0, 0), speed: 45 };
+    const tire = createTire('MEDIUM');
+    const controls = { throttle: 1, brake: 0, steer: 1 };
+
+    const track = stepVehicle(vehicle, controls, tire, 0.2);
+    const grass = stepVehicle(vehicle, controls, tire, 0.2, {
+      surfaceGrip: 0.62,
+      powerMultiplier: 0.48,
+      rollingResistance: 8,
+    });
+
+    expect(grass.speed).toBeLessThan(track.speed);
+    expect(Math.abs(grass.yawRate)).toBeLessThan(Math.abs(track.yawRate));
+  });
 });
