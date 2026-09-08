@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-export const WORLD_SCALE = 0.06;
+// The first 3D prototype rendered the circuit too small relative to the cars,
+// so 300-400 km/h looked visually slow and the road felt cramped.
+export const WORLD_SCALE = 0.085;
 export const WORLD_CENTER_X = 800;
 export const WORLD_CENTER_Y = 500;
 
