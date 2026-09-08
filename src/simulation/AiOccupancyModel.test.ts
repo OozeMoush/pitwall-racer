@@ -4,8 +4,8 @@ import { createAiField, raceDistance } from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
 describe('AiOccupancyModel', () => {
-  it('does not leave cars in the same longitudinal and lateral space', () => {
-    const field = createAiField().slice(0, 3);
+  it('does not leave cars in the same rendered body volume', () => {
+    const field = createAiField().slice(0, 5);
     for (const driver of field) {
       driver.lap = 2;
       driver.progress = 0.42;
@@ -21,7 +21,7 @@ describe('AiOccupancyModel', () => {
           raceDistance(resolved[i].lap, resolved[i].progress) - raceDistance(resolved[j].lap, resolved[j].progress),
         ) * TRACK_LENGTH;
         const lateral = Math.abs(resolved[i].laneOffset - resolved[j].laneOffset);
-        expect(longitudinal >= 15 || lateral >= 1).toBe(true);
+        expect(longitudinal >= 60 || lateral >= 31).toBe(true);
       }
     }
   });
