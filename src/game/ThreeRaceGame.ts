@@ -237,7 +237,14 @@ export class ThreeRaceGame {
     this.ai = resolveAiOccupancy(this.ai, dt);
     this.physics.syncAiKinematics(this.ai, dt, this.lap);
 
-    if (this.stepPhysicalPit(dt)) return;
+    // The player is manually constrained to the pit-lane path, but the rest of
+    // the race must remain live. The old early return happened before the world
+    // step, freezing every AI car for the full duration of a player pit stop.
+    if (this.stepPhysicalPit(dt)) {
+      this.physics.step(dt);
+      this.updateAiLapTiming();
+      return;
+    }
 
     const throttle = this.keys.has('KeyW') ? 1 : 0;
     const brake = this.keys.has('KeyS') ? 1 : 0;
