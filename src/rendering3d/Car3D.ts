@@ -3,8 +3,8 @@ import type { Compound } from '../simulation/TireModel';
 
 const TYRE_COLORS: Record<Compound, number> = {
   SOFT: 0xff304d,
-  MEDIUM: 0xf5f5f5,
-  HARD: 0xffd22e,
+  MEDIUM: 0xffd326,
+  HARD: 0xf4f5f2,
 };
 
 export interface FormulaCar3D {
@@ -93,7 +93,9 @@ export function createFormulaCar(color: number, compound: Compound, player = fal
     }
   });
 
-  root.scale.setScalar(0.92);
+  // Slightly smaller cars make the circuit read larger and increase perceived
+  // speed in car-lengths per second without turning the HUD into fantasy speeds.
+  root.scale.setScalar(0.82);
 
   return {
     root,
