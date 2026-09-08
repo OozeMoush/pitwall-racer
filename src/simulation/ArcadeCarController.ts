@@ -30,8 +30,8 @@ export interface ArcadeCarControlResult {
  * Arcade race-car controller used on top of Rapier.
  *
  * Grip is intentionally obvious rather than subtle. A Soft should let the
- * player brake later, rotate harder and apply throttle earlier. A worn Medium
- * or a fresh Hard should force a different driving rhythm on the same corner.
+ * player brake later, rotate harder and apply throttle earlier. Compound pace
+ * comes mainly from corners; a Medium must not lose 20 km/h just driving straight.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -63,14 +63,14 @@ export function controlArcadeCar(
   const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.85));
 
   const steeringLoad = Math.abs(steer) * clamp01(speed / 78);
-  const tractionGrip = 0.52 + normalizedGrip * 0.48;
+  const straightTraction = 0.94 + normalizedGrip * 0.06;
   const combinedTraction = 1 - steeringLoad * throttle * (0.16 + (1 - normalizedGrip) * 0.43);
   const engineAcceleration = throttle
     * 13.8
     * powerTaper
     * (1 + powerBoost * 0.58)
     * powerMultiplier
-    * tractionGrip
+    * straightTraction
     * Math.max(0.42, combinedTraction);
 
   const aeroDrag = 0.00025 * speed * speed;
