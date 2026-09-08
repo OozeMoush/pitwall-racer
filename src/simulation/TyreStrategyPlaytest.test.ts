@@ -51,12 +51,12 @@ describe('tyre strategy playtest telemetry', () => {
 
     console.log(`TYRE_PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    // This is an eight-lap arcade race: the degradation signal should be loud.
-    // A no-stop Medium is physically possible but strategically awful.
-    expect(metrics.pitBenefitSeconds).toBeGreaterThan(20);
-    expect(metrics.pitBenefitSeconds).toBeLessThan(80);
-    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.78);
-    expect(metrics.noStopLap8Wear).toBeGreaterThanOrEqual(0.78);
+    // This is an eight-lap arcade race: degradation is intentionally loud.
+    // Nursing one Medium set to the flag is possible, but should feel absurd.
+    expect(metrics.pitBenefitSeconds).toBeGreaterThan(35);
+    expect(metrics.pitBenefitSeconds).toBeLessThan(110);
+    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.65);
+    expect(metrics.noStopLap8Wear).toBeGreaterThanOrEqual(0.82);
     expect(metrics.strategySpreadSeconds).toBeLessThan(45);
   });
 });
