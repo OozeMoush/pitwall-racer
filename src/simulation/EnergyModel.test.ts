@@ -12,6 +12,14 @@ describe('EnergyModel', () => {
     expect(overtake.overtakeActive).toBe(true);
   });
 
+  it('provides useful normal assistance while charge remains', () => {
+    const charged = stepEnergy(createEnergy(0.7), { throttle: 1, brake: 0, speed: 70, overtakeRequested: false }, 0.5);
+    const empty = stepEnergy(createEnergy(0), { throttle: 1, brake: 0, speed: 70, overtakeRequested: false }, 0.5);
+
+    expect(charged.powerBoost).toBeGreaterThanOrEqual(0.09);
+    expect(empty.powerBoost).toBe(0);
+  });
+
   it('recovers charge under braking', () => {
     const initial = createEnergy(0.4);
     const next = stepEnergy(initial, { throttle: 0, brake: 1, speed: 65, overtakeRequested: false }, 1);
