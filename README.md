@@ -10,12 +10,17 @@ The presentation is built around a classic fixed-orientation top-down/isometric 
 
 - Three.js full-screen 3D renderer
 - fixed-direction elevated orthographic camera in the GeneRally-style family
+- Rapier 2D rigid-body/contact solver under the planar race simulation
+- dynamic player body with real velocity vector, angular velocity, lateral slip and CCD
+- AI cars currently use Rapier kinematic colliders while their racecraft controller is migrated toward the same dynamic model
 - procedural 3D formula cars with four tyres, wings, cockpit/halo and compound sidewall colour
 - dry compound colours: Soft red / Medium yellow / Hard white
 - 3D road, runoff, grass, kerbs, grid, pit buildings and grandstands
 - enlarged mixed-character fictional circuit with a long straight and real braking sections
 - 8-lap, 8-car race
-- fixed 120 Hz player simulation
+- fixed 120 Hz physics/simulation step
+- progressive acceleration rather than an instant speed-cap jump
+- high-speed steering authority falls sharply, so braking creates the cornering opportunity
 - Soft / Medium / Hard tyre model
 - pre-race starting-compound choice
 - tyre temperature, wear, grip and late-life cliff
@@ -25,7 +30,6 @@ The presentation is built around a classic fixed-orientation top-down/isometric 
 - AI CLEAR / FOLLOW / ATTACK / DEFEND / SIDE_BY_SIDE states
 - adaptive AI undercut / overcut decisions
 - multi-lane AI occupancy so dense fields spread instead of rendering as one overlapping train
-- player/AI soft contact with closing-speed control rather than hard positional bouncing
 - dirty air vs tow interaction
 - explicit HARVEST / NORMAL / DEPLOY hybrid modes
 - HARVEST charges even while throttle is held but gives up substantial pace
@@ -78,9 +82,9 @@ CI runs the same test/build verification on pull requests. Automated tests are g
 
 `src/simulation/` owns authoritative race truth independently from rendering.
 
-`src/game/ThreeRaceGame.ts` integrates input, the fixed-step simulation and the playable race flow. `src/rendering3d/` converts simulation state into the Three.js world. Rendering is not the source of tyre, lap, order or strategy truth.
+`src/simulation/RapierRacePhysics.ts` owns the live planar rigid-body world. `ArcadeCarController.ts` supplies game-facing longitudinal/lateral tyre and power intent without manually integrating position or collision. `src/game/ThreeRaceGame.ts` integrates input, strategy and the fixed-step race flow, while `src/rendering3d/` converts simulation state into the Three.js world.
 
-The current AI still uses a cheaper progress/lane model than the player's vehicle. It is intentionally being improved as a racing opponent before more Formula-rule complexity is added.
+The current AI is intentionally halfway through the physics migration: it still plans race pace through the cheaper progress/lane model, but it now presents a real Rapier collider to the player. The next major physics step is to put AI motion itself through the same dynamic controller so contact affects both cars rather than only the player.
 
 ## Design rule
 
