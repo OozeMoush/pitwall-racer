@@ -1,4 +1,5 @@
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
+import { trackProfile } from './TrackProfile';
 import { TRACK_LENGTH } from './TrackModel';
 
 export type BattleState = 'CLEAR' | 'FOLLOW' | 'ATTACK';
@@ -37,13 +38,13 @@ interface TrafficContext {
 
 export function createAiField(): DriverState[] {
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 4, 'MEDIUM', -5, 1.012],
-    ['APEX', 'MEDIUM', 6, 'SOFT', 4, 1.018],
-    ['VOLT', 'HARD', 7, 'SOFT', -2, 0.997],
-    ['ORBIT', 'MEDIUM', 5, 'HARD', 3, 1.004],
-    ['KITE', 'SOFT', 3, 'HARD', -4, 0.992],
+    ['NOVA', 'SOFT', 4, 'MEDIUM', -3, 1.018],
+    ['APEX', 'MEDIUM', 6, 'SOFT', 3, 1.028],
+    ['VOLT', 'HARD', 7, 'SOFT', -2, 1.002],
+    ['ORBIT', 'MEDIUM', 5, 'HARD', 2, 1.012],
+    ['KITE', 'SOFT', 3, 'HARD', -3, 0.994],
     ['RIFT', 'HARD', 6, 'MEDIUM', 2, 1.008],
-    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.0],
+    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.004],
   ];
 
   return plans.map(([name, start, plannedPitLap, next, laneOffset, skill], index) => ({
@@ -100,22 +101,31 @@ export function stepAi(
   let progress = driver.progress;
   let usedCompounds = driver.usedCompounds;
 
-  const compoundPace = tire.compound === 'SOFT' ? 1.025 : tire.compound === 'HARD' ? 0.985 : 1;
-  const pacePace = pace === 'PUSH' ? 1.018 : pace === 'CONSERVE' ? 0.982 : 1;
-  const towBoost = battleState === 'FOLLOW' ? 1.012 : battleState === 'ATTACK' ? 1.026 : 1;
-  let speed = 72 * driver.skill * compoundPace * pacePace * tire.grip * towBoost;
+  const profile = trackProfile(progress, driver.skill, tire.grip);
+  const paceFactor = pace === 'PUSH' ? 1.025 : pace === 'CONSERVE' ? 0.975 : 1;
+  const towFactor = battleState === 'FOLLOW' ? 1.012 : battleState === 'ATTACK' ? 1.025 : 1;
+  let targetSpeed = Math.min(111, profile.targetSpeed * paceFactor * towFactor);
 
-  if (traffic.carAhead && traffic.gapMetres < 9 && battleState !== 'ATTACK') {
-    speed = Math.min(speed, traffic.carAhead.speed * 0.992);
+  // Following is a real longitudinal constraint rather than a magic progress
+  // adjustment: the chaser closes, then has to match the car ahead unless it
+  // has committed to an overtaking line.
+  if (traffic.carAhead && traffic.gapMetres < 10 && battleState !== 'ATTACK') {
+    targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.995);
   }
 
-  const attackSide = stableSide(driver.id) * 24;
+  // Brake more strongly than we accelerate. This creates visible braking zones
+  // and means a late look-ahead target actually produces a corner entry rather
+  // than cars gliding around at one constant pace.
+  const speed = approachSpeed(driver.speed, targetSpeed, dt, 33, 82);
+
+  const attackSide = stableSide(driver.id) * 25;
+  const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
   const targetLane = battleState === 'ATTACK'
-    ? traffic.carAhead!.laneOffset + attackSide
+    ? profile.apexOffset + attackSide
     : battleState === 'FOLLOW' && traffic.carAhead
       ? traffic.carAhead.laneOffset
-      : driver.preferredLane;
-  const laneOffset = approach(driver.laneOffset, targetLane, dt * (battleState === 'ATTACK' ? 52 : 34));
+      : normalLine;
+  const laneOffset = approach(driver.laneOffset, targetLane, dt * (battleState === 'ATTACK' ? 54 : 38));
 
   progress += (speed * dt) / TRACK_LENGTH;
 
@@ -126,7 +136,7 @@ export function stepAi(
       tire = createTire(driver.nextCompound);
       usedCompounds = new Set(usedCompounds);
       usedCompounds.add(driver.nextCompound);
-      progress = Math.max(0, progress - 0.055); // approximate pit-lane time loss
+      progress = Math.max(0, progress - 0.055); // AI pit time remains abstract until AI pit animation is rebuilt.
       strategyIntent = 'DONE';
     }
   }
@@ -149,17 +159,14 @@ function choosePitStrategy(
   const earliest = Math.max(2, driver.plannedPitLap - 1);
   const latest = Math.min(totalLaps - 1, driver.plannedPitLap + 1);
 
-  // If trapped behind another car near the normal stop window, try fresh tyres one lap early.
   if (driver.lap >= earliest && driver.lap < driver.plannedPitLap && battleState === 'FOLLOW' && gapMetres < 30 && tireHealth > 0.24) {
     return { pitLap: earliest, intent: 'UNDERCUT' };
   }
 
-  // In clean air with healthy tyres, extend one lap to exploit the current stint.
   if (driver.lap >= driver.plannedPitLap && driver.lap < latest && battleState === 'CLEAR' && tireHealth > 0.52) {
     return { pitLap: latest, intent: 'OVERCUT' };
   }
 
-  // Preserve a decision once committed so it does not flap every simulation tick.
   if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
     return { pitLap: driver.pitLap, intent: driver.strategyIntent };
   }
@@ -193,6 +200,11 @@ function stableSide(id: string): -1 | 1 {
 function approach(current: number, target: number, maxDelta: number): number {
   if (Math.abs(target - current) <= maxDelta) return target;
   return current + Math.sign(target - current) * maxDelta;
+}
+
+function approachSpeed(current: number, target: number, dt: number, acceleration: number, braking: number): number {
+  const rate = target >= current ? acceleration : braking;
+  return approach(current, target, rate * dt);
 }
 
 export function raceDistance(lap: number, progress: number): number {
