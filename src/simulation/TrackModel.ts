@@ -1,5 +1,14 @@
 export interface TrackPoint { x: number; y: number }
 
+export interface TrackProjection {
+  progress: number;
+  distance: number;
+  laneOffset: number;
+  heading: number;
+  x: number;
+  y: number;
+}
+
 // Clockwise authored circuit. Point zero sits on the main straight.
 // The layout deliberately mixes a long straight, a heavy-braking right side,
 // a fast upper section and a technical left-side sequence so driving line and
@@ -62,9 +71,13 @@ export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { he
   };
 }
 
-export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {
+export function projectTrack(x: number, y: number): TrackProjection {
   let bestDistance = Number.POSITIVE_INFINITY;
   let bestAlong = 0;
+  let bestX = 0;
+  let bestY = 0;
+  let bestHeading = 0;
+  let bestLaneOffset = 0;
 
   for (const s of segments) {
     const dx = s.b.x - s.a.x;
@@ -75,12 +88,31 @@ export function nearestTrackProgress(x: number, y: number): { progress: number; 
     const py = s.a.y + dy * t;
     const distance = Math.hypot(x - px, y - py);
     if (distance < bestDistance) {
+      const heading = Math.atan2(dy, dx);
+      const nx = -Math.sin(heading);
+      const ny = Math.cos(heading);
       bestDistance = distance;
       bestAlong = s.start + s.length * t;
+      bestX = px;
+      bestY = py;
+      bestHeading = heading;
+      bestLaneOffset = (x - px) * nx + (y - py) * ny;
     }
   }
 
-  return { progress: bestAlong / TRACK_LENGTH, distance: bestDistance };
+  return {
+    progress: bestAlong / TRACK_LENGTH,
+    distance: bestDistance,
+    laneOffset: bestLaneOffset,
+    heading: bestHeading,
+    x: bestX,
+    y: bestY,
+  };
+}
+
+export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {
+  const projection = projectTrack(x, y);
+  return { progress: projection.progress, distance: projection.distance };
 }
 
 function segmentAtDistance(distance: number): Segment {

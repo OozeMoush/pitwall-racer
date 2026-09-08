@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Compound } from './TireModel';
 import { trackProfile } from './TrackProfile';
-import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAi, stepAiField } from './RaceModel';
+import {
+  aeroEffect,
+  classify,
+  createAiField,
+  isTwoCompoundLegal,
+  stepAi,
+  stepAiField,
+  type RaceTrafficCar,
+} from './RaceModel';
 import { TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
@@ -88,6 +96,64 @@ describe('RaceModel', () => {
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
     expect(nextChaser.battleState).toBe('ATTACK');
     expect(Math.abs(nextChaser.laneOffset)).toBeGreaterThan(0);
+  });
+
+  it('treats the player ahead as real traffic and can attack them', () => {
+    const [driver] = createAiField();
+    driver.progress = 0.4;
+    driver.laneOffset = 0;
+    driver.skill = 1.08;
+    const player: RaceTrafficCar = {
+      id: 'player',
+      lap: 1,
+      progress: 0.4 + 12 / TRACK_LENGTH,
+      speed: 68,
+      laneOffset: 0,
+      performance: 0.92,
+      isPlayer: true,
+    };
+
+    const [next] = stepAiField([driver], 0.1, 8, [player]);
+    expect(next.battleState).toBe('ATTACK');
+    expect(Math.abs(next.laneOffset)).toBeGreaterThan(0);
+  });
+
+  it('makes one modest defensive move when the player is threatening from behind', () => {
+    const [driver] = createAiField();
+    driver.progress = 0.5;
+    driver.laneOffset = 0;
+    const player: RaceTrafficCar = {
+      id: 'player',
+      lap: 1,
+      progress: 0.5 - 20 / TRACK_LENGTH,
+      speed: 92,
+      laneOffset: -12,
+      performance: 1.08,
+      isPlayer: true,
+    };
+
+    const [next] = stepAiField([driver], 0.1, 8, [player]);
+    expect(next.battleState).toBe('DEFEND');
+    expect(Math.abs(next.laneOffset)).toBeLessThanOrEqual(4);
+  });
+
+  it('leaves lateral space when the player is genuinely alongside', () => {
+    const [driver] = createAiField();
+    driver.progress = 0.55;
+    driver.laneOffset = 8;
+    const player: RaceTrafficCar = {
+      id: 'player',
+      lap: 1,
+      progress: 0.55,
+      speed: 78,
+      laneOffset: -18,
+      performance: 1,
+      isPlayer: true,
+    };
+
+    const [next] = stepAiField([driver], 0.1, 8, [player]);
+    expect(next.battleState).toBe('SIDE_BY_SIDE');
+    expect(next.laneOffset).toBeGreaterThan(driver.laneOffset);
   });
 
   it('undercuts one lap early when trapped in traffic near the pit window', () => {

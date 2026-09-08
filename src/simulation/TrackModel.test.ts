@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RACING_LINE, TRACK_CONTROLS, TRACK_LENGTH, nearestTrackProgress, sampleTrack } from './TrackModel';
+import { RACING_LINE, TRACK_CONTROLS, TRACK_LENGTH, nearestTrackProgress, projectTrack, sampleTrack } from './TrackModel';
 
 describe('TrackModel', () => {
   it('densifies the control polygon into a smooth racing line', () => {
@@ -16,10 +16,6 @@ describe('TrackModel', () => {
       if (delta > Math.PI) delta = Math.PI * 2 - delta;
       worst = Math.max(worst, delta);
     }
-
-    // A technical circuit can legitimately rotate far more quickly than the
-    // original oval. This threshold catches spline cusps/jumps while allowing
-    // a real hairpin to exist over a small fraction of the lap.
     expect(worst).toBeLessThan(0.9);
   });
 
@@ -29,6 +25,17 @@ describe('TrackModel', () => {
       const projected = nearestTrackProgress(point.x, point.y);
       expect(projected.distance).toBeLessThan(0.001);
       expect(Math.abs(projected.progress - progress)).toBeLessThan(0.002);
+    }
+  });
+
+  it('preserves the signed lateral side of a car on the circuit', () => {
+    for (const progress of [0.12, 0.44, 0.78]) {
+      const left = sampleTrack(progress, 24);
+      const right = sampleTrack(progress, -24);
+      const leftProjection = projectTrack(left.x, left.y);
+      const rightProjection = projectTrack(right.x, right.y);
+      expect(leftProjection.laneOffset).toBeGreaterThan(18);
+      expect(rightProjection.laneOffset).toBeLessThan(-18);
     }
   });
 });

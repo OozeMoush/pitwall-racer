@@ -2,7 +2,7 @@ import { createTire, stepTire, type Compound, type PaceMode, type TireState } fr
 import { trackProfile } from './TrackProfile';
 import { TRACK_LENGTH } from './TrackModel';
 
-export type BattleState = 'CLEAR' | 'FOLLOW' | 'ATTACK';
+export type BattleState = 'CLEAR' | 'FOLLOW' | 'ATTACK' | 'DEFEND' | 'SIDE_BY_SIDE';
 export type StrategyIntent = 'PLAN' | 'UNDERCUT' | 'OVERCUT' | 'DONE';
 
 export interface DriverState {
@@ -25,6 +25,16 @@ export interface DriverState {
   finished: boolean;
 }
 
+export interface RaceTrafficCar {
+  id: string;
+  lap: number;
+  progress: number;
+  speed: number;
+  laneOffset: number;
+  performance: number;
+  isPlayer?: boolean;
+}
+
 export interface AeroEffect {
   tow: number;
   dirtyAir: number;
@@ -32,9 +42,17 @@ export interface AeroEffect {
 }
 
 interface TrafficContext {
-  carAhead?: DriverState;
+  carAhead?: RaceTrafficCar;
   gapMetres: number;
+  carBehind?: RaceTrafficCar;
+  gapBehindMetres: number;
+  alongside?: RaceTrafficCar;
 }
+
+const EMPTY_TRAFFIC: TrafficContext = {
+  gapMetres: Number.POSITIVE_INFINITY,
+  gapBehindMetres: Number.POSITIVE_INFINITY,
+};
 
 export function createAiField(): DriverState[] {
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
@@ -47,10 +65,12 @@ export function createAiField(): DriverState[] {
     ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.004],
   ];
 
-  return plans.map(([name, start, plannedPitLap, next, laneOffset, skill], index) => ({
+  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => ({
     id: `ai-${index}`,
     name,
-    progress: 0.065 - index * 0.008,
+    // A real staggered grid. The old 0.8%-lap spacing was shorter than the
+    // rendered car body, which made the field visibly overlap before turn one.
+    progress: 0.135 - index * 0.018,
     lap: 1,
     speed: 0,
     tire: createTire(start),
@@ -60,42 +80,67 @@ export function createAiField(): DriverState[] {
     pitLap: plannedPitLap,
     strategyIntent: 'PLAN',
     nextCompound: next,
-    laneOffset,
-    preferredLane: laneOffset,
+    laneOffset: index % 2 === 0 ? -16 : 16,
+    preferredLane,
     battleState: 'CLEAR',
     skill,
     finished: false,
   }));
 }
 
-export function stepAiField(drivers: DriverState[], dt: number, totalLaps: number): DriverState[] {
-  return drivers.map((driver) => stepAi(driver, dt, totalLaps, trafficFor(driver, drivers)));
+export function stepAiField(
+  drivers: DriverState[],
+  dt: number,
+  totalLaps: number,
+  externalTraffic: RaceTrafficCar[] = [],
+): DriverState[] {
+  return drivers.map((driver) => stepAi(driver, dt, totalLaps, trafficFor(driver, drivers, externalTraffic)));
 }
 
 export function stepAi(
   driver: DriverState,
   dt: number,
   totalLaps: number,
-  traffic: TrafficContext = { gapMetres: Number.POSITIVE_INFINITY },
+  traffic: TrafficContext = EMPTY_TRAFFIC,
 ): DriverState {
   if (driver.finished) return driver;
 
   const remaining = totalLaps - driver.lap;
   const tireHealth = 1 - driver.tire.wear;
   const pace: PaceMode = remaining <= 2 && tireHealth > 0.35 ? 'PUSH' : tireHealth < 0.28 ? 'CONSERVE' : 'BALANCED';
+  const ownPerformance = driver.skill * driver.tire.grip;
 
   const following = traffic.gapMetres < 48;
   const canAttack = traffic.carAhead !== undefined
     && traffic.gapMetres < 17
     && tireHealth > 0.2
-    && driver.skill * driver.tire.grip > traffic.carAhead.skill * traffic.carAhead.tire.grip * 0.995;
-  const battleState: BattleState = canAttack ? 'ATTACK' : following ? 'FOLLOW' : 'CLEAR';
+    && ownPerformance > traffic.carAhead.performance * 0.995;
+  const playerThreatBehind = traffic.carBehind?.isPlayer === true
+    && traffic.gapBehindMetres < 30
+    && traffic.gapBehindMetres > 7;
+  const playerAlongside = traffic.alongside?.isPlayer === true;
+
+  const battleState: BattleState = playerAlongside
+    ? 'SIDE_BY_SIDE'
+    : canAttack
+      ? 'ATTACK'
+      : following
+        ? 'FOLLOW'
+        : playerThreatBehind
+          ? 'DEFEND'
+          : 'CLEAR';
 
   const strategy = choosePitStrategy(driver, battleState, traffic.gapMetres, tireHealth, totalLaps);
   const pitLap = strategy.pitLap;
   let strategyIntent = strategy.intent;
 
-  const trafficLoad = battleState === 'FOLLOW' ? 0.1 : battleState === 'ATTACK' ? 0.14 : 0;
+  const trafficLoad = battleState === 'FOLLOW'
+    ? 0.1
+    : battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE'
+      ? 0.14
+      : battleState === 'DEFEND'
+        ? 0.07
+        : 0;
   let tire = stepTire(driver.tire, pace, (pace === 'PUSH' ? 0.78 : 0.55) + trafficLoad, dt);
   let lap = driver.lap;
   let progress = driver.progress;
@@ -106,26 +151,43 @@ export function stepAi(
   const towFactor = battleState === 'FOLLOW' ? 1.012 : battleState === 'ATTACK' ? 1.025 : 1;
   let targetSpeed = Math.min(111, profile.targetSpeed * paceFactor * towFactor);
 
-  // Following is a real longitudinal constraint rather than a magic progress
-  // adjustment: the chaser closes, then has to match the car ahead unless it
-  // has committed to an overtaking line.
-  if (traffic.carAhead && traffic.gapMetres < 10 && battleState !== 'ATTACK') {
+  if (traffic.carAhead && traffic.gapMetres < 10 && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
     targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.995);
   }
 
-  // Brake more strongly than we accelerate. This creates visible braking zones
-  // and means a late look-ahead target actually produces a corner entry rather
-  // than cars gliding around at one constant pace.
+  if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
+    targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 4));
+  }
+
   const speed = approachSpeed(driver.speed, targetSpeed, dt, 33, 82);
 
   const attackSide = stableSide(driver.id) * 25;
   const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
-  const targetLane = battleState === 'ATTACK'
-    ? profile.apexOffset + attackSide
-    : battleState === 'FOLLOW' && traffic.carAhead
-      ? traffic.carAhead.laneOffset
-      : normalLine;
-  const laneOffset = approach(driver.laneOffset, targetLane, dt * (battleState === 'ATTACK' ? 54 : 38));
+  let targetLane = normalLine;
+
+  if (battleState === 'ATTACK') {
+    targetLane = profile.apexOffset + attackSide;
+  } else if (battleState === 'FOLLOW' && traffic.carAhead) {
+    targetLane = traffic.carAhead.laneOffset;
+  } else if (battleState === 'DEFEND') {
+    const inside = Math.abs(profile.signedTurn) > 0.04
+      ? Math.sign(profile.signedTurn) * (9 + profile.severity * 8)
+      : stableSide(driver.id) * 8;
+    targetLane = clamp(inside, -19, 19);
+  } else if (battleState === 'SIDE_BY_SIDE' && traffic.alongside) {
+    const separationSide = driver.laneOffset >= traffic.alongside.laneOffset ? 1 : -1;
+    const desiredSeparation = traffic.alongside.laneOffset + separationSide * 28;
+    targetLane = clamp(desiredSeparation, -35, 35);
+  }
+
+  const laneRate = battleState === 'ATTACK'
+    ? 54
+    : battleState === 'SIDE_BY_SIDE'
+      ? 62
+      : battleState === 'DEFEND'
+        ? 34
+        : 38;
+  const laneOffset = approach(driver.laneOffset, targetLane, dt * laneRate);
 
   progress += (speed * dt) / TRACK_LENGTH;
 
@@ -136,7 +198,7 @@ export function stepAi(
       tire = createTire(driver.nextCompound);
       usedCompounds = new Set(usedCompounds);
       usedCompounds.add(driver.nextCompound);
-      progress = Math.max(0, progress - 0.055); // AI pit time remains abstract until AI pit animation is rebuilt.
+      progress = Math.max(0, progress - 0.055);
       strategyIntent = 'DONE';
     }
   }
@@ -152,9 +214,7 @@ function choosePitStrategy(
   tireHealth: number,
   totalLaps: number,
 ): { pitLap: number; intent: StrategyIntent } {
-  if (driver.usedCompounds.has(driver.nextCompound)) {
-    return { pitLap: driver.pitLap, intent: 'DONE' };
-  }
+  if (driver.usedCompounds.has(driver.nextCompound)) return { pitLap: driver.pitLap, intent: 'DONE' };
 
   const earliest = Math.max(2, driver.plannedPitLap - 1);
   const latest = Math.min(totalLaps - 1, driver.plannedPitLap + 1);
@@ -174,21 +234,54 @@ function choosePitStrategy(
   return { pitLap: driver.plannedPitLap, intent: 'PLAN' };
 }
 
-function trafficFor(driver: DriverState, field: DriverState[]): TrafficContext {
+function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: RaceTrafficCar[]): TrafficContext {
   const distance = raceDistance(driver.lap, driver.progress);
-  let carAhead: DriverState | undefined;
-  let closest = Number.POSITIVE_INFINITY;
+  const candidates: RaceTrafficCar[] = [
+    ...field
+      .filter((other) => other.id !== driver.id && !other.finished)
+      .map(toTrafficCar),
+    ...externalTraffic.filter((other) => other.id !== driver.id),
+  ];
 
-  for (const other of field) {
-    if (other.id === driver.id || other.finished) continue;
-    const delta = raceDistance(other.lap, other.progress) - distance;
-    if (delta > 0 && delta < closest) {
-      closest = delta;
+  let carAhead: RaceTrafficCar | undefined;
+  let gapMetres = Number.POSITIVE_INFINITY;
+  let carBehind: RaceTrafficCar | undefined;
+  let gapBehindMetres = Number.POSITIVE_INFINITY;
+  let alongside: RaceTrafficCar | undefined;
+  let alongsideDistance = Number.POSITIVE_INFINITY;
+
+  for (const other of candidates) {
+    const deltaMetres = (raceDistance(other.lap, other.progress) - distance) * TRACK_LENGTH;
+    if (deltaMetres > 0 && deltaMetres < gapMetres) {
+      gapMetres = deltaMetres;
       carAhead = other;
+    }
+    if (deltaMetres < 0 && -deltaMetres < gapBehindMetres) {
+      gapBehindMetres = -deltaMetres;
+      carBehind = other;
+    }
+    const absolute = Math.abs(deltaMetres);
+    const lateralGap = Math.abs(other.laneOffset - driver.laneOffset);
+    // SIDE_BY_SIDE means the car bodies overlap longitudinally and occupy
+    // distinct lanes. A car directly 10-15m ahead is still ATTACK/FOLLOW.
+    if (absolute <= 8 && lateralGap >= 8 && lateralGap <= 42 && absolute < alongsideDistance) {
+      alongsideDistance = absolute;
+      alongside = other;
     }
   }
 
-  return { carAhead, gapMetres: closest * TRACK_LENGTH };
+  return { carAhead, gapMetres, carBehind, gapBehindMetres, alongside };
+}
+
+function toTrafficCar(driver: DriverState): RaceTrafficCar {
+  return {
+    id: driver.id,
+    lap: driver.lap,
+    progress: driver.progress,
+    speed: driver.speed,
+    laneOffset: driver.laneOffset,
+    performance: driver.skill * driver.tire.grip,
+  };
 }
 
 function stableSide(id: string): -1 | 1 {
@@ -205,6 +298,10 @@ function approach(current: number, target: number, maxDelta: number): number {
 function approachSpeed(current: number, target: number, dt: number, acceleration: number, braking: number): number {
   const rate = target >= current ? acceleration : braking;
   return approach(current, target, rate * dt);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 export function raceDistance(lap: number, progress: number): number {

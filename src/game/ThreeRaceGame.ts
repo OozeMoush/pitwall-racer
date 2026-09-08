@@ -23,9 +23,17 @@ import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
-import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAiField, type DriverState } from '../simulation/RaceModel';
+import {
+  aeroEffect,
+  classify,
+  createAiField,
+  isTwoCompoundLegal,
+  stepAiField,
+  type DriverState,
+  type RaceTrafficCar,
+} from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
-import { nearestTrackProgress, sampleTrack } from '../simulation/TrackModel';
+import { projectTrack, sampleTrack } from '../simulation/TrackModel';
 
 const TOTAL_LAPS = 8;
 const FIXED_DT = 1 / 120;
@@ -172,7 +180,19 @@ export class ThreeRaceGame {
     }
 
     this.timing = stepTiming(this.timing, dt);
-    this.ai = stepAiField(this.ai, dt, TOTAL_LAPS);
+    const playerProjection = projectTrack(this.vehicle.x, this.vehicle.y);
+    const playerTraffic: RaceTrafficCar[] = isPitActive(this.pitStop)
+      ? []
+      : [{
+          id: 'player',
+          lap: this.lap,
+          progress: playerProjection.progress,
+          speed: this.vehicle.speed,
+          laneOffset: playerProjection.laneOffset,
+          performance: this.tire.grip * (this.pace === 'PUSH' ? 1.03 : this.pace === 'CONSERVE' ? 0.97 : 1),
+          isPlayer: true,
+        }];
+    this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
 
     if (this.stepPhysicalPit(dt)) return;
 
@@ -181,7 +201,7 @@ export class ThreeRaceGame {
     const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
 
-    const track = nearestTrackProgress(this.vehicle.x, this.vehicle.y);
+    const track = projectTrack(this.vehicle.x, this.vehicle.y);
     const surface = surfaceEffect(track.distance);
     this.trackDistance = track.distance;
     this.lastTrackProgress = this.trackProgress;
@@ -296,7 +316,13 @@ export class ThreeRaceGame {
       const car = this.aiCars[index];
       car.root.position.copy(world);
       car.root.rotation.y = headingToYaw(p.heading);
-      car.root.rotation.z = driver.battleState === 'ATTACK' ? 0.025 : 0;
+      car.root.rotation.z = driver.battleState === 'ATTACK'
+        ? 0.025
+        : driver.battleState === 'DEFEND'
+          ? -0.015
+          : driver.battleState === 'SIDE_BY_SIDE'
+            ? 0.012
+            : 0;
       car.setCompound(driver.tire.compound);
     });
 
