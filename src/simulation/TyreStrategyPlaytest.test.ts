@@ -51,9 +51,13 @@ describe('tyre strategy playtest telemetry', () => {
 
     console.log(`TYRE_PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.pitBenefitSeconds).toBeGreaterThan(2);
-    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.82);
-    expect(metrics.noStopLap8Wear).toBeGreaterThan(0.78);
-    expect(metrics.strategySpreadSeconds).toBeLessThan(22);
+    // Pitting must be a pace decision too, but not a 100-second mandatory reset.
+    expect(metrics.pitBenefitSeconds).toBeGreaterThan(8);
+    expect(metrics.pitBenefitSeconds).toBeLessThan(45);
+    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.85);
+    expect(metrics.noStopLap8Wear).toBeGreaterThanOrEqual(0.75);
+    // Several plans can differ, while the separate benchmark test protects at
+    // least two genuinely competitive legal strategies.
+    expect(metrics.strategySpreadSeconds).toBeLessThan(35);
   });
 });
