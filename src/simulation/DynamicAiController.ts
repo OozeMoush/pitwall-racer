@@ -115,8 +115,8 @@ export function dynamicAiControl(
     }
     if (aheadGap < 22) targetSpeed = Math.min(targetSpeed, Math.max(24, ahead.speed - 8));
   }
-  if (projection.distance > 27) targetSpeed = Math.min(targetSpeed, 56);
-  if (projection.distance > 34) targetSpeed = Math.min(targetSpeed, 43);
+  if (projection.distance > 27) targetSpeed = Math.min(targetSpeed, 54);
+  if (projection.distance > 34) targetSpeed = Math.min(targetSpeed, 42);
   targetSpeed = clamp(targetSpeed, 26, 122);
 
   const speedError = targetSpeed - speed;
