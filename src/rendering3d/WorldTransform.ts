@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-export const WORLD_SCALE = 0.085;
+// Slightly larger render scale makes 90-110 simulation units/sec visibly rush
+// past the fixed isometric camera instead of looking like a slow tabletop pan.
+export const WORLD_SCALE = 0.10;
 export const WORLD_CENTER_X = 1110;
 export const WORLD_CENTER_Y = 600;
 
