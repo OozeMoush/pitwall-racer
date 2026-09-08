@@ -51,16 +51,17 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
-      // Opponents now live in roughly the same electrical power envelope as a
-      // player using DEPLOY. The tyre then decides how much of that pace they
-      // can actually carry through a corner.
+      // The field should be genuinely difficult even when the player has a
+      // short DEPLOY window. Soft is already close to the controller's boost
+      // ceiling, so this pass mainly lifts Medium/Hard race pace instead of
+      // creating absurd Soft top speed.
       const compoundBoost = driver.tire.compound === 'SOFT'
-        ? 0.31
+        ? 0.32
         : driver.tire.compound === 'MEDIUM'
-          ? 0.21
-          : 0.12;
-      const skillBoost = Math.max(0, driver.skill - 1) * 0.72;
-      const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
+          ? 0.255
+          : 0.165;
+      const skillBoost = Math.max(0, driver.skill - 1) * 0.78;
+      const attackBoost = control.battleState === 'ATTACK' ? 0.09 : 0;
 
       this.driveAi(index, {
         throttle: control.throttle,
