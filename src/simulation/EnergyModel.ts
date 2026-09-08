@@ -59,7 +59,7 @@ export function stepEnergy(state: EnergyState, inputs: EnergyInputs, dt: number)
   const powerBoost = wantsOvertake
     ? 0.24 * overtakeFraction
     : canDeploy
-      ? 0.075 * normalFraction
+      ? 0.10 * normalFraction
       : 0;
 
   return {
