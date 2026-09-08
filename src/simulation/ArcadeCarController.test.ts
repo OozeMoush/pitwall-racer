@@ -57,6 +57,43 @@ describe('ArcadeCarController', () => {
     expect(Math.abs(high.angularVelocity)).toBeLessThan(Math.abs(medium.angularVelocity) * 0.62);
   });
 
+  it('rewards lifting or braking instead of holding full throttle through a fast corner', () => {
+    const fullThrottle = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 1, tireGrip: 1 },
+      0.12,
+    );
+    const lift = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 0, brake: 0, steer: 1, tireGrip: 1 },
+      0.12,
+    );
+    const trailBrake = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 0, brake: 0.45, steer: 1, tireGrip: 1 },
+      0.12,
+    );
+
+    expect(Math.abs(lift.angularVelocity)).toBeGreaterThan(Math.abs(fullThrottle.angularVelocity) * 1.15);
+    expect(Math.abs(trailBrake.angularVelocity)).toBeGreaterThan(Math.abs(lift.angularVelocity));
+  });
+
+  it('makes a worn tyre brake and rotate materially worse than a fresh tyre', () => {
+    const fresh = controlArcadeCar(
+      { vx: 78, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 0, brake: 0.7, steer: 0.75, tireGrip: 1.02 },
+      0.2,
+    );
+    const worn = controlArcadeCar(
+      { vx: 78, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 0, brake: 0.7, steer: 0.75, tireGrip: 0.66 },
+      0.2,
+    );
+
+    expect(worn.vx).toBeGreaterThan(fresh.vx + 1.5);
+    expect(Math.abs(worn.angularVelocity)).toBeLessThan(Math.abs(fresh.angularVelocity) * 0.72);
+  });
+
   it('braking removes speed decisively without instantly reversing the car', () => {
     const next = controlArcadeCar(
       { vx: 80, vy: 0, heading: 0, angularVelocity: 0 },
