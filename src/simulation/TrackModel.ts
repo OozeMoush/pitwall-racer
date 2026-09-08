@@ -23,8 +23,8 @@ export const TRACK_CONTROLS: readonly TrackPoint[] = [
   { x: 350, y: 380 },
   { x: 270, y: 490 },
   { x: 285, y: 610 },
-  { x: 350, y: 700 },
-  { x: 420, y: 750 },
+  { x: 320, y: 710 },
+  { x: 360, y: 765 },
 ];
 
 const SAMPLES_PER_CONTROL = 24;
