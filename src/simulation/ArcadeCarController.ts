@@ -27,11 +27,9 @@ export interface ArcadeCarControlResult {
 }
 
 /**
- * Arcade race-car controller used on top of Rapier.
- *
- * Grip is intentionally obvious rather than subtle. A Soft should let the
- * player brake later, rotate harder and apply throttle earlier. Compound pace
- * comes mainly from corners; a Medium must not lose 20 km/h just driving straight.
+ * Generous arcade handling on fresh rubber, then a deliberately dramatic tyre
+ * cliff. At 250-300 km/h a fresh Soft can be thrown into a bend; the same input
+ * on a worn Medium should suddenly run wide. That contrast is the strategy game.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -41,8 +39,8 @@ export function controlArcadeCar(
   const throttle = clamp01(input.throttle);
   const brake = clamp01(input.brake);
   const steer = clamp(input.steer, -1, 1);
-  const tireGrip = clamp(input.tireGrip, 0.46, 1.18);
-  const surfaceGrip = clamp(input.surfaceGrip ?? 1, 0.45, 1.05);
+  const tireGrip = clamp(input.tireGrip, 0.40, 1.24);
+  const surfaceGrip = clamp(input.surfaceGrip ?? 1, 0.42, 1.05);
   const powerBoost = clamp(input.powerBoost ?? 0, -0.25, 0.4);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
   const rollingResistance = clamp(input.rollingResistance ?? 0, 0, 14);
@@ -55,28 +53,28 @@ export function controlArcadeCar(
   const forwardSpeed = motion.vx * cos + motion.vy * sin;
   const lateralSpeed = motion.vx * rightX + motion.vy * rightY;
   const speed = Math.hypot(motion.vx, motion.vy);
-  const normalizedGrip = clamp01((tireGrip - 0.46) / 0.66);
+  const normalizedGrip = clamp01((tireGrip - 0.40) / 0.80);
 
   const usefulTopSpeed = 110 + powerBoost * 60;
   const positiveForward = Math.max(0, forwardSpeed);
   const speedRatio = clamp01(positiveForward / Math.max(60, usefulTopSpeed));
   const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.85));
 
-  const steeringLoad = Math.abs(steer) * clamp01(speed / 78);
-  const straightTraction = 0.94 + normalizedGrip * 0.06;
-  const combinedTraction = 1 - steeringLoad * throttle * (0.16 + (1 - normalizedGrip) * 0.43);
+  const steeringLoad = Math.abs(steer) * clamp01(speed / 82);
+  const straightTraction = 0.93 + normalizedGrip * 0.07;
+  const combinedTraction = 1 - steeringLoad * throttle * (0.12 + (1 - normalizedGrip) * 0.52);
   const engineAcceleration = throttle
     * 13.8
     * powerTaper
     * (1 + powerBoost * 0.58)
     * powerMultiplier
     * straightTraction
-    * Math.max(0.42, combinedTraction);
+    * Math.max(0.38, combinedTraction);
 
   const aeroDrag = 0.00025 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
-  const brakingGrip = (0.31 + normalizedGrip * 0.79) * surfaceGrip;
-  const brakingAcceleration = brake * 29.5 * brakingGrip;
+  const brakingGrip = (0.28 + normalizedGrip * 0.90) * surfaceGrip;
+  const brakingAcceleration = brake * 30.5 * brakingGrip;
 
   let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
@@ -89,31 +87,36 @@ export function controlArcadeCar(
   if (brake > 0 && forwardSpeed > 0 && nextForward < 0) nextForward = 0;
   if (throttle >= 0 && nextForward < -3) nextForward = -3;
 
-  const highSpeedSlip = clamp01(speed / 120);
-  const tyreLateralAuthority = Math.pow(Math.max(0.43, tireGrip), 1.9);
-  const lateralGripRate = 8.5
+  const highSpeedSlip = clamp01(speed / 125);
+  const tyreLateralAuthority = 0.42 + Math.pow(normalizedGrip, 1.75) * 1.18;
+  const lateralGripRate = 8.9
     * tyreLateralAuthority
     * surfaceGrip
-    * (1 - highSpeedSlip * 0.38);
+    * (1 - highSpeedSlip * 0.28);
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
-  const speedAuthority = 1.75 / (1 + Math.pow(speed / 32, 2.1)) + 0.02;
-  const lowSpeedBuild = clamp01(speed / 13);
-  const fastCorner = clamp01((speed - 34) / 62);
-  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * 0.54;
-  const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.12 : 1;
-  const brakingRotation = 1 + brake * (0.37 + fastCorner * 0.16);
-  const wornSteering = Math.pow(Math.max(0.44, tireGrip), 1.85);
+  // More steering authority than before at high speed, but the authority is now
+  // carried by tyre grip. This makes the first laps deliberately forgiving and
+  // the worn-tyre drop unmistakable instead of making every tyre equally numb.
+  const speedAuthority = 2.18 / (1 + Math.pow(speed / 42, 1.72)) + 0.045;
+  const lowSpeedBuild = clamp01(speed / 12);
+  const fastCorner = clamp01((speed - 38) / 58);
+  const freshHighSpeedAuthority = 0.20 + Math.pow(normalizedGrip, 1.65) * 1.12;
+  const tyreTurnFactor = (1 - fastCorner) * (0.70 + normalizedGrip * 0.42)
+    + fastCorner * freshHighSpeedAuthority;
+  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.18 + (1 - normalizedGrip) * 0.58);
+  const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.1 : 1;
+  const brakingRotation = 1 + brake * (0.30 + fastCorner * 0.14);
   const targetAngularVelocity = steer
     * speedAuthority
     * lowSpeedBuild
-    * wornSteering
+    * tyreTurnFactor
     * surfaceGrip
-    * Math.max(0.42, throttleUndersteer)
+    * Math.max(0.36, throttleUndersteer)
     * liftRotation
     * brakingRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.0 + (1 - highSpeedSlip) * 2.3));
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.4 + (1 - highSpeedSlip) * 2.0));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 
