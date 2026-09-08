@@ -1,16 +1,9 @@
-import Phaser from 'phaser';
-import { RaceScene } from './scenes/RaceScene';
+import { ThreeRaceGame } from './game/ThreeRaceGame';
 import './style.css';
 
-new Phaser.Game({
-  type: Phaser.WEBGL,
-  parent: 'game',
-  width: window.innerWidth,
-  height: window.innerHeight,
-  backgroundColor: '#101713',
-  antialias: true,
-  pixelArt: false,
-  scene: [RaceScene],
-  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
-  render: { roundPixels: false },
-});
+const game = document.querySelector<HTMLElement>('#game');
+const hud = document.querySelector<HTMLElement>('#hud');
+
+if (!game || !hud) throw new Error('Pitwall Racer root elements are missing');
+
+new ThreeRaceGame(game, hud);
