@@ -51,13 +51,12 @@ describe('tyre strategy playtest telemetry', () => {
 
     console.log(`TYRE_PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    // Pitting must be a pace decision too, but not a 100-second mandatory reset.
-    expect(metrics.pitBenefitSeconds).toBeGreaterThan(8);
-    expect(metrics.pitBenefitSeconds).toBeLessThan(45);
-    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.85);
-    expect(metrics.noStopLap8Wear).toBeGreaterThanOrEqual(0.75);
-    // Several plans can differ, while the separate benchmark test protects at
-    // least two genuinely competitive legal strategies.
-    expect(metrics.strategySpreadSeconds).toBeLessThan(35);
+    // This is an eight-lap arcade race: the degradation signal should be loud.
+    // A no-stop Medium is physically possible but strategically awful.
+    expect(metrics.pitBenefitSeconds).toBeGreaterThan(20);
+    expect(metrics.pitBenefitSeconds).toBeLessThan(80);
+    expect(metrics.noStopLap8Grip).toBeLessThan(metrics.noStopLap2Grip * 0.78);
+    expect(metrics.noStopLap8Wear).toBeGreaterThanOrEqual(0.78);
+    expect(metrics.strategySpreadSeconds).toBeLessThan(45);
   });
 });

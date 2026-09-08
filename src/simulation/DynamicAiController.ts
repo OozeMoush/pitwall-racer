@@ -42,7 +42,7 @@ export function dynamicAiControl(
       behind = other;
       behindGap = -gap;
     }
-    if (Math.abs(gap) < 18 && lateral < 34 && Math.abs(gap) < alongsideGap) {
+    if (Math.abs(gap) < 18 && lateral < 28 && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
     }
@@ -50,14 +50,14 @@ export function dynamicAiControl(
 
   const laneBlocked = ahead !== undefined
     && aheadGap < 68
-    && Math.abs(ahead.laneOffset - projection.laneOffset) < 22;
+    && Math.abs(ahead.laneOffset - projection.laneOffset) < 18;
   const emergencyGap = laneBlocked && aheadGap < 24;
   const canAttack = laneBlocked
     && !emergencyGap
     && ahead !== undefined
     && aheadGap < 50
-    && driver.tire.wear < 0.86;
-  const playerThreat = behind?.isPlayer === true && behindGap < 34;
+    && driver.tire.wear < 0.88;
+  const playerThreat = behind?.isPlayer === true && behindGap < 38;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
@@ -65,67 +65,68 @@ export function dynamicAiControl(
   else if (laneBlocked && aheadGap < 76) battleState = 'FOLLOW';
   else if (playerThreat) battleState = 'DEFEND';
 
-  let targetLane = profile.apexOffset + driver.preferredLane * 0.28;
+  let targetLane = profile.apexOffset * 0.78 + driver.preferredLane * 0.22;
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const preferred = ahead.laneOffset + side * 38;
-    targetLane = clamp(preferred, -48, 48);
+    const preferred = ahead.laneOffset + side * 28;
+    targetLane = clamp(preferred, -34, 34);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-    targetLane = clamp(alongside.laneOffset + side * 30, -48, 48);
+    targetLane = clamp(alongside.laneOffset + side * 23, -34, 34);
   } else if (battleState === 'FOLLOW' && ahead) {
-    targetLane = clamp(ahead.laneOffset + stableSide(driver.id) * 10, -38, 38);
+    targetLane = clamp(ahead.laneOffset + stableSide(driver.id) * 7, -28, 28);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.035
-      ? Math.sign(profile.signedTurn) * 18
-      : stableSide(driver.id) * 12;
-    targetLane = clamp(inside, -26, 26);
+      ? Math.sign(profile.signedTurn) * 14
+      : stableSide(driver.id) * 9;
+    targetLane = clamp(inside, -20, 20);
   }
 
-  if (projection.distance > 82) targetLane = 0;
+  if (projection.distance > 62) targetLane = 0;
 
   const speed = vehicle.speed;
-  const lookAheadMetres = clamp(46 + speed * 0.74, 52, 122);
+  const lookAheadMetres = clamp(44 + speed * 0.72, 50, 120);
   const target = sampleTrack(projection.progress + lookAheadMetres / TRACK_LENGTH, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
-  const lateralError = clamp((targetLane - projection.laneOffset) / 44, -1, 1);
-  const steer = clamp(headingError * 1.86 + lateralError * 0.22, -1, 1);
+  const lateralError = clamp((targetLane - projection.laneOffset) / 34, -1, 1);
+  const steer = clamp(headingError * 1.9 + lateralError * 0.25, -1, 1);
 
   const nextProfile = trackProfile(
-    projection.progress + clamp(58 + speed * 0.6, 64, 126) / TRACK_LENGTH,
+    projection.progress + clamp(56 + speed * 0.6, 62, 124) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
-  const skillPace = 0.92 + clamp(driver.skill - 1, -0.08, 0.1) * 0.72;
-  let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 9) * skillPace;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.34) targetSpeed += 5.5;
+  // AI must create race pressure. A cautious Medium player should not simply
+  // drive away from a fresh Soft rival; DEPLOY, braking skill and tyre timing are
+  // the player's tools for winning, not an intentionally slow computer field.
+  const skillPace = 1.025 + clamp(driver.skill - 1, -0.08, 0.13) * 0.88;
+  let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 10) * skillPace;
+
+  if (battleState === 'ATTACK' && profile.severity < 0.34) targetSpeed += 6.5;
   if (laneBlocked && ahead) {
-    // Physical cars are about 15-20 simulation metres long. Keeping 30m here
-    // means FOLLOW is a real gap rather than an instruction to sit inside the
-    // leader's collider. Below 24m we brake decisively instead of buzzing.
-    const desiredGap = 30;
+    const desiredGap = 29;
     if (aheadGap < desiredGap + 12) {
-      const closingAllowance = clamp((aheadGap - desiredGap) * 0.28, -8, 3.5);
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.3, -8, 4);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < 24) targetSpeed = Math.min(targetSpeed, Math.max(26, ahead.speed - 7));
+    if (aheadGap < 23) targetSpeed = Math.min(targetSpeed, Math.max(26, ahead.speed - 7));
   }
-  if (projection.distance > 82) targetSpeed = Math.min(targetSpeed, 54);
-  targetSpeed = clamp(targetSpeed, 34, 101);
+  if (projection.distance > 62) targetSpeed = Math.min(targetSpeed, 50);
+  targetSpeed = clamp(targetSpeed, 32, 108);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.5
-    ? clamp((-speedError - 0.5) / 16, 0.18, 1)
+  const brake = speedError < -1.35
+    ? clamp((-speedError - 0.4) / 15, 0.18, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
-    : speedError > 8
+    : speedError > 7
       ? 1
-      : speedError > 1
-        ? clamp(0.3 + speedError / 14, 0.3, 0.9)
-        : 0.12;
+      : speedError > 0.8
+        ? clamp(0.34 + speedError / 13, 0.34, 0.95)
+        : 0.15;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }

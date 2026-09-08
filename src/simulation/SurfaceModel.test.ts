@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { surfaceEffect } from './SurfaceModel';
 
 describe('surfaceEffect', () => {
-  it('keeps normal road pace untouched', () => {
-    expect(surfaceEffect(55)).toEqual({
+  it('keeps normal road pace untouched inside the tighter road', () => {
+    expect(surfaceEffect(45)).toEqual({
       severity: 0,
       gripMultiplier: 1,
       powerMultiplier: 1,
@@ -12,9 +12,9 @@ describe('surfaceEffect', () => {
     });
   });
 
-  it('progressively slows a car that cuts farther off track', () => {
-    const runoff = surfaceEffect(85);
-    const grass = surfaceEffect(125);
+  it('progressively slows a car that runs beyond the road edge', () => {
+    const runoff = surfaceEffect(68);
+    const grass = surfaceEffect(108);
 
     expect(runoff.powerMultiplier).toBeLessThan(1);
     expect(runoff.gripMultiplier).toBeLessThan(1);

@@ -23,7 +23,7 @@ describe('dynamicAiControl', () => {
     expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThan(20);
   });
 
-  it('leaves lateral room when another car is alongside', () => {
+  it('leaves a full car-width of lateral room when another car is alongside', () => {
     const driver = createAiField()[1];
     const p = sampleTrack(driver.progress, 8);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 72 };
@@ -39,7 +39,7 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [other]);
     expect(control.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(28);
+    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(20);
   });
 
   it('prioritizes recovery when far outside the road', () => {
@@ -49,7 +49,7 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.targetLane).toBe(0);
-    expect(control.targetSpeed).toBeLessThanOrEqual(54);
+    expect(control.targetSpeed).toBeLessThanOrEqual(50);
     expect(control.brake).toBeGreaterThan(0);
   });
 });
