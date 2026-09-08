@@ -12,39 +12,42 @@ function metresToProgress(metres: number): number {
 }
 
 /**
- * Lightweight AI driving profile derived from the authoritative spline.
- * Look-ahead windows are expressed in track distance, not percentages of the
- * lap, so enlarging the circuit does not accidentally make the AI inspect half
- * a sector at once. This creates readable braking zones on long straights.
+ * Lightweight AI profile from the authoritative spline. Compound grip now
+ * changes corner speed strongly but barely touches straight-line speed, so a
+ * Soft AI visibly gains time in bends instead of just carrying a coloured tyre.
  */
 export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfileSample {
-  const here = signedHeadingDelta(progress - metresToProgress(24), progress + metresToProgress(24));
-  const near = signedHeadingDelta(progress + metresToProgress(38), progress + metresToProgress(105));
-  const far = signedHeadingDelta(progress + metresToProgress(105), progress + metresToProgress(205));
+  const here = signedHeadingDelta(progress - metresToProgress(22), progress + metresToProgress(22));
+  const near = signedHeadingDelta(progress + metresToProgress(34), progress + metresToProgress(98));
+  const far = signedHeadingDelta(progress + metresToProgress(98), progress + metresToProgress(190));
 
   const severity = clamp01(
     Math.max(
-      Math.abs(here) / 0.33,
-      Math.abs(near) / 0.42 * 0.96,
-      Math.abs(far) / 0.5 * 0.8,
+      Math.abs(here) / 0.31,
+      Math.abs(near) / 0.40 * 0.98,
+      Math.abs(far) / 0.48 * 0.82,
     ),
   );
 
-  const safeSkill = clamp(skill, 0.9, 1.12);
-  const safeGrip = clamp(grip, 0.62, 1.12);
+  const safeSkill = clamp(skill, 0.9, 1.13);
+  const safeGrip = clamp(grip, 0.48, 1.22);
 
-  // NORMAL player power should be raceable but not enough to simply drive away.
-  // Quick AI approaches DEPLOY pace on straights and still has to give away a
-  // lot of speed in real braking zones.
-  const straightSpeed = 109 + (safeSkill - 0.9) * 32;
-  const cornerFloor = 43 + (safeSkill - 0.9) * 45;
-  const gripFactor = 0.77 + safeGrip * 0.23;
-  const targetSpeed = clamp((straightSpeed - severity * (straightSpeed - cornerFloor)) * gripFactor, 40, 116);
+  const straightSpeed = 110 + (safeSkill - 0.9) * 34;
+  const baseCornerFloor = 44 + (safeSkill - 0.9) * 46;
+  // 1.20 grip -> ~35% more corner capability than a fresh Medium; 0.84 grip
+  // gives up a lot. Straight speed remains almost identical.
+  const cornerGripFactor = clamp(Math.pow(safeGrip, 1.7), 0.58, 1.36);
+  const cornerFloor = baseCornerFloor * cornerGripFactor;
+  const targetSpeed = clamp(
+    straightSpeed - severity * (straightSpeed - cornerFloor),
+    30,
+    118,
+  );
 
-  const signedTurn = here * 0.6 + near * 0.4;
+  const signedTurn = here * 0.62 + near * 0.38;
   const apexOffset = Math.abs(signedTurn) < 0.03
     ? 0
-    : Math.sign(signedTurn) * Math.min(22, 7 + severity * 15);
+    : Math.sign(signedTurn) * Math.min(14, 5 + severity * 9);
 
   return { signedTurn, severity, targetSpeed, apexOffset };
 }

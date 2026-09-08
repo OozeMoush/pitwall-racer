@@ -7,20 +7,19 @@ export interface SurfaceEffect {
 }
 
 /**
- * Arcade-first surface response based on distance from the racing-line centre.
- * The visible road is now intentionally tighter, so leaving ~50 units from the
- * centre starts costing pace rather than providing a giant forgiving runway.
+ * The physical road is intentionally narrow. A wheel-width mistake is allowed,
+ * but using the grey runoff as extra race track immediately costs speed and grip.
  */
 export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
-  const edge = 50;
-  const severity = clamp01((Math.max(0, distanceFromLine) - edge) / 52);
-  const label: SurfaceEffect['label'] = severity <= 0 ? 'TRACK' : severity < 0.38 ? 'RUNOFF' : 'GRASS';
+  const edge = 29;
+  const severity = clamp01((Math.max(0, distanceFromLine) - edge) / 28);
+  const label: SurfaceEffect['label'] = severity <= 0 ? 'TRACK' : severity < 0.45 ? 'RUNOFF' : 'GRASS';
 
   return {
     severity,
-    gripMultiplier: 1 - severity * 0.46,
-    powerMultiplier: 1 - severity * 0.58,
-    rollingResistance: severity * 11,
+    gripMultiplier: 1 - severity * 0.5,
+    powerMultiplier: 1 - severity * 0.64,
+    rollingResistance: severity * 13,
     label,
   };
 }
