@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { RACING_LINE, TRACK_CONTROLS, TRACK_LENGTH, nearestTrackProgress, projectTrack, sampleTrack } from './TrackModel';
 
 describe('TrackModel', () => {
-  it('densifies the control polygon into a smooth racing line', () => {
+  it('densifies a full race-scale circuit into a smooth racing line', () => {
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
-    expect(TRACK_LENGTH).toBeGreaterThan(1000);
+    expect(TRACK_LENGTH).toBeGreaterThan(4500);
   });
 
   it('has no discontinuous heading jumps around the closed circuit', () => {

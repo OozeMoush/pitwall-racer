@@ -32,9 +32,9 @@ export interface BalanceSnapshot {
   spreadToSecond: number;
 }
 
-const BASE_LAP_SECONDS = 57.5;
-const PIT_LOSS_SECONDS = 3.8;
-const REPRESENTATIVE_SECONDS_PER_LAP = 22;
+const BASE_LAP_SECONDS = 62;
+const PIT_LOSS_SECONDS = 7;
+const REPRESENTATIVE_SECONDS_PER_LAP = 58;
 const DT = 0.5;
 
 const modeLoad: Record<PaceMode, number> = {
@@ -43,11 +43,10 @@ const modeLoad: Record<PaceMode, number> = {
   PUSH: 0.88,
 };
 
-// Small direct pace effect; most of the difference still comes from tyre grip.
 const modeLapAdjustment: Record<PaceMode, number> = {
-  CONSERVE: 0.42,
+  CONSERVE: 0.48,
   BALANCED: 0,
-  PUSH: -0.28,
+  PUSH: -0.34,
 };
 
 export function simulateStrategy(plan: StrategyPlan, totalLaps = 8): StrategyResult {
@@ -125,7 +124,7 @@ export function benchmarkStrategies(totalLaps = 8): BalanceSnapshot {
 
   const fastest = legalResults[0];
   const second = legalResults[1] ?? fastest;
-  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 7);
+  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 8);
 
   return {
     fastest,

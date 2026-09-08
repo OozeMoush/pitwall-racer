@@ -4,13 +4,13 @@ import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 const ROAD_HALF_WIDTH = 68;
 const RUNOFF_HALF_WIDTH = 90;
-const SAMPLE_COUNT = 320;
+const SAMPLE_COUNT = 360;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
 
   const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(190, 130, 1, 1),
+    new THREE.PlaneGeometry(240, 160, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0x244b32, roughness: 1, metalness: 0 }),
   );
   grass.rotation.x = -Math.PI / 2;
@@ -45,6 +45,7 @@ export function createTrack3D(): THREE.Group {
   addPitBuildings(root);
   addGrandstands(root);
   addTracksideMarkers(root);
+  addSpeedReferencePosts(root);
 
   return root;
 }
@@ -61,7 +62,7 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
     const lw = toWorld(left.x, left.y, height);
     const rw = toWorld(right.x, right.y, height);
     vertices.push(lw.x, lw.y, lw.z, rw.x, rw.y, rw.z);
-    uvs.push(0, p * 18, 1, p * 18);
+    uvs.push(0, p * 26, 1, p * 26);
 
     if (i < SAMPLE_COUNT) {
       const a = i * 2;
@@ -84,7 +85,7 @@ function addKerbs(root: THREE.Group): void {
   const geometry = new THREE.BoxGeometry(0.78, 0.08, 0.24);
   const red = new THREE.MeshStandardMaterial({ color: 0xe94747, roughness: 0.72 });
   const white = new THREE.MeshStandardMaterial({ color: 0xf0f1ec, roughness: 0.72 });
-  const pieces = 132;
+  const pieces = 168;
 
   for (let i = 0; i < pieces; i++) {
     const progress = i / pieces;
@@ -117,12 +118,13 @@ function addStartFinish(root: THREE.Group): void {
 
 function addGridBoxes(root: THREE.Group): void {
   const mat = new THREE.MeshStandardMaterial({ color: 0xf0f0ec, roughness: 0.72 });
-  for (let row = 0; row < 8; row++) {
-    const progress = 0.009 + row * 0.018;
-    const side = row % 2 === 0 ? -1 : 1;
-    const p = sampleTrack(progress, side * 16);
+  for (let slot = 0; slot < 8; slot++) {
+    const row = Math.floor(slot / 2);
+    const progress = 0.052 - row * 0.0135;
+    const side = slot % 2 === 0 ? -1 : 1;
+    const p = sampleTrack(progress, side * 22);
     const world = toWorld(p.x, p.y, 0.085);
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.025, 0.07), mat);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.025, 0.07), mat);
     box.position.copy(world);
     box.rotation.y = headingToYaw(p.heading);
     root.add(box);
@@ -154,9 +156,9 @@ function addGrandstands(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0x6e7478, roughness: 0.9 });
   const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x1c2226, roughness: 0.72, metalness: 0.08 });
   const locations: Array<[number, number, number]> = [
-    [0.16, -122, 8],
-    [0.49, 116, 10],
-    [0.73, -118, 8],
+    [0.15, -122, 9],
+    [0.47, 116, 11],
+    [0.76, -118, 9],
   ];
 
   for (const [progress, lane, length] of locations) {
@@ -180,7 +182,7 @@ function addGrandstands(root: THREE.Group): void {
 function addTracksideMarkers(root: THREE.Group): void {
   const postMat = new THREE.MeshStandardMaterial({ color: 0xe6e8e4, roughness: 0.8 });
   const boardMat = new THREE.MeshStandardMaterial({ color: 0x192126, roughness: 0.6 });
-  for (const progress of [0.18, 0.41, 0.64, 0.87]) {
+  for (const progress of [0.15, 0.33, 0.51, 0.69, 0.86]) {
     const p = sampleTrack(progress, 108);
     const world = toWorld(p.x, p.y, 0);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.5, 0.12), postMat);
@@ -191,5 +193,20 @@ function addTracksideMarkers(root: THREE.Group): void {
     board.rotation.y = headingToYaw(p.heading);
     board.castShadow = true;
     root.add(board);
+  }
+}
+
+function addSpeedReferencePosts(root: THREE.Group): void {
+  const material = new THREE.MeshStandardMaterial({ color: 0xd8dcd7, roughness: 0.92 });
+  const geometry = new THREE.BoxGeometry(0.12, 0.7, 0.12);
+  const count = 72;
+  for (let i = 0; i < count; i++) {
+    const side = i % 2 === 0 ? 1 : -1;
+    const p = sampleTrack((i + 0.35) / count, side * 101);
+    const world = toWorld(p.x, p.y, 0);
+    const post = new THREE.Mesh(geometry, material);
+    post.position.set(world.x, 0.35, world.z);
+    post.castShadow = true;
+    root.add(post);
   }
 }

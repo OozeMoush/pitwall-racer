@@ -9,31 +9,36 @@ export interface TrackProjection {
   y: number;
 }
 
-// Clockwise authored circuit. Point zero sits on the main straight.
-// The layout deliberately mixes a long straight, a heavy-braking right side,
-// a fast upper section and a technical left-side sequence so driving line and
-// braking matter before strategy systems do.
+// Clockwise fictional circuit built around the actual driving game rather than
+// around a compact technical demo. The long bottom straight lets the car reach
+// meaningful speed before a real braking event. The upper half mixes a fast
+// sweep with slower direction changes, while the left side finishes with an S
+// sequence that feeds cleanly back onto the straight without a spline cusp.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
-  { x: 430, y: 780 },
-  { x: 700, y: 790 },
-  { x: 1030, y: 775 },
-  { x: 1260, y: 715 },
-  { x: 1360, y: 600 },
-  { x: 1340, y: 470 },
-  { x: 1230, y: 390 },
-  { x: 1080, y: 400 },
-  { x: 980, y: 340 },
-  { x: 1020, y: 245 },
-  { x: 900, y: 190 },
-  { x: 720, y: 205 },
-  { x: 610, y: 290 },
-  { x: 560, y: 380 },
-  { x: 470, y: 345 },
-  { x: 350, y: 380 },
-  { x: 270, y: 490 },
-  { x: 285, y: 610 },
-  { x: 320, y: 710 },
-  { x: 360, y: 765 },
+  { x: 582, y: 930 },
+  { x: 1100, y: 930 },
+  { x: 1560, y: 925 },
+  { x: 1848, y: 900 },
+  { x: 2020, y: 840 },
+  { x: 2100, y: 740 },
+  { x: 2089, y: 640 },
+  { x: 2020, y: 560 },
+  { x: 1905, y: 500 },
+  { x: 1732, y: 470 },
+  { x: 1560, y: 470 },
+  { x: 1399, y: 520 },
+  { x: 1261, y: 540 },
+  { x: 1100, y: 500 },
+  { x: 962, y: 400 },
+  { x: 801, y: 300 },
+  { x: 594, y: 260 },
+  { x: 410, y: 300 },
+  { x: 238, y: 380 },
+  { x: 134, y: 500 },
+  { x: 180, y: 620 },
+  { x: 123, y: 720 },
+  { x: 215, y: 820 },
+  { x: 410, y: 880 },
 ];
 
 const SAMPLES_PER_CONTROL = 24;
