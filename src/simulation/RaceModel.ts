@@ -70,8 +70,9 @@ export function createAiField(): DriverState[] {
   return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => ({
     id: `ai-${index}`,
     name,
-    // Roughly one rendered car length plus a safety gap on the enlarged circuit.
-    progress: 0.145 - index * 0.019,
+    // Four staggered rows, roughly one body length apart. The previous 14.5%
+    // head start put the front row hundreds of metres up the road before GO.
+    progress: 0.052 - Math.floor(index / 2) * 0.0135,
     lap: 1,
     speed: 0,
     tire: createTire(start),
@@ -110,17 +111,12 @@ export function stepAi(
   const tireHealth = 1 - driver.tire.wear;
   const pace: PaceMode = remaining <= 2 && tireHealth > 0.35 ? 'PUSH' : tireHealth < 0.28 ? 'CONSERVE' : 'BALANCED';
   const ownPerformance = driver.skill * driver.tire.grip;
-  const profile = trackProfile(driver.progress, driver.skill, driver.tire.grip);
 
-  // Cars only form a train when they are actually occupying the same lane.
-  // Once an attacker moves laterally, it is allowed to keep its speed and try
-  // to complete the pass instead of inheriting the leader's speed forever.
   const laneBlocked = traffic.lateralGapAhead < 27;
   const following = traffic.gapMetres < 62 && laneBlocked;
   const canAttack = traffic.carAhead !== undefined
     && traffic.gapMetres < 32
     && tireHealth > 0.18
-    && profile.severity < 0.62
     && ownPerformance > traffic.carAhead.performance * 0.965;
   const playerThreatBehind = traffic.carBehind?.isPlayer === true
     && traffic.gapBehindMetres < 34
@@ -153,11 +149,11 @@ export function stepAi(
   let progress = driver.progress;
   let usedCompounds = driver.usedCompounds;
 
-  const updatedProfile = trackProfile(progress, driver.skill, tire.grip);
+  const profile = trackProfile(progress, driver.skill, tire.grip);
   const paceFactor = pace === 'PUSH' ? 1.03 : pace === 'CONSERVE' ? 0.97 : 1;
   const towFactor = battleState === 'FOLLOW' ? 1.018 : battleState === 'ATTACK' ? 1.045 : 1;
-  const attackKick = battleState === 'ATTACK' && updatedProfile.severity < 0.25 ? 3.5 : 0;
-  let targetSpeed = Math.min(112, updatedProfile.targetSpeed * paceFactor * towFactor + attackKick);
+  const attackKick = battleState === 'ATTACK' && profile.severity < 0.25 ? 3.5 : 0;
+  let targetSpeed = Math.min(112, profile.targetSpeed * paceFactor * towFactor + attackKick);
 
   if (traffic.carAhead && traffic.gapMetres < 72 && laneBlocked && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
     targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.992);
@@ -170,16 +166,16 @@ export function stepAi(
   const speed = approachSpeed(driver.speed, targetSpeed, dt, 37, 96);
 
   const attackSide = stableSide(driver.id) * 42;
-  const normalLine = updatedProfile.apexOffset + driver.preferredLane * 0.35;
+  const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
   let targetLane = normalLine;
 
   if (battleState === 'ATTACK') {
-    targetLane = clamp(updatedProfile.apexOffset + attackSide, -46, 46);
+    targetLane = clamp(profile.apexOffset + attackSide, -46, 46);
   } else if (battleState === 'FOLLOW' && traffic.carAhead) {
     targetLane = traffic.carAhead.laneOffset;
   } else if (battleState === 'DEFEND') {
-    const inside = Math.abs(updatedProfile.signedTurn) > 0.04
-      ? Math.sign(updatedProfile.signedTurn) * (12 + updatedProfile.severity * 10)
+    const inside = Math.abs(profile.signedTurn) > 0.04
+      ? Math.sign(profile.signedTurn) * (12 + profile.severity * 10)
       : stableSide(driver.id) * 10;
     targetLane = clamp(inside, -24, 24);
   } else if (battleState === 'SIDE_BY_SIDE' && traffic.alongside) {
