@@ -13,6 +13,11 @@ export interface TrafficResolution {
   contact: number;
 }
 
+const BODY_LONGITUDINAL = 58;
+const BODY_LATERAL = 25;
+const PRESSURE_LONGITUDINAL = 82;
+const PRESSURE_LATERAL = 40;
+
 export function resolvePlayerTraffic(
   vehicle: VehicleState,
   traffic: readonly TrafficCarPose[],
@@ -26,25 +31,41 @@ export function resolvePlayerTraffic(
   for (const car of traffic) {
     const dx = x - car.x;
     const dy = y - car.y;
-    const distance = Math.max(0.001, Math.hypot(dx, dy));
-    if (distance > 42) continue;
+    const cos = Math.cos(car.heading);
+    const sin = Math.sin(car.heading);
+    const longitudinal = dx * cos + dy * sin;
+    const lateral = -dx * sin + dy * cos;
+    const absLong = Math.abs(longitudinal);
+    const absLat = Math.abs(lateral);
 
-    pressure = Math.max(pressure, 1 - distance / 42);
+    if (absLong > PRESSURE_LONGITUDINAL || absLat > PRESSURE_LATERAL) continue;
 
-    // Cars start respecting each other's space before sprites overlap. This is an
-    // arcade handling rule, not rigid-body collision physics.
-    if (distance < 30) {
-      const overlap = 30 - distance;
-      const nx = dx / distance;
-      const ny = dy / distance;
-      const separation = overlap * 0.58;
-      x += nx * separation;
-      y += ny * separation;
+    const longPressure = 1 - absLong / PRESSURE_LONGITUDINAL;
+    const latPressure = 1 - absLat / PRESSURE_LATERAL;
+    pressure = Math.max(pressure, Math.max(0, Math.min(longPressure, latPressure)));
 
-      contact = Math.max(contact, overlap / 30);
+    if (absLong >= BODY_LONGITUDINAL || absLat >= BODY_LATERAL) continue;
+
+    const longOverlap = BODY_LONGITUDINAL - absLong;
+    const latOverlap = BODY_LATERAL - absLat;
+    const contactStrength = Math.min(1, Math.max(longOverlap / BODY_LONGITUDINAL, latOverlap / BODY_LATERAL));
+    contact = Math.max(contact, contactStrength);
+
+    // Resolve through the cheapest axis. A nose-to-tail overlap pushes the
+    // player longitudinally and scrubs speed; side contact mainly creates
+    // lateral separation. This avoids radial "magnet" collisions.
+    if (latOverlap < longOverlap * 0.65) {
+      const side = lateral >= 0 ? 1 : -1;
+      const separation = latOverlap + 1.5;
+      x += -sin * side * separation;
+      y += cos * side * separation;
+    } else {
+      const direction = longitudinal >= 0 ? 1 : -1;
+      const separation = longOverlap * 0.72;
+      x += cos * direction * separation;
+      y += sin * direction * separation;
       const relativeSpeed = Math.max(0, speed - car.speed);
-      const contactLoss = 0.7 + contact * 2.8 + relativeSpeed * 0.08;
-      speed = Math.max(0, speed - contactLoss);
+      speed = Math.max(0, speed - (1.2 + contactStrength * 4.8 + relativeSpeed * 0.12));
     }
   }
 
