@@ -78,7 +78,7 @@ export function controlArcadeCar(
 
   const aeroDrag = 0.00025 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
-  const brakingGrip = (0.58 + normalizedGrip * 0.48) * surfaceGrip;
+  const brakingGrip = (0.44 + normalizedGrip * 0.62) * surfaceGrip;
   const brakingAcceleration = brake * 29.5 * brakingGrip;
 
   let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag;
