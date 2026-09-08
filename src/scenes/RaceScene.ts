@@ -5,6 +5,7 @@ import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
 import { selectStartingTyre } from '../simulation/StrategySelection';
+import { surfaceEffect } from '../simulation/SurfaceModel';
 import { compoundColor, createTire, stepTire, type Compound, type PaceMode, type TireState } from '../simulation/TireModel';
 import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { aeroEffect, classify, createAiField, isTwoCompoundLegal, stepAiField, type DriverState } from '../simulation/RaceModel';
@@ -167,15 +168,15 @@ export class RaceScene extends Phaser.Scene {
     this.renderBrake = brake;
 
     const track = nearestTrackProgress(this.vehicle.x, this.vehicle.y);
+    const surface = surfaceEffect(track.distance);
     this.trackDistance = track.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = track.progress;
     this.updateLapAndCheckpoints(track.distance);
 
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
-    const offTrackLoad = Math.min(0.6, Math.max(0, track.distance - 55) / 100);
     const battleLoad = this.trafficPressure * 0.16;
-    const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + offTrackLoad + battleLoad);
+    const load = Math.min(1, Math.abs(steer) * 0.7 + throttle * 0.35 + brake * 0.55 + surface.severity * 0.6 + battleLoad);
     this.tire = stepTire(this.tire, this.pace, load + aero.dirtyAir * 0.45, dt);
     this.energy = stepEnergy(this.energy, {
       throttle,
@@ -188,7 +189,14 @@ export class RaceScene extends Phaser.Scene {
       { throttle, brake, steer },
       this.tire,
       dt,
-      { tow: aero.tow, dirtyAir: aero.dirtyAir, powerBoost: this.energy.powerBoost },
+      {
+        tow: aero.tow,
+        dirtyAir: aero.dirtyAir,
+        powerBoost: this.energy.powerBoost,
+        surfaceGrip: surface.gripMultiplier,
+        powerMultiplier: surface.powerMultiplier,
+        rollingResistance: surface.rollingResistance,
+      },
     );
 
     const traffic = this.ai
@@ -267,6 +275,7 @@ export class RaceScene extends Phaser.Scene {
     const speed = Math.round(this.vehicle.speed * 3.6);
     const color = `#${compoundColor(this.tire.compound).toString(16).padStart(6, '0')}`;
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
+    const surface = surfaceEffect(this.trackDistance);
     const standings = classify([
       { id: 'player', name: 'YOU', lap: this.lap, progress: this.trackProgress },
       ...this.ai.map((d) => ({ id: d.id, name: d.name, lap: d.lap, progress: d.progress })),
@@ -286,7 +295,13 @@ export class RaceScene extends Phaser.Scene {
     const battleCount = this.ai.filter((driver) => driver.battleState === 'ATTACK').length;
     const energyMode = this.energy.overtakeActive ? 'OVERTAKE' : this.energy.harvesting > this.energy.deployment ? 'HARVEST' : 'DEPLOY';
     const energyPct = Math.round(this.energy.soc * 100);
-    const battle = this.contactIntensity > 0.08 ? 'CONTACT' : this.trafficPressure > 0.18 ? 'SIDE BY SIDE' : effect;
+    const battle = surface.label !== 'TRACK'
+      ? surface.label
+      : this.contactIntensity > 0.08
+        ? 'CONTACT'
+        : this.trafficPressure > 0.18
+          ? 'SIDE BY SIDE'
+          : effect;
     const banner = raceBanner(this.flow);
     const startOverlay = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
     const finishOverlay = this.flow.phase === 'FINISHED'
