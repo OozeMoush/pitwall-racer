@@ -15,7 +15,7 @@ const HARD_LONGITUDINAL_BUFFER = 18;
  * first. If the local pack is too dense for another lane, the trailing car is
  * held a short distance behind instead of ghosting through the car in front.
  */
-export function resolveAiOccupancy(drivers: DriverState[]): DriverState[] {
+export function resolveAiOccupancy(drivers: DriverState[], _dt?: number): DriverState[] {
   const result = drivers.map((driver) => ({ ...driver }));
   const order = result
     .filter((driver) => !driver.finished)
