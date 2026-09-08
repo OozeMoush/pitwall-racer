@@ -4,7 +4,6 @@ import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
-import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyMode, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
 import {
@@ -23,7 +22,8 @@ import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
-import { createVehicle, stepVehicle, type VehicleState } from '../simulation/VehicleModel';
+import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
+import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
 import {
   aeroEffect,
   classify,
@@ -34,12 +34,12 @@ import {
   type RaceTrafficCar,
 } from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
-import { projectTrack, sampleTrack } from '../simulation/TrackModel';
+import { projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 
 const TOTAL_LAPS = 8;
 const FIXED_DT = 1 / 120;
-const CAMERA_HALF_HEIGHT = 24.5;
-const CAMERA_OFFSET = new THREE.Vector3(22, 36, 22);
+const CAMERA_HALF_HEIGHT = 21.5;
+const CAMERA_OFFSET = new THREE.Vector3(19, 33, 19);
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 
 export class ThreeRaceGame {
@@ -52,6 +52,7 @@ export class ThreeRaceGame {
   private readonly playerCar: FormulaCar3D;
   private readonly aiCars: FormulaCar3D[];
   private readonly cameraTarget = new THREE.Vector3();
+  private readonly physics: RapierRacePhysics;
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -97,6 +98,7 @@ export class ThreeRaceGame {
       this.scene.add(car.root);
       return car;
     });
+    this.physics = new RapierRacePhysics(this.vehicle, this.ai);
 
     this.bindInput();
     this.resize();
@@ -134,8 +136,6 @@ export class ThreeRaceGame {
       this.keys.add(event.code);
       if (event.repeat) return;
 
-      // One-hand layout. Driving remains WASD; every race action is reachable
-      // around the left side of a standard keyboard.
       if (event.code === 'Digit1') this.energyMode = 'HARVEST';
       if (event.code === 'Digit2') this.energyMode = 'NORMAL';
       if (event.code === 'Digit3') this.energyMode = 'DEPLOY';
@@ -183,7 +183,8 @@ export class ThreeRaceGame {
   private stepSimulation(dt: number): void {
     this.flow = stepRaceFlow(this.flow, dt);
     if (this.flow.phase !== 'RACING') {
-      this.vehicle = { ...this.vehicle, speed: 0, yawRate: 0 };
+      this.physics.stopPlayer();
+      this.vehicle = this.physics.playerState();
       this.steerInput = 0;
       return;
     }
@@ -204,6 +205,7 @@ export class ThreeRaceGame {
         }];
     this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
     this.ai = resolveAiOccupancy(this.ai, dt);
+    this.physics.syncAiKinematics(this.ai);
 
     if (this.stepPhysicalPit(dt)) return;
 
@@ -212,20 +214,8 @@ export class ThreeRaceGame {
     const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
 
-    const track = projectTrack(this.vehicle.x, this.vehicle.y);
-    const surface = surfaceEffect(track.distance);
-    this.trackDistance = track.distance;
-    this.lastTrackProgress = this.trackProgress;
-    this.trackProgress = track.progress;
-    this.updateLapAndCheckpoints(track.distance);
-
-    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, track.distance, this.pitRequested)) {
-      this.pitStop = beginPitStop();
-      this.pitRequested = false;
-      this.steerInput = 0;
-      return;
-    }
-
+    const beforeTrack = projectTrack(this.vehicle.x, this.vehicle.y);
+    const surface = surfaceEffect(beforeTrack.distance);
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const speedLoad = Math.min(1, this.vehicle.speed / 105);
     const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.82;
@@ -233,9 +223,6 @@ export class ThreeRaceGame {
     const battleLoad = this.trafficPressure * 0.17;
     const load = Math.min(1.15, corneringLoad + brakingLoad + throttle * 0.14 + surface.severity * 0.65 + battleLoad);
 
-    // Player tyre management now comes primarily from how the car is driven.
-    // We keep the internal BALANCED map rather than asking the player to operate
-    // a second three-way pace switch on top of hybrid mode.
     this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.45, dt);
     this.energy = stepEnergy(this.energy, {
       throttle,
@@ -244,29 +231,33 @@ export class ThreeRaceGame {
       mode: this.energyMode,
     }, dt);
 
-    this.vehicle = stepVehicle(
-      this.vehicle,
-      { throttle, brake, steer: this.steerInput },
-      this.tire,
-      dt,
-      {
-        tow: aero.tow,
-        dirtyAir: aero.dirtyAir,
-        powerBoost: this.energy.powerBoost,
-        surfaceGrip: surface.gripMultiplier,
-        powerMultiplier: surface.powerMultiplier,
-        rollingResistance: surface.rollingResistance,
-      },
-    );
+    this.physics.drivePlayer({
+      throttle,
+      brake,
+      steer: this.steerInput,
+      tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
+      surfaceGrip: surface.gripMultiplier,
+      powerBoost: this.energy.powerBoost + aero.tow * 0.22,
+      powerMultiplier: surface.powerMultiplier,
+      rollingResistance: surface.rollingResistance,
+    }, dt);
+    this.physics.step(dt);
+    this.vehicle = this.physics.playerState();
 
-    const traffic = this.ai.filter((driver) => !driver.finished).map((driver) => {
-      const p = sampleTrack(driver.progress, driver.laneOffset);
-      return { x: p.x, y: p.y, heading: p.heading, speed: driver.speed };
-    });
-    const resolved = resolvePlayerTraffic(this.vehicle, traffic);
-    this.vehicle = resolved.vehicle;
-    this.trafficPressure = resolved.pressure;
-    this.contactIntensity = resolved.contact;
+    const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
+    this.trackDistance = afterTrack.distance;
+    this.lastTrackProgress = this.trackProgress;
+    this.trackProgress = afterTrack.progress;
+    this.updateLapAndCheckpoints(afterTrack.distance);
+
+    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterTrack.distance, this.pitRequested)) {
+      this.pitStop = beginPitStop();
+      this.pitRequested = false;
+      this.steerInput = 0;
+    }
+
+    this.trafficPressure = this.estimateTrafficPressure();
+    this.contactIntensity *= Math.exp(-dt * 9);
   }
 
   private stepPhysicalPit(dt: number): boolean {
@@ -291,10 +282,12 @@ export class ThreeRaceGame {
 
     const speed = this.pitStop.phase === 'SERVICE' ? 0 : PIT_SPEED;
     this.vehicle = { ...createVehicle(pose.x, pose.y, pose.heading), speed };
+    this.physics.setPlayerState(this.vehicle);
 
     if (this.pitStop.phase === 'DONE') {
       const exit = pitLanePose(1);
       this.vehicle = { ...createVehicle(exit.x, exit.y, exit.heading), speed: PIT_SPEED };
+      this.physics.setPlayerState(this.vehicle);
       this.pitStop = createPitStopState();
     }
     return true;
@@ -318,8 +311,23 @@ export class ThreeRaceGame {
       const position = standings.findIndex((driver) => driver.id === 'player') + 1;
       this.flow = finishRaceFlow(this.flow);
       this.finishMessage = legal ? `P${position} · FINISH` : `P${position} · DISQUALIFIED`;
-      this.vehicle = { ...this.vehicle, speed: 0 };
+      this.physics.stopPlayer();
+      this.vehicle = this.physics.playerState();
     }
+  }
+
+  private estimateTrafficPressure(): number {
+    const playerDistance = (Math.max(0, this.lap - 1) + this.trackProgress) * TRACK_LENGTH;
+    let pressure = 0;
+    for (const driver of this.ai) {
+      if (driver.finished) continue;
+      const aiDistance = (Math.max(0, driver.lap - 1) + driver.progress) * TRACK_LENGTH;
+      const longitudinal = Math.abs(aiDistance - playerDistance);
+      const lateral = Math.abs(driver.laneOffset - projectTrack(this.vehicle.x, this.vehicle.y).laneOffset);
+      if (longitudinal > 72 || lateral > 40) continue;
+      pressure = Math.max(pressure, (1 - longitudinal / 72) * (1 - lateral / 40));
+    }
+    return pressure;
   }
 
   private syncVisuals(initial: boolean): void {
@@ -353,13 +361,10 @@ export class ThreeRaceGame {
 
   private updateCamera(dt: number): void {
     const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
-
-    // Fixed-direction GeneRally camera. A slightly softer positional follow also
-    // filters the tiny corrections that happen during wheel-to-wheel contact.
     const desiredTarget = position;
     const desired = desiredTarget.clone().add(CAMERA_OFFSET);
-    const cameraLerp = 1 - Math.exp(-dt * 3.8);
-    const targetLerp = 1 - Math.exp(-dt * 4.2);
+    const cameraLerp = 1 - Math.exp(-dt * 3.4);
+    const targetLerp = 1 - Math.exp(-dt * 3.8);
     this.cameraTarget.lerp(desiredTarget, targetLerp);
     this.camera.position.lerp(desired, cameraLerp);
     this.camera.lookAt(this.cameraTarget);
@@ -386,6 +391,7 @@ export class ThreeRaceGame {
     if (this.flow.phase !== 'RACING' || !canRecover(this.trackDistance, this.vehicle.speed)) return;
     const p = sampleTrack(this.trackProgress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
+    this.physics.setPlayerState(this.vehicle);
     this.steerInput = 0;
     this.trackDistance = 0;
   }
@@ -412,6 +418,7 @@ export class ThreeRaceGame {
     this.trafficPressure = 0;
     this.contactIntensity = 0;
     this.fixedAccumulator = 0;
+    this.physics.reset(this.vehicle, this.ai);
     this.playerCar.setCompound('MEDIUM');
     this.syncVisuals(true);
   }
@@ -455,13 +462,11 @@ export class ThreeRaceGame {
             : `NEXT ${this.selectedCompound} · F TO BOX`;
     const raceState = surface.label !== 'TRACK'
       ? surface.label
-      : this.contactIntensity > 0.08
-        ? 'CONTACT'
-        : this.trafficPressure > 0.18
-          ? 'SIDE BY SIDE'
-          : aero.dirtyAir > 0.01
-            ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
-            : 'CLEAN AIR';
+      : this.trafficPressure > 0.18
+        ? 'SIDE BY SIDE'
+        : aero.dirtyAir > 0.01
+          ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
+          : 'CLEAN AIR';
     const energyFlow = this.energy.harvesting > this.energy.deployment + 0.002
       ? 'CHARGING'
       : this.energy.deployment > this.energy.harvesting + 0.002
