@@ -16,7 +16,7 @@ export class RapierRacePhysics {
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
   private latestAi: DriverState[] = [];
-  private playerLap = 1;
+  private playerLap = 0;
 
   constructor(playerStart: VehicleState, ai: readonly DriverState[]) {
     this.world = new RAPIER.World({ x: 0, y: 0 });
@@ -36,12 +36,7 @@ export class RapierRacePhysics {
     this.driveBody(this.playerBody, input, dt, 1);
   }
 
-  /**
-   * All opponents are dynamic Rapier bodies. The player lap is supplied so AI
-   * traffic reasoning remains correct after lap one instead of treating the
-   * player as permanently one lap behind.
-   */
-  syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 1): void {
+  syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
     this.latestAi = ai;
     this.playerLap = playerLap;
     const states = this.aiStates();
@@ -56,16 +51,16 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
-      // The field must be a threat. Soft cars approach player DEPLOY pace, a
-      // Medium is around a strong NORMAL lap, and even a Hard is not a mobile
-      // chicane. Compound performance still comes mainly from cornering grip.
+      // Opponents now live in roughly the same electrical power envelope as a
+      // player using DEPLOY. The tyre then decides how much of that pace they
+      // can actually carry through a corner.
       const compoundBoost = driver.tire.compound === 'SOFT'
-        ? 0.19
+        ? 0.31
         : driver.tire.compound === 'MEDIUM'
-          ? 0.115
-          : 0.055;
-      const skillBoost = Math.max(0, driver.skill - 1) * 0.48;
-      const attackBoost = control.battleState === 'ATTACK' ? 0.055 : 0;
+          ? 0.21
+          : 0.12;
+      const skillBoost = Math.max(0, driver.skill - 1) * 0.72;
+      const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
 
       this.driveAi(index, {
         throttle: control.throttle,
@@ -83,9 +78,6 @@ export class RapierRacePhysics {
   driveAi(index: number, input: ArcadeCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    // A small control blend stops the controller from immediately overwriting
-    // the contact solver's velocity response on the very next 120 Hz tick.
-    // This keeps real impacts while removing the repeated push-pull buzz.
     this.driveBody(body, input, dt, 0.92);
   }
 
@@ -127,7 +119,7 @@ export class RapierRacePhysics {
 
   reset(playerStart: VehicleState, ai: readonly DriverState[]): void {
     this.setPlayerState(playerStart);
-    this.playerLap = 1;
+    this.playerLap = 0;
     ai.forEach((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
       this.setAiState(index, {
@@ -188,9 +180,6 @@ export class RapierRacePhysics {
       driver.laneOffset = projection.laneOffset;
       driver.speed = state.speed;
 
-      // The old abstract AI stop was triggered while advancing a virtual
-      // progress rail. Dynamic bodies overwrite that virtual progress, so the
-      // tyre change must be serviced from the real lap crossing instead.
       if (driver.lap > driver.pitLap && !driver.usedCompounds.has(driver.nextCompound)) {
         driver.tire = createTire(driver.nextCompound);
         driver.usedCompounds = new Set(driver.usedCompounds);
