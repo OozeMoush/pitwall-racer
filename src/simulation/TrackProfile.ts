@@ -19,32 +19,32 @@ function metresToProgress(metres: number): number {
  */
 export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfileSample {
   const here = signedHeadingDelta(progress - metresToProgress(24), progress + metresToProgress(24));
-  const near = signedHeadingDelta(progress + metresToProgress(35), progress + metresToProgress(95));
-  const far = signedHeadingDelta(progress + metresToProgress(90), progress + metresToProgress(180));
+  const near = signedHeadingDelta(progress + metresToProgress(38), progress + metresToProgress(105));
+  const far = signedHeadingDelta(progress + metresToProgress(105), progress + metresToProgress(205));
 
   const severity = clamp01(
     Math.max(
-      Math.abs(here) / 0.34,
+      Math.abs(here) / 0.33,
       Math.abs(near) / 0.42 * 0.96,
-      Math.abs(far) / 0.5 * 0.78,
+      Math.abs(far) / 0.5 * 0.8,
     ),
   );
 
   const safeSkill = clamp(skill, 0.9, 1.12);
   const safeGrip = clamp(grip, 0.62, 1.12);
 
-  // AI should be a race opponent, not scenery. The quick cars are capable of
-  // roughly the player's charged straight-line pace, but still have to brake
-  // heavily for the slowest corners.
-  const straightSpeed = 103 + (safeSkill - 0.9) * 27;
-  const cornerFloor = 39 + (safeSkill - 0.9) * 38;
-  const gripFactor = 0.78 + safeGrip * 0.22;
-  const targetSpeed = clamp((straightSpeed - severity * (straightSpeed - cornerFloor)) * gripFactor, 38, 112);
+  // NORMAL player power should be raceable but not enough to simply drive away.
+  // Quick AI approaches DEPLOY pace on straights and still has to give away a
+  // lot of speed in real braking zones.
+  const straightSpeed = 109 + (safeSkill - 0.9) * 32;
+  const cornerFloor = 43 + (safeSkill - 0.9) * 45;
+  const gripFactor = 0.77 + safeGrip * 0.23;
+  const targetSpeed = clamp((straightSpeed - severity * (straightSpeed - cornerFloor)) * gripFactor, 40, 116);
 
   const signedTurn = here * 0.6 + near * 0.4;
   const apexOffset = Math.abs(signedTurn) < 0.03
     ? 0
-    : Math.sign(signedTurn) * Math.min(20, 6 + severity * 14);
+    : Math.sign(signedTurn) * Math.min(22, 7 + severity * 15);
 
   return { signedTurn, severity, targetSpeed, apexOffset };
 }
