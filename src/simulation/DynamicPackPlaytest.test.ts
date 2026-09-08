@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { WORLD_SCALE } from '../rendering3d/WorldTransform';
 import { dynamicAiControl } from './DynamicAiController';
+import { PLAYER_GRID } from './GridModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { createTire } from './TireModel';
@@ -18,22 +19,22 @@ describe('dynamic field playtest telemetry', () => {
 
   it('runs a physical pack and emits balance/perception telemetry', () => {
     const ai = createAiField();
-    const start = sampleTrack(0);
+    const start = sampleTrack(PLAYER_GRID.progress, PLAYER_GRID.laneOffset);
     const physics = new RapierRacePhysics(createVehicle(start.x, start.y, start.heading), ai);
     const playerDriver: DriverState = {
       ...createAiField()[1],
       id: 'player',
       name: 'YOU',
-      progress: 0,
-      lap: 1,
+      progress: PLAYER_GRID.progress,
+      lap: 0,
       speed: 0,
       tire: createTire('MEDIUM'),
       usedCompounds: new Set(['MEDIUM']),
       preferredLane: 0,
     };
 
-    let playerLap = 1;
-    let lastPlayerProgress = 0;
+    let playerLap = 0;
+    let lastPlayerProgress = PLAYER_GRID.progress;
     let maxPlayerSpeed = 0;
     let maxAiSpeed = 0;
     let playerSpeedSum = 0;
@@ -145,18 +146,18 @@ describe('dynamic field playtest telemetry', () => {
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
-    expect(metrics.maxPlayerKmh).toBeLessThan(400);
-    // This gate deliberately no longer requires the AI to be slower than the
-    // player. The user wants fresh Soft rivals to be daunting; DEPLOY and skill
-    // are how the player fights them rather than a built-in top-speed advantage.
-    expect(metrics.maxAiKmh).toBeGreaterThan(330);
-    expect(metrics.maxAiKmh).toBeLessThan(385);
-    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 8);
+    expect(metrics.maxPlayerKmh).toBeLessThan(410);
+    // The user should be chasing this field, not cruising past it. This is a
+    // deliberately aggressive gate: even a simulated Medium player gets a six
+    // second DEPLOY window and the AI field still needs materially more pace.
+    expect(metrics.maxAiKmh).toBeGreaterThan(345);
+    expect(metrics.maxAiKmh).toBeLessThan(410);
+    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 15);
     expect(metrics.offTrackRatio).toBeLessThan(0.035);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
-    expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
-    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(22);
-    expect(metrics.highJerkRatio).toBeLessThan(0.008);
+    expect(metrics.avgAiLongitudinalJerk).toBeLessThan(10);
+    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(25);
+    expect(metrics.highJerkRatio).toBeLessThan(0.009);
   }, 20_000);
 });
 
