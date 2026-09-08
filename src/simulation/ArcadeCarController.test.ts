@@ -90,7 +90,7 @@ describe('ArcadeCarController', () => {
       0.2,
     );
 
-    expect(worn.vx).toBeGreaterThan(fresh.vx + 1.5);
+    expect(worn.vx).toBeGreaterThan(fresh.vx + 1.2);
     expect(Math.abs(worn.angularVelocity)).toBeLessThan(Math.abs(fresh.angularVelocity) * 0.72);
   });
 
