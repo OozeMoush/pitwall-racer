@@ -14,9 +14,10 @@ describe('TireModel', () => {
     expect(push.wear).toBeGreaterThan(conserve.wear * 1.8);
   });
 
-  it('creates a performance cliff late in tyre life', () => {
-    let tire = { ...createTire('SOFT'), wear: 0.8 };
+  it('creates a clearly felt performance cliff late in tyre life', () => {
+    const fresh = createTire('SOFT');
+    let tire = { ...fresh, wear: 0.8 };
     tire = stepTire(tire, 'PUSH', 0.9, 1);
-    expect(tire.grip).toBeLessThan(0.8);
+    expect(tire.grip).toBeLessThan(fresh.grip * 0.89);
   });
 });
