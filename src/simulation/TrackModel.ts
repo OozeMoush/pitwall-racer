@@ -36,13 +36,13 @@ export const TRACK_CONTROLS: readonly TrackPoint[] = [
   { x: 285, y: 315 },
   { x: 220, y: 445 },
   { x: 245, y: 565 },
-  // Real chicane: repeated ~80° changes with enough separation to require
-  // left-right-left steering, but no spline cusp or near-180° hook.
-  { x: 330, y: 615 },
-  { x: 285, y: 675 },
-  { x: 350, y: 735 },
-  { x: 300, y: 795 },
-  { x: 365, y: 850 },
+  // Chicane has a readable approach, right kink, left transition and exit.
+  // The offsets are large enough to demand steering, but radii remain smooth.
+  { x: 345, y: 620 },
+  { x: 355, y: 675 },
+  { x: 305, y: 730 },
+  { x: 290, y: 790 },
+  { x: 345, y: 850 },
   { x: 430, y: 910 },
 ];
 
