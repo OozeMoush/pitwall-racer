@@ -5,6 +5,7 @@ import { resolvePlayerTraffic } from '../simulation/BattleModel';
 import { createEnergy, stepEnergy, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
+import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
@@ -110,9 +111,15 @@ export class RaceScene extends Phaser.Scene {
   }
 
   private handleOneShotKeys(): void {
-    if (this.flow.phase === 'FINISHED' && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
-      this.scene.restart();
-      return;
+    if (Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+      if (this.flow.phase === 'FINISHED') {
+        this.scene.restart();
+        return;
+      }
+      if (this.flow.phase === 'RACING' && canRecover(this.trackDistance, this.vehicle.speed)) {
+        this.recoverToTrack();
+        return;
+      }
     }
     if (Phaser.Input.Keyboard.JustDown(this.keys.push)) this.pace = 'PUSH';
     if (Phaser.Input.Keyboard.JustDown(this.keys.balanced)) this.pace = 'BALANCED';
@@ -121,6 +128,17 @@ export class RaceScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keys.medium)) this.chooseCompound('MEDIUM');
     if (Phaser.Input.Keyboard.JustDown(this.keys.hard)) this.chooseCompound('HARD');
     if (this.flow.phase === 'RACING' && Phaser.Input.Keyboard.JustDown(this.keys.pit)) this.pitRequested = !this.pitRequested;
+  }
+
+  private recoverToTrack(): void {
+    const release = sampleTrack(this.trackProgress, 0);
+    this.vehicle = createVehicle(release.x, release.y, release.heading);
+    this.steerInput = 0;
+    this.renderSteer = 0;
+    this.renderBrake = 0;
+    this.trackDistance = 0;
+    this.trafficPressure = 0;
+    this.contactIntensity = 0;
   }
 
   private chooseCompound(compound: Compound): void {
@@ -283,6 +301,7 @@ export class RaceScene extends Phaser.Scene {
     const color = `#${compoundColor(this.tire.compound).toString(16).padStart(6, '0')}`;
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const surface = surfaceEffect(this.trackDistance);
+    const recoverAvailable = this.flow.phase === 'RACING' && canRecover(this.trackDistance, this.vehicle.speed);
     const standings = classify([
       { id: 'player', name: 'YOU', lap: this.lap, progress: this.trackProgress },
       ...this.ai.map((d) => ({ id: d.id, name: d.name, lap: d.lap, progress: d.progress })),
@@ -305,13 +324,15 @@ export class RaceScene extends Phaser.Scene {
     const battleCount = this.ai.filter((driver) => driver.battleState === 'ATTACK').length;
     const energyMode = this.energy.overtakeActive ? 'OVERTAKE' : this.energy.harvesting > this.energy.deployment ? 'HARVEST' : 'DEPLOY';
     const energyPct = Math.round(this.energy.soc * 100);
-    const battle = surface.label !== 'TRACK'
-      ? surface.label
-      : this.contactIntensity > 0.08
-        ? 'CONTACT'
-        : this.trafficPressure > 0.18
-          ? 'SIDE BY SIDE'
-          : effect;
+    const battle = recoverAvailable
+      ? 'R TO RECOVER'
+      : surface.label !== 'TRACK'
+        ? surface.label
+        : this.contactIntensity > 0.08
+          ? 'CONTACT'
+          : this.trafficPressure > 0.18
+            ? 'SIDE BY SIDE'
+            : effect;
     const banner = raceBanner(this.flow);
     const startOverlay = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
     const finishOverlay = this.flow.phase === 'FINISHED'
@@ -324,6 +345,6 @@ export class RaceScene extends Phaser.Scene {
       const aiDriver = this.ai.find((driver) => driver.id === d.id);
       const marker = aiDriver?.battleState === 'ATTACK' ? ' ↗' : aiDriver?.battleState === 'FOLLOW' ? ' ·' : '';
       return `<span class="${d.id === 'player' ? 'you' : ''}">${i + 1}. ${d.name}${marker}</span>`;
-    }).join('')}</div><div class="hint">WASD DRIVE · 1/2/3 PACE · HOLD SPACE OVERTAKE · P PIT · R RESTART AFTER FINISH</div>`;
+    }).join('')}</div><div class="hint">WASD DRIVE · 1/2/3 PACE · HOLD SPACE OVERTAKE · P PIT · R RECOVER WHEN STRANDED / RESTART AFTER FINISH</div>`;
   }
 }
