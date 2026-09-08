@@ -9,45 +9,44 @@ export interface TrackProjection {
   y: number;
 }
 
-// Clockwise fictional circuit built around the actual driving game rather than
-// around a compact technical demo. The bottom straight is deliberately long,
-// but the lap now also contains a proper braking corner, a technical upper
-// sector and a late S sequence so holding W is not a complete driving strategy.
+// Clockwise fictional circuit designed as a readable arcade race track rather
+// than a smooth test spline. It keeps one long acceleration zone, a fast upper
+// section, a real left-right chicane and a final braking corner. The chicane is
+// deliberately large enough that the spline cannot visually collapse into one
+// straight line.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
-  { x: 582, y: 930 },
-  { x: 1100, y: 930 },
+  { x: 560, y: 930 },
+  { x: 1080, y: 930 },
   { x: 1580, y: 930 },
-  { x: 1900, y: 920 },
-  { x: 2070, y: 900 },
-  { x: 2160, y: 840 },
-  { x: 2180, y: 760 },
-  { x: 2140, y: 690 },
-  { x: 2050, y: 640 },
-  { x: 1920, y: 620 },
-  { x: 1760, y: 620 },
-  { x: 1620, y: 590 },
-  { x: 1500, y: 520 },
-  { x: 1435, y: 430 },
-  { x: 1485, y: 345 },
-  { x: 1410, y: 285 },
-  { x: 1260, y: 285 },
-  { x: 1140, y: 350 },
-  { x: 1040, y: 440 },
-  { x: 910, y: 485 },
-  { x: 800, y: 435 },
-  { x: 715, y: 340 },
-  { x: 590, y: 285 },
-  { x: 440, y: 300 },
-  { x: 310, y: 365 },
-  { x: 225, y: 470 },
-  { x: 230, y: 585 },
-  { x: 300, y: 665 },
-  { x: 245, y: 745 },
-  { x: 300, y: 835 },
-  { x: 430, y: 900 },
+  { x: 1940, y: 920 },
+  { x: 2110, y: 865 },
+  { x: 2180, y: 750 },
+  { x: 2150, y: 625 },
+  { x: 2040, y: 550 },
+  { x: 1840, y: 520 },
+  { x: 1640, y: 520 },
+  { x: 1480, y: 470 },
+  { x: 1370, y: 375 },
+  { x: 1395, y: 270 },
+  { x: 1280, y: 205 },
+  { x: 1110, y: 220 },
+  { x: 950, y: 300 },
+  { x: 800, y: 345 },
+  { x: 675, y: 300 },
+  { x: 560, y: 220 },
+  { x: 410, y: 225 },
+  { x: 285, y: 315 },
+  { x: 220, y: 445 },
+  { x: 245, y: 565 },
+  // Proper chicane: four separated direction changes, not a decorative wiggle.
+  { x: 395, y: 635 },
+  { x: 235, y: 710 },
+  { x: 420, y: 785 },
+  { x: 285, y: 855 },
+  { x: 430, y: 910 },
 ];
 
-const SAMPLES_PER_CONTROL = 24;
+const SAMPLES_PER_CONTROL = 28;
 
 export const RACING_LINE: readonly TrackPoint[] = buildClosedCatmullRom(TRACK_CONTROLS, SAMPLES_PER_CONTROL);
 
