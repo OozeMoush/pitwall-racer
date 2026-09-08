@@ -156,7 +156,7 @@ describe('RaceModel', () => {
     expect(next.laneOffset).toBeGreaterThan(driver.laneOffset);
   });
 
-  it('undercuts one lap early when trapped in traffic near the pit window', () => {
+  it('undercuts one lap early when genuinely trapped in the same lane', () => {
     const [leader, chaser] = createAiField();
     leader.lap = 3;
     chaser.lap = 3;
@@ -164,6 +164,8 @@ describe('RaceModel', () => {
     chaser.progress = 0.5;
     leader.skill = 1.04;
     chaser.skill = 0.98;
+    leader.laneOffset = 0;
+    chaser.laneOffset = 0;
     chaser.plannedPitLap = 4;
     chaser.pitLap = 4;
 
