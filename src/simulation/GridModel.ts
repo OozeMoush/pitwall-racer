@@ -6,8 +6,9 @@ export interface GridSlot {
 }
 
 // Start/finish is progress 0. Every car begins behind it, in four staggered
-// rows. The player occupies P8 on the right-hand side of the final row.
-export const PLAYER_GRID: GridSlot = { progress: 0.978, laneOffset: 8 };
+// rows. P8 sits a fraction behind P7 so live classification is deterministic
+// even before either car moves.
+export const PLAYER_GRID: GridSlot = { progress: 0.9774, laneOffset: 8 };
 
 const AI_GRID: readonly GridSlot[] = [
   { progress: 0.996, laneOffset: -8 },
