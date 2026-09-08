@@ -125,7 +125,7 @@ describe('RaceModel', () => {
     driver.skill = 1.08;
     const player: RaceTrafficCar = {
       id: 'player',
-      lap: 1,
+      lap: driver.lap,
       progress: 0.4 + 12 / TRACK_LENGTH,
       speed: 68,
       laneOffset: 0,
@@ -144,7 +144,7 @@ describe('RaceModel', () => {
     driver.laneOffset = 0;
     const player: RaceTrafficCar = {
       id: 'player',
-      lap: 1,
+      lap: driver.lap,
       progress: 0.5 - 20 / TRACK_LENGTH,
       speed: 92,
       laneOffset: -12,
@@ -163,7 +163,7 @@ describe('RaceModel', () => {
     driver.laneOffset = 8;
     const player: RaceTrafficCar = {
       id: 'player',
-      lap: 1,
+      lap: driver.lap,
       progress: 0.55,
       speed: 78,
       laneOffset: -18,
