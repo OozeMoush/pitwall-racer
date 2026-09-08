@@ -40,4 +40,29 @@ describe('VehicleModel tyre feel', () => {
     expect(grass.speed).toBeLessThan(track.speed);
     expect(Math.abs(grass.yawRate)).toBeLessThan(Math.abs(track.yawRate));
   });
+
+  it('has materially less steering authority at very high speed', () => {
+    const tire = createTire('MEDIUM');
+    const controls = { throttle: 0, brake: 0, steer: 1 };
+    const mediumSpeed = { ...createVehicle(0, 0, 0), speed: 55 };
+    const highSpeed = { ...createVehicle(0, 0, 0), speed: 100 };
+
+    const mediumNext = stepVehicle(mediumSpeed, controls, tire, 0.1);
+    const highNext = stepVehicle(highSpeed, controls, tire, 0.1);
+
+    expect(Math.abs(highNext.yawRate)).toBeLessThan(Math.abs(mediumNext.yawRate) * 0.72);
+  });
+
+  it('gets a higher useful speed ceiling with hybrid assistance', () => {
+    const tire = createTire('MEDIUM');
+    const controls = { throttle: 1, brake: 0, steer: 0 };
+    const fast = { ...createVehicle(0, 0, 0), speed: 99 };
+
+    const emptyBattery = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0 });
+    const charged = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0.1 });
+    const overtake = stepVehicle(fast, controls, tire, 0.3, { powerBoost: 0.24 });
+
+    expect(charged.speed).toBeGreaterThan(emptyBattery.speed);
+    expect(overtake.speed).toBeGreaterThan(charged.speed);
+  });
 });
