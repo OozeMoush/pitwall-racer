@@ -17,17 +17,29 @@ const push: StrategyPlan = {
   paceForLap: pushAlways,
 };
 
+const noStopMedium: StrategyPlan = {
+  name: 'medium no stop',
+  startCompound: 'MEDIUM',
+  paceForLap: () => 'BALANCED',
+};
+
 describe('StrategySimulator', () => {
   it('keeps the dry two-compound rule as a hard legality constraint', () => {
-    const illegal = simulateStrategy({
-      name: 'one tyre all race',
-      startCompound: 'MEDIUM',
-      paceForLap: () => 'BALANCED',
-    });
+    const illegal = simulateStrategy(noStopMedium);
     const legal = simulateStrategy(balanced);
 
     expect(illegal.legal).toBe(false);
     expect(legal.legal).toBe(true);
+  });
+
+  it('makes a sensible stop faster than nursing one Medium set to the flag even before legality', () => {
+    const noStop = simulateStrategy(noStopMedium);
+    const oneStop = simulateStrategy(balanced);
+
+    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
+    // ~15% grip loss is already a major handling change because the live car
+    // applies grip non-linearly to braking, rotation and corner-exit traction.
+    expect(noStop.laps[7].gripAverage).toBeLessThan(noStop.laps[1].gripAverage * 0.85);
   });
 
   it('makes PUSH buy opening pace by spending materially more tyre', () => {

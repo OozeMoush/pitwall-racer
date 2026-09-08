@@ -5,7 +5,10 @@ import type { DriverState, RaceTrafficCar } from './RaceModel';
 import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
-const CAR_HALF_LENGTH = 10;
+// With WORLD_SCALE applied, 8.5 simulation units is almost exactly the visible
+// half-length of the procedural car. The previous 10-unit box extended well
+// beyond the wing tips and caused invisible nose-to-tail contact on close runs.
+const CAR_HALF_LENGTH = 8.5;
 const CAR_HALF_WIDTH = 4.1;
 
 export class RapierRacePhysics {
