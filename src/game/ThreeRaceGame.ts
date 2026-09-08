@@ -5,6 +5,7 @@ import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { createEnergy, stepEnergy, type EnergyMode, type EnergyState } from '../simulation/EnergyModel';
+import { PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
 import { classifyLivePositions } from '../simulation/LiveStandingsModel';
 import {
@@ -30,6 +31,7 @@ import {
   aeroEffect,
   createAiField,
   isTwoCompoundLegal,
+  raceDistance,
   stepAiField,
   type DriverState,
   type RaceTrafficCar,
@@ -83,9 +85,11 @@ export class ThreeRaceGame {
   private pitStop: PitStopState = createPitStopState();
   private selectedCompound: Compound = 'SOFT';
   private usedCompounds = new Set<Compound>(['MEDIUM']);
-  private lap = 1;
-  private trackProgress = 0;
-  private lastTrackProgress = 0;
+  // Lap zero exists only on the physical grid. The first crossing of the line
+  // starts lap one; it must never be recorded as a completed lap.
+  private lap = 0;
+  private trackProgress = PLAYER_GRID.progress;
+  private lastTrackProgress = PLAYER_GRID.progress;
   private nextCheckpoint = 1;
   private pitRequested = false;
   private finishMessage = '';
@@ -227,7 +231,9 @@ export class ThreeRaceGame {
           performance: this.tire.grip * playerModePerformance,
           isPlayer: true,
         }];
-    this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
+    // Rapier owns physical progress/lap truth. RaceModel still owns tyre,
+    // strategy and traffic state, but must not advance a second virtual car.
+    this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic, false);
     this.ai = resolveAiOccupancy(this.ai, dt);
     this.physics.syncAiKinematics(this.ai, dt, this.lap);
 
@@ -336,11 +342,23 @@ export class ThreeRaceGame {
 
   private updateLapAndCheckpoints(distanceFromLine: number): void {
     if (distanceFromLine > 82) return;
+    const crossedStart = this.lastTrackProgress > 0.88 && this.trackProgress < 0.12;
+
+    // Lights out occurs behind the line. Crossing it for the first time only
+    // moves the internal state from grid lap 0 to racing lap 1.
+    if (this.lap === 0) {
+      if (crossedStart) {
+        this.lap = 1;
+        this.nextCheckpoint = 1;
+      }
+      return;
+    }
+
     const thresholds = [0, 0.24, 0.49, 0.74];
     if (this.nextCheckpoint <= 3 && this.trackProgress >= thresholds[this.nextCheckpoint]) this.nextCheckpoint += 1;
 
-    const crossedStart = this.nextCheckpoint === 4 && this.lastTrackProgress > 0.88 && this.trackProgress < 0.12;
-    if (!crossedStart) return;
+    const completedLap = this.nextCheckpoint === 4 && crossedStart;
+    if (!completedLap) return;
 
     const lapTime = this.timing.raceTime - this.timing.lapStartTime;
     const s1 = this.sectorTimes[0] ?? lapTime / 3;
@@ -401,13 +419,14 @@ export class ThreeRaceGame {
   }
 
   private estimateTrafficPressure(): number {
-    const playerDistance = (Math.max(0, this.lap - 1) + this.trackProgress) * TRACK_LENGTH;
+    const playerDistance = raceDistance(this.lap, this.trackProgress) * TRACK_LENGTH;
     let pressure = 0;
+    const playerLane = projectTrack(this.vehicle.x, this.vehicle.y).laneOffset;
     for (const driver of this.ai) {
       if (driver.finished) continue;
-      const aiDistance = (Math.max(0, driver.lap - 1) + driver.progress) * TRACK_LENGTH;
+      const aiDistance = raceDistance(driver.lap, driver.progress) * TRACK_LENGTH;
       const longitudinal = Math.abs(aiDistance - playerDistance);
-      const lateral = Math.abs(driver.laneOffset - projectTrack(this.vehicle.x, this.vehicle.y).laneOffset);
+      const lateral = Math.abs(driver.laneOffset - playerLane);
       if (longitudinal > 72 || lateral > 34) continue;
       pressure = Math.max(pressure, (1 - longitudinal / 72) * (1 - lateral / 34));
     }
@@ -493,9 +512,9 @@ export class ThreeRaceGame {
     this.pitStop = createPitStopState();
     this.selectedCompound = 'SOFT';
     this.usedCompounds = new Set(['MEDIUM']);
-    this.lap = 1;
-    this.trackProgress = 0;
-    this.lastTrackProgress = 0;
+    this.lap = 0;
+    this.trackProgress = PLAYER_GRID.progress;
+    this.lastTrackProgress = PLAYER_GRID.progress;
     this.nextCheckpoint = 1;
     this.pitRequested = false;
     this.finishMessage = '';
@@ -516,7 +535,7 @@ export class ThreeRaceGame {
   }
 
   private startVehicle(): VehicleState {
-    const start = sampleTrack(0);
+    const start = sampleTrack(PLAYER_GRID.progress, PLAYER_GRID.laneOffset);
     return createVehicle(start.x, start.y, start.heading);
   }
 
@@ -586,13 +605,14 @@ export class ThreeRaceGame {
 
   private renderLapBoard(): string {
     const rows = [...this.lapHistory];
+    const displayLap = Math.max(1, this.lap);
     if (this.flow.phase !== 'FINISHED' && this.lap <= TOTAL_LAPS) {
       const elapsed = this.timing.currentLapTime;
       const s1 = this.sectorTimes[0];
       const s2 = this.sectorTimes[1];
       const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
       rows.push({
-        lap: this.lap,
+        lap: displayLap,
         compound: this.tire.compound,
         s1: s1 ?? (this.nextSector === 1 ? currentSectorElapsed : 0),
         s2: s2 ?? (this.nextSector === 2 ? currentSectorElapsed : 0),
@@ -607,7 +627,7 @@ export class ThreeRaceGame {
     const bestS3 = this.playerBestSector('s3');
 
     return rows.slice(-8).map((row) => {
-      const current = row.lap === this.lap && this.flow.phase !== 'FINISHED';
+      const current = row.lap === displayLap && this.flow.phase !== 'FINISHED';
       const completed = !current;
       const lapTone = completed ? timingTone(row.lapTime, personalBest, this.sessionFastestLap) : 'neutral';
       const sectorClass = (value: number, best: number | undefined) => completed && best !== undefined && Math.abs(value - best) < 0.0005 ? 'timing-green' : '';
@@ -629,8 +649,9 @@ export class ThreeRaceGame {
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const banner = raceBanner(this.flow);
     const legal = isTwoCompoundLegal(this.usedCompounds);
+    const displayLap = Math.max(1, Math.min(this.lap, TOTAL_LAPS));
     const obligation = this.flow.phase === 'RACING'
-      ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, this.lap, TOTAL_LAPS, this.pitRequested || isPitActive(this.pitStop))
+      ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, displayLap, TOTAL_LAPS, this.pitRequested || isPitActive(this.pitStop))
       : undefined;
     const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
     const speed = Math.round(this.vehicle.speed * 3.6);
@@ -687,7 +708,7 @@ export class ThreeRaceGame {
 
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
-        <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div>
+        <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${TOTAL_LAPS}</span></div>
         <div class="timing-strip"><span>S1 <b>${sectorDisplay[0]}</b></span><span>S2 <b>${sectorDisplay[1]}</b></span><span>S3 <b>${sectorDisplay[2]}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
       <div class="tower">${towerHtml}</div>
