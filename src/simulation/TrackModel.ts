@@ -9,31 +9,44 @@ export interface TrackProjection {
   y: number;
 }
 
-// Clockwise authored circuit. Point zero sits on the main straight.
-// The layout deliberately mixes a long straight, a heavy-braking right side,
-// a fast upper section and a technical left-side sequence so driving line and
-// braking matter before strategy systems do.
+// Clockwise fictional circuit built around the actual driving game rather than
+// around a compact technical demo. The long bottom straight lets the car reach
+// meaningful speed before a real braking event. The upper half then mixes a
+// fast sweep with two slower direction changes and a tight left-side complex.
+// At normal race pace the lap should contain obvious "flat / brake / rotate /
+// accelerate" phases instead of being one continuous full-throttle corner.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
-  { x: 430, y: 780 },
-  { x: 700, y: 790 },
-  { x: 1030, y: 775 },
-  { x: 1260, y: 715 },
-  { x: 1360, y: 600 },
-  { x: 1340, y: 470 },
-  { x: 1230, y: 390 },
-  { x: 1080, y: 400 },
-  { x: 980, y: 340 },
-  { x: 1020, y: 245 },
-  { x: 900, y: 190 },
-  { x: 720, y: 205 },
-  { x: 610, y: 290 },
-  { x: 560, y: 380 },
-  { x: 470, y: 345 },
-  { x: 350, y: 380 },
-  { x: 270, y: 490 },
-  { x: 285, y: 610 },
-  { x: 320, y: 710 },
-  { x: 360, y: 765 },
+  { x: 250, y: 930 },
+  { x: 650, y: 930 },
+  { x: 1100, y: 930 },
+  { x: 1500, y: 925 },
+  { x: 1750, y: 900 },
+  { x: 1900, y: 840 },
+  { x: 1970, y: 740 },
+  { x: 1960, y: 640 },
+  { x: 1900, y: 560 },
+  { x: 1800, y: 500 },
+  { x: 1650, y: 470 },
+  { x: 1500, y: 470 },
+  { x: 1360, y: 520 },
+  { x: 1240, y: 540 },
+  { x: 1100, y: 500 },
+  { x: 980, y: 400 },
+  { x: 840, y: 300 },
+  { x: 660, y: 260 },
+  { x: 500, y: 300 },
+  { x: 380, y: 390 },
+  { x: 330, y: 500 },
+  { x: 360, y: 610 },
+  { x: 460, y: 670 },
+  { x: 600, y: 650 },
+  { x: 720, y: 600 },
+  { x: 800, y: 650 },
+  { x: 820, y: 760 },
+  { x: 760, y: 840 },
+  { x: 620, y: 875 },
+  { x: 450, y: 860 },
+  { x: 320, y: 875 },
 ];
 
 const SAMPLES_PER_CONTROL = 24;
