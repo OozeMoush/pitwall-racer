@@ -65,10 +65,12 @@ export function createAiField(): DriverState[] {
     ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.004],
   ];
 
-  return plans.map(([name, start, plannedPitLap, next, laneOffset, skill], index) => ({
+  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => ({
     id: `ai-${index}`,
     name,
-    progress: 0.065 - index * 0.008,
+    // A real staggered grid. The old 0.8%-lap spacing was shorter than the
+    // rendered car body, which made the field visibly overlap before turn one.
+    progress: 0.135 - index * 0.018,
     lap: 1,
     speed: 0,
     tire: createTire(start),
@@ -78,8 +80,8 @@ export function createAiField(): DriverState[] {
     pitLap: plannedPitLap,
     strategyIntent: 'PLAN',
     nextCompound: next,
-    laneOffset,
-    preferredLane: laneOffset,
+    laneOffset: index % 2 === 0 ? -16 : 16,
+    preferredLane,
     battleState: 'CLEAR',
     skill,
     finished: false,
@@ -153,8 +155,6 @@ export function stepAi(
     targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.995);
   }
 
-  // Give a car that is genuinely alongside a stable shared corner speed instead
-  // of letting either participant ghost longitudinally through the other.
   if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
     targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 4));
   }
@@ -170,8 +170,6 @@ export function stepAi(
   } else if (battleState === 'FOLLOW' && traffic.carAhead) {
     targetLane = traffic.carAhead.laneOffset;
   } else if (battleState === 'DEFEND') {
-    // One readable defensive move: hold a modest inside/centre line. Do not
-    // chase the player's lateral position and do not weave down the straight.
     const inside = Math.abs(profile.signedTurn) > 0.04
       ? Math.sign(profile.signedTurn) * (9 + profile.severity * 8)
       : stableSide(driver.id) * 8;
@@ -200,7 +198,7 @@ export function stepAi(
       tire = createTire(driver.nextCompound);
       usedCompounds = new Set(usedCompounds);
       usedCompounds.add(driver.nextCompound);
-      progress = Math.max(0, progress - 0.055); // AI pit time remains abstract until AI pit animation is rebuilt.
+      progress = Math.max(0, progress - 0.055);
       strategyIntent = 'DONE';
     }
   }
@@ -264,7 +262,9 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
     }
     const absolute = Math.abs(deltaMetres);
     const lateralGap = Math.abs(other.laneOffset - driver.laneOffset);
-    if (absolute <= 14 && lateralGap <= 42 && absolute < alongsideDistance) {
+    // SIDE_BY_SIDE means the car bodies overlap longitudinally and occupy
+    // distinct lanes. A car directly 10-15m ahead is still ATTACK/FOLLOW.
+    if (absolute <= 8 && lateralGap >= 8 && lateralGap <= 42 && absolute < alongsideDistance) {
       alongsideDistance = absolute;
       alongside = other;
     }
