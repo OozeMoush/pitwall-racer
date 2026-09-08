@@ -9,6 +9,10 @@ export interface SurfaceEffect {
 /**
  * The physical road is intentionally narrow. A wheel-width mistake is allowed,
  * but using the grey runoff as extra race track immediately costs speed and grip.
+ *
+ * Full grass must still be driveable at low speed. The previous values removed
+ * so much power and added so much rolling resistance that a slowed car could no
+ * longer accelerate at all, effectively turning any excursion into a soft lock.
  */
 export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
   const edge = 29;
@@ -17,9 +21,9 @@ export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
 
   return {
     severity,
-    gripMultiplier: 1 - severity * 0.5,
-    powerMultiplier: 1 - severity * 0.64,
-    rollingResistance: severity * 13,
+    gripMultiplier: 1 - severity * 0.42,
+    powerMultiplier: 1 - severity * 0.26,
+    rollingResistance: severity * 4.8,
     label,
   };
 }
