@@ -69,15 +69,11 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
-      // Raw power alone made the faster field run wide. Give AI a small
-      // execution margin in the physical tyre model instead: it can actually
-      // carry the target speed it asks for, while compound grip still dominates
-      // the target-speed calculation and Soft remains the reference tyre.
-      const compoundBoost = driver.tire.compound === 'SOFT'
-        ? 0.31
-        : driver.tire.compound === 'MEDIUM'
-          ? 0.235
-          : 0.145;
+      // Compound choice is not an engine mode. Every AI gets the same hybrid
+      // baseline on a straight; tyre grip earns time through braking, line and
+      // corner speed instead. Driver skill and an active attack may still add a
+      // small power edge so racecraft remains visible.
+      const baseHybridBoost = 0.235;
       const skillBoost = Math.max(0, driver.skill - 1) * 0.75;
       const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
 
@@ -87,7 +83,7 @@ export class RapierRacePhysics {
         steer: control.steer,
         tireGrip: driver.tire.grip * 1.08,
         surfaceGrip: 1,
-        powerBoost: compoundBoost + skillBoost + attackBoost,
+        powerBoost: baseHybridBoost + skillBoost + attackBoost,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, dt);
