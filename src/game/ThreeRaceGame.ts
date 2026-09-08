@@ -41,6 +41,16 @@ const FIXED_DT = 1 / 120;
 const CAMERA_HALF_HEIGHT = 21.5;
 const CAMERA_OFFSET = new THREE.Vector3(19, 33, 19);
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
+const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
+
+interface LapTelemetry {
+  lap: number;
+  compound: Compound;
+  s1: number;
+  s2: number;
+  s3: number;
+  lapTime: number;
+}
 
 export class ThreeRaceGame {
   private readonly container: HTMLElement;
@@ -76,6 +86,10 @@ export class ThreeRaceGame {
   private trackDistance = 0;
   private trafficPressure = 0;
   private contactIntensity = 0;
+  private nextSector = 1;
+  private sectorStartTime = 0;
+  private sectorTimes: number[] = [];
+  private lapHistory: LapTelemetry[] = [];
 
   constructor(container: HTMLElement, hud: HTMLElement) {
     this.container = container;
@@ -218,12 +232,12 @@ export class ThreeRaceGame {
     const surface = surfaceEffect(beforeTrack.distance);
     const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
     const speedLoad = Math.min(1, this.vehicle.speed / 105);
-    const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.82;
-    const brakingLoad = brake * speedLoad * 0.72;
-    const battleLoad = this.trafficPressure * 0.17;
-    const load = Math.min(1.15, corneringLoad + brakingLoad + throttle * 0.14 + surface.severity * 0.65 + battleLoad);
+    const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.9;
+    const brakingLoad = brake * speedLoad * 0.8;
+    const battleLoad = this.trafficPressure * 0.2;
+    const load = Math.min(1.28, corneringLoad + brakingLoad + throttle * 0.15 + surface.severity * 0.7 + battleLoad);
 
-    this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.45, dt);
+    this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.5, dt);
     this.energy = stepEnergy(this.energy, {
       throttle,
       brake,
@@ -248,6 +262,7 @@ export class ThreeRaceGame {
     this.trackDistance = afterTrack.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterTrack.progress;
+    this.updateSectorTiming();
     this.updateLapAndCheckpoints(afterTrack.distance);
 
     if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterTrack.distance, this.pitRequested)) {
@@ -275,6 +290,7 @@ export class ThreeRaceGame {
     const pose = pitLanePose(this.pitStop.t);
     this.trackProgress = pose.raceProgress;
     this.trackDistance = 0;
+    this.updateSectorTiming();
     this.updateLapAndCheckpoints(0);
     this.steerInput = 0;
     this.trafficPressure = 0;
@@ -293,17 +309,41 @@ export class ThreeRaceGame {
     return true;
   }
 
+  private updateSectorTiming(): void {
+    if (this.lastTrackProgress > this.trackProgress) return;
+    while (this.nextSector <= 2) {
+      const threshold = SECTOR_BOUNDARIES[this.nextSector - 1];
+      if (this.lastTrackProgress < threshold && this.trackProgress >= threshold) {
+        this.sectorTimes.push(this.timing.raceTime - this.sectorStartTime);
+        this.sectorStartTime = this.timing.raceTime;
+        this.nextSector += 1;
+      } else {
+        break;
+      }
+    }
+  }
+
   private updateLapAndCheckpoints(distanceFromLine: number): void {
-    if (distanceFromLine > 105) return;
+    if (distanceFromLine > 82) return;
     const thresholds = [0, 0.24, 0.49, 0.74];
     if (this.nextCheckpoint <= 3 && this.trackProgress >= thresholds[this.nextCheckpoint]) this.nextCheckpoint += 1;
 
     const crossedStart = this.nextCheckpoint === 4 && this.lastTrackProgress > 0.88 && this.trackProgress < 0.12;
     if (!crossedStart) return;
 
+    const lapTime = this.timing.raceTime - this.timing.lapStartTime;
+    const s1 = this.sectorTimes[0] ?? lapTime / 3;
+    const s2 = this.sectorTimes[1] ?? lapTime / 3;
+    const s3 = Math.max(0, lapTime - s1 - s2);
+    this.lapHistory.push({ lap: this.lap, compound: this.tire.compound, s1, s2, s3, lapTime });
+    this.lapHistory = this.lapHistory.slice(-TOTAL_LAPS);
+
     this.timing = completeLap(this.timing);
     this.lap += 1;
     this.nextCheckpoint = 1;
+    this.nextSector = 1;
+    this.sectorStartTime = this.timing.raceTime;
+    this.sectorTimes = [];
 
     if (this.lap > TOTAL_LAPS) {
       const legal = isTwoCompoundLegal(this.usedCompounds);
@@ -324,8 +364,8 @@ export class ThreeRaceGame {
       const aiDistance = (Math.max(0, driver.lap - 1) + driver.progress) * TRACK_LENGTH;
       const longitudinal = Math.abs(aiDistance - playerDistance);
       const lateral = Math.abs(driver.laneOffset - projectTrack(this.vehicle.x, this.vehicle.y).laneOffset);
-      if (longitudinal > 72 || lateral > 40) continue;
-      pressure = Math.max(pressure, (1 - longitudinal / 72) * (1 - lateral / 40));
+      if (longitudinal > 72 || lateral > 34) continue;
+      pressure = Math.max(pressure, (1 - longitudinal / 72) * (1 - lateral / 34));
     }
     return pressure;
   }
@@ -417,6 +457,10 @@ export class ThreeRaceGame {
     this.trackDistance = 0;
     this.trafficPressure = 0;
     this.contactIntensity = 0;
+    this.nextSector = 1;
+    this.sectorStartTime = 0;
+    this.sectorTimes = [];
+    this.lapHistory = [];
     this.fixedAccumulator = 0;
     this.physics.reset(this.vehicle, this.ai);
     this.playerCar.setCompound('MEDIUM');
@@ -433,6 +477,72 @@ export class ThreeRaceGame {
       { id: 'player', name: 'YOU', lap: this.lap, progress: this.trackProgress },
       ...this.ai.map((driver) => ({ id: driver.id, name: driver.name, lap: driver.lap, progress: driver.progress })),
     ]);
+  }
+
+  private compoundFor(id: string): Compound {
+    if (id === 'player') return this.tire.compound;
+    return this.ai.find((driver) => driver.id === id)?.tire.compound ?? 'MEDIUM';
+  }
+
+  private miniMapSvg(): string {
+    const samples = Array.from({ length: 80 }, (_, i) => sampleTrack(i / 80));
+    const minX = Math.min(...samples.map((p) => p.x));
+    const maxX = Math.max(...samples.map((p) => p.x));
+    const minY = Math.min(...samples.map((p) => p.y));
+    const maxY = Math.max(...samples.map((p) => p.y));
+    const width = 270;
+    const height = 132;
+    const pad = 8;
+    const sx = (width - pad * 2) / Math.max(1, maxX - minX);
+    const sy = (height - pad * 2) / Math.max(1, maxY - minY);
+    const scale = Math.min(sx, sy);
+    const ox = (width - (maxX - minX) * scale) / 2;
+    const oy = (height - (maxY - minY) * scale) / 2;
+    const point = (progress: number) => {
+      const p = sampleTrack(progress);
+      return { x: ox + (p.x - minX) * scale, y: oy + (p.y - minY) * scale };
+    };
+    const path = samples.map((p, index) => {
+      const x = ox + (p.x - minX) * scale;
+      const y = oy + (p.y - minY) * scale;
+      return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ') + ' Z';
+    const aiDots = this.ai.map((driver, index) => {
+      const p = point(driver.progress);
+      return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.2" fill="#${(AI_COLORS[index] ?? 0xffffff).toString(16).padStart(6, '0')}" stroke="#071014" stroke-width="1"/>`;
+    }).join('');
+    const player = point(this.trackProgress);
+    return `<svg viewBox="0 0 ${width} ${height}" aria-label="live circuit map"><path d="${path}" fill="none" stroke="rgba(238,243,239,.42)" stroke-width="2.2"/>${aiDots}<circle cx="${player.x.toFixed(1)}" cy="${player.y.toFixed(1)}" r="4.8" fill="#31b9ef" stroke="#ffffff" stroke-width="1.5"/></svg>`;
+  }
+
+  private renderLapBoard(): string {
+    const rows = [...this.lapHistory];
+    if (this.flow.phase !== 'FINISHED' && this.lap <= TOTAL_LAPS) {
+      const elapsed = this.timing.currentLapTime;
+      const s1 = this.sectorTimes[0];
+      const s2 = this.sectorTimes[1];
+      const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
+      rows.push({
+        lap: this.lap,
+        compound: this.tire.compound,
+        s1: s1 ?? (this.nextSector === 1 ? currentSectorElapsed : 0),
+        s2: s2 ?? (this.nextSector === 2 ? currentSectorElapsed : 0),
+        s3: this.nextSector === 3 ? currentSectorElapsed : 0,
+        lapTime: elapsed,
+      });
+    }
+
+    return rows.slice(-8).map((row) => {
+      const current = row.lap === this.lap && this.flow.phase !== 'FINISHED';
+      return `<div class="lap-row ${current ? 'current' : ''}">
+        <b>${row.lap}</b>
+        <i class="compound-pill tyre-${row.compound.toLowerCase()}">${row.compound[0]}</i>
+        <span>${row.s1 > 0 ? formatShortTime(row.s1) : '—'}</span>
+        <span>${row.s2 > 0 ? formatShortTime(row.s2) : '—'}</span>
+        <span>${row.s3 > 0 ? formatShortTime(row.s3) : '—'}</span>
+        <strong>${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong>
+      </div>`;
+    }).join('');
   }
 
   private renderHud(): void {
@@ -473,28 +583,51 @@ export class ThreeRaceGame {
         ? 'USING'
         : 'HOLD';
 
+    const currentSector = Math.min(3, this.nextSector);
+    const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
+    const sectorDisplay = [1, 2, 3].map((sector) => {
+      const completed = this.sectorTimes[sector - 1];
+      if (completed !== undefined) return formatShortTime(completed);
+      if (currentSector === sector && this.flow.phase === 'RACING') return formatShortTime(currentSectorElapsed);
+      return '—';
+    });
+
     const bannerHtml = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
     const finishHtml = this.flow.phase === 'FINISHED'
       ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
     const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS C TO RECOVER</div>` : '';
+    const towerHtml = standings.map((driver, index) => {
+      const compound = this.compoundFor(driver.id);
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em>${driver.name}</span>`;
+    }).join('');
 
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div>
-        <div class="timing-strip"><span>LAST <b>${formatLapTime(this.timing.lastLapTime)}</b></span><span>BEST <b>${formatLapTime(this.timing.bestLapTime)}</b></span><span>Δ <b>${delta}</b></span></div>
+        <div class="timing-strip"><span>S1 <b>${sectorDisplay[0]}</b></span><span>S2 <b>${sectorDisplay[1]}</b></span><span>S3 <b>${sectorDisplay[2]}</b></span><span>LAST <b>${formatLapTime(this.timing.lastLapTime)}</b></span><span>BEST <b>${formatLapTime(this.timing.bestLapTime)}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
-      <div class="tower">${standings.map((driver, index) => `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i>${driver.name}</span>`).join('')}</div>
+      <div class="tower">${towerHtml}</div>
+      <div class="race-telemetry">
+        <div class="mini-map"><header><b>TRACK</b><span>LIVE POSITION</span></header>${this.miniMapSvg()}</div>
+        <div class="lap-board"><header><b>LAPS</b><span>TYRE · S1 · S2 · S3 · LAP</span></header><div class="lap-head"><i>#</i><i>T</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i></div>${this.renderLapBoard()}</div>
+      </div>
       <div class="hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div class="race-data">
           <div><small>HYBRID</small><b class="energy-${this.energyMode.toLowerCase()}">${this.energyMode}</b><span>1 / 2 / 3</span></div>
-          <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED</span></div>
+          <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED · GRIP ${(this.tire.grip * 100).toFixed(0)}%</span></div>
           <div><small>ENERGY</small><b>${energyPct}%</b><span>${energyFlow}</span></div>
           <div><small>RACE</small><b>${raceState}</b><span>${pitLabel}</span></div>
         </div>
       </div>
       <div class="controls">WASD DRIVE · 1 HARVEST · 2 NORMAL · 3 DEPLOY · Q/E/R SOFT/MEDIUM/HARD · F BOX · C RECOVER</div>`;
   }
+}
+
+function formatShortTime(seconds?: number): string {
+  if (seconds === undefined || !Number.isFinite(seconds)) return '—';
+  if (seconds >= 60) return formatLapTime(seconds);
+  return seconds.toFixed(3);
 }
