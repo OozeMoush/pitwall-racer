@@ -11,9 +11,7 @@ export interface TrackProjection {
 
 // Clockwise fictional circuit designed as a readable arcade race track rather
 // than a smooth test spline. It keeps one long acceleration zone, a fast upper
-// section, a real left-right chicane and a final braking corner. The chicane is
-// deliberately large enough that the spline cannot visually collapse into one
-// straight line.
+// section, a real left-right chicane and a final braking corner.
 export const TRACK_CONTROLS: readonly TrackPoint[] = [
   { x: 560, y: 930 },
   { x: 1080, y: 930 },
@@ -38,11 +36,13 @@ export const TRACK_CONTROLS: readonly TrackPoint[] = [
   { x: 285, y: 315 },
   { x: 220, y: 445 },
   { x: 245, y: 565 },
-  // Proper chicane: four separated direction changes, not a decorative wiggle.
-  { x: 395, y: 635 },
-  { x: 235, y: 710 },
-  { x: 420, y: 785 },
-  { x: 285, y: 855 },
+  // Real chicane: repeated ~80° changes with enough separation to require
+  // left-right-left steering, but no spline cusp or near-180° hook.
+  { x: 330, y: 615 },
+  { x: 285, y: 675 },
+  { x: 350, y: 735 },
+  { x: 300, y: 795 },
+  { x: 365, y: 850 },
   { x: 430, y: 910 },
 ];
 
