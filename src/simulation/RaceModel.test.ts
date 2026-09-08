@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Compound } from './TireModel';
+import { createTire, type Compound } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import {
   aeroEffect,
@@ -49,21 +49,23 @@ describe('RaceModel', () => {
     expect(stepped.finished).toBe(false);
   });
 
-  it('accelerates on a straight and brakes for a demanding corner', () => {
+  it('accelerates on a straight and brakes a Medium for a demanding corner', () => {
     const samples = Array.from({ length: 240 }, (_, index) => ({
       progress: index / 240,
-      profile: trackProfile(index / 240),
+      profile: trackProfile(index / 240, 1, createTire('MEDIUM').grip),
     }));
     const straight = samples.reduce((best, sample) => sample.profile.targetSpeed > best.profile.targetSpeed ? sample : best);
     const corner = samples.reduce((best, sample) => sample.profile.targetSpeed < best.profile.targetSpeed ? sample : best);
 
     const [straightCar] = createAiField();
+    straightCar.tire = createTire('MEDIUM');
     straightCar.progress = straight.progress;
     straightCar.speed = 75;
     const accelerated = stepAi(straightCar, 0.2, 8);
     expect(accelerated.speed).toBeGreaterThan(75);
 
     const [cornerCar] = createAiField();
+    cornerCar.tire = createTire('MEDIUM');
     cornerCar.progress = corner.progress;
     cornerCar.speed = 95;
     const braked = stepAi(cornerCar, 0.2, 8);
@@ -84,8 +86,10 @@ describe('RaceModel', () => {
     expect(nextChaser.laneOffset).toBeGreaterThan(-8);
   });
 
-  it('moves off line to attack a slower car at close range', () => {
+  it('moves a fresh Soft off line to attack a slower Hard at close range', () => {
     const [leader, chaser] = createAiField();
+    leader.tire = createTire('HARD');
+    chaser.tire = createTire('SOFT');
     leader.progress = 0.5 + 18 / TRACK_LENGTH;
     chaser.progress = 0.5;
     leader.skill = 0.94;

@@ -6,6 +6,7 @@ import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { createEnergy, stepEnergy, type EnergyMode, type EnergyState } from '../simulation/EnergyModel';
 import { stepSteering } from '../simulation/InputModel';
+import { classifyLivePositions } from '../simulation/LiveStandingsModel';
 import {
   PIT_SPEED,
   beginPitStop,
@@ -22,11 +23,11 @@ import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
+import { minimumPositive, timingTone, type TimingTone } from '../simulation/TimingToneModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
 import {
   aeroEffect,
-  classify,
   createAiField,
   isTwoCompoundLegal,
   stepAiField,
@@ -50,6 +51,12 @@ interface LapTelemetry {
   s2: number;
   s3: number;
   lapTime: number;
+}
+
+interface AiLapClock {
+  lap: number;
+  lapStartTime: number;
+  bestLap?: number;
 }
 
 export class ThreeRaceGame {
@@ -90,6 +97,8 @@ export class ThreeRaceGame {
   private sectorStartTime = 0;
   private sectorTimes: number[] = [];
   private lapHistory: LapTelemetry[] = [];
+  private aiLapClocks = new Map<string, AiLapClock>();
+  private sessionFastestLap?: number;
 
   constructor(container: HTMLElement, hud: HTMLElement) {
     this.container = container;
@@ -113,6 +122,7 @@ export class ThreeRaceGame {
       return car;
     });
     this.physics = new RapierRacePhysics(this.vehicle, this.ai);
+    this.resetAiTiming();
 
     this.bindInput();
     this.resize();
@@ -205,7 +215,7 @@ export class ThreeRaceGame {
 
     this.timing = stepTiming(this.timing, dt);
     const playerProjection = projectTrack(this.vehicle.x, this.vehicle.y);
-    const playerModePerformance = this.energyMode === 'DEPLOY' ? 1.07 : this.energyMode === 'HARVEST' ? 0.9 : 1;
+    const playerModePerformance = this.energyMode === 'DEPLOY' ? 1.12 : this.energyMode === 'HARVEST' ? 0.72 : 1;
     const playerTraffic: RaceTrafficCar[] = isPitActive(this.pitStop)
       ? []
       : [{
@@ -219,7 +229,7 @@ export class ThreeRaceGame {
         }];
     this.ai = stepAiField(this.ai, dt, TOTAL_LAPS, playerTraffic);
     this.ai = resolveAiOccupancy(this.ai, dt);
-    this.physics.syncAiKinematics(this.ai);
+    this.physics.syncAiKinematics(this.ai, dt, this.lap);
 
     if (this.stepPhysicalPit(dt)) return;
 
@@ -235,7 +245,7 @@ export class ThreeRaceGame {
     const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.9;
     const brakingLoad = brake * speedLoad * 0.8;
     const battleLoad = this.trafficPressure * 0.2;
-    const load = Math.min(1.28, corneringLoad + brakingLoad + throttle * 0.15 + surface.severity * 0.7 + battleLoad);
+    const load = Math.min(1.34, corneringLoad + brakingLoad + throttle * 0.15 + surface.severity * 0.7 + battleLoad);
 
     this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.5, dt);
     this.energy = stepEnergy(this.energy, {
@@ -257,6 +267,7 @@ export class ThreeRaceGame {
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
+    this.updateAiLapTiming();
 
     const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
     this.trackDistance = afterTrack.distance;
@@ -337,6 +348,7 @@ export class ThreeRaceGame {
     const s3 = Math.max(0, lapTime - s1 - s2);
     this.lapHistory.push({ lap: this.lap, compound: this.tire.compound, s1, s2, s3, lapTime });
     this.lapHistory = this.lapHistory.slice(-TOTAL_LAPS);
+    if (this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
 
     this.timing = completeLap(this.timing);
     this.lap += 1;
@@ -354,6 +366,38 @@ export class ThreeRaceGame {
       this.physics.stopPlayer();
       this.vehicle = this.physics.playerState();
     }
+  }
+
+  private updateAiLapTiming(): void {
+    for (const driver of this.ai) {
+      const clock = this.aiLapClocks.get(driver.id);
+      if (!clock) {
+        this.aiLapClocks.set(driver.id, { lap: driver.lap, lapStartTime: this.timing.raceTime });
+        continue;
+      }
+      if (driver.lap <= clock.lap) continue;
+
+      const completedLap = this.timing.raceTime - clock.lapStartTime;
+      if (clock.lap >= 2 && completedLap > 10) {
+        clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
+        this.registerSessionFastest(completedLap);
+      }
+      clock.lap = driver.lap;
+      clock.lapStartTime = this.timing.raceTime;
+    }
+  }
+
+  private registerSessionFastest(lapTime: number): void {
+    this.sessionFastestLap = this.sessionFastestLap === undefined
+      ? lapTime
+      : Math.min(this.sessionFastestLap, lapTime);
+  }
+
+  private resetAiTiming(): void {
+    this.aiLapClocks = new Map(this.ai.map((driver) => [driver.id, {
+      lap: driver.lap,
+      lapStartTime: this.timing.raceTime,
+    }]));
   }
 
   private estimateTrafficPressure(): number {
@@ -376,12 +420,14 @@ export class ThreeRaceGame {
     this.playerCar.root.rotation.y = headingToYaw(this.vehicle.heading);
     this.playerCar.root.rotation.z = -this.steerInput * Math.min(0.045, this.vehicle.speed / 2300);
 
+    const aiStates = this.physics.aiStates();
     this.ai.forEach((driver, index) => {
-      const p = sampleTrack(driver.progress, driver.laneOffset);
-      const world = toWorld(p.x, p.y, 0.08);
+      const state = aiStates[index];
+      if (!state) return;
+      const world = toWorld(state.x, state.y, 0.08);
       const car = this.aiCars[index];
       car.root.position.copy(world);
-      car.root.rotation.y = headingToYaw(p.heading);
+      car.root.rotation.y = headingToYaw(state.heading);
       car.root.rotation.z = driver.battleState === 'ATTACK'
         ? 0.018
         : driver.battleState === 'DEFEND'
@@ -461,8 +507,10 @@ export class ThreeRaceGame {
     this.sectorStartTime = 0;
     this.sectorTimes = [];
     this.lapHistory = [];
+    this.sessionFastestLap = undefined;
     this.fixedAccumulator = 0;
     this.physics.reset(this.vehicle, this.ai);
+    this.resetAiTiming();
     this.playerCar.setCompound('MEDIUM');
     this.syncVisuals(true);
   }
@@ -473,9 +521,15 @@ export class ThreeRaceGame {
   }
 
   private standings() {
-    return classify([
-      { id: 'player', name: 'YOU', lap: this.lap, progress: this.trackProgress },
-      ...this.ai.map((driver) => ({ id: driver.id, name: driver.name, lap: driver.lap, progress: driver.progress })),
+    const aiStates = this.physics.aiStates();
+    return classifyLivePositions([
+      { id: 'player', name: 'YOU', lap: this.lap, vehicle: this.vehicle },
+      ...this.ai.map((driver, index) => ({
+        id: driver.id,
+        name: driver.name,
+        lap: driver.lap,
+        vehicle: aiStates[index] ?? sampleTrack(driver.progress),
+      })),
     ]);
   }
 
@@ -490,9 +544,9 @@ export class ThreeRaceGame {
     const maxX = Math.max(...samples.map((p) => p.x));
     const minY = Math.min(...samples.map((p) => p.y));
     const maxY = Math.max(...samples.map((p) => p.y));
-    const width = 270;
-    const height = 132;
-    const pad = 8;
+    const width = 330;
+    const height = 160;
+    const pad = 10;
     const sx = (width - pad * 2) / Math.max(1, maxX - minX);
     const sy = (height - pad * 2) / Math.max(1, maxY - minY);
     const scale = Math.min(sx, sy);
@@ -507,12 +561,27 @@ export class ThreeRaceGame {
       const y = oy + (p.y - minY) * scale;
       return `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ') + ' Z';
+    const aiStates = this.physics.aiStates();
     const aiDots = this.ai.map((driver, index) => {
-      const p = point(driver.progress);
-      return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.2" fill="#${(AI_COLORS[index] ?? 0xffffff).toString(16).padStart(6, '0')}" stroke="#071014" stroke-width="1"/>`;
+      const state = aiStates[index];
+      const progress = state ? projectTrack(state.x, state.y).progress : driver.progress;
+      const p = point(progress);
+      return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4.2" fill="#${(AI_COLORS[index] ?? 0xffffff).toString(16).padStart(6, '0')}" stroke="#071014" stroke-width="1.2"/>`;
     }).join('');
-    const player = point(this.trackProgress);
-    return `<svg viewBox="0 0 ${width} ${height}" aria-label="live circuit map"><path d="${path}" fill="none" stroke="rgba(238,243,239,.42)" stroke-width="2.2"/>${aiDots}<circle cx="${player.x.toFixed(1)}" cy="${player.y.toFixed(1)}" r="4.8" fill="#31b9ef" stroke="#ffffff" stroke-width="1.5"/></svg>`;
+    const player = point(projectTrack(this.vehicle.x, this.vehicle.y).progress);
+    return `<svg viewBox="0 0 ${width} ${height}" aria-label="live circuit map"><path d="${path}" fill="none" stroke="rgba(238,243,239,.48)" stroke-width="2.8"/>${aiDots}<circle cx="${player.x.toFixed(1)}" cy="${player.y.toFixed(1)}" r="5.8" fill="#31b9ef" stroke="#ffffff" stroke-width="1.8"/></svg>`;
+  }
+
+  private playerBestLap(): number | undefined {
+    return minimumPositive(this.lapHistory.map((row) => row.lapTime));
+  }
+
+  private playerBestSector(key: 's1' | 's2' | 's3'): number | undefined {
+    return minimumPositive(this.lapHistory.map((row) => row[key]));
+  }
+
+  private timingClass(tone: TimingTone): string {
+    return tone === 'session-best' ? 'timing-purple' : tone === 'personal-best' ? 'timing-green' : '';
   }
 
   private renderLapBoard(): string {
@@ -532,15 +601,23 @@ export class ThreeRaceGame {
       });
     }
 
+    const personalBest = this.playerBestLap();
+    const bestS1 = this.playerBestSector('s1');
+    const bestS2 = this.playerBestSector('s2');
+    const bestS3 = this.playerBestSector('s3');
+
     return rows.slice(-8).map((row) => {
       const current = row.lap === this.lap && this.flow.phase !== 'FINISHED';
+      const completed = !current;
+      const lapTone = completed ? timingTone(row.lapTime, personalBest, this.sessionFastestLap) : 'neutral';
+      const sectorClass = (value: number, best: number | undefined) => completed && best !== undefined && Math.abs(value - best) < 0.0005 ? 'timing-green' : '';
       return `<div class="lap-row ${current ? 'current' : ''}">
         <b>${row.lap}</b>
         <i class="compound-pill tyre-${row.compound.toLowerCase()}">${row.compound[0]}</i>
-        <span>${row.s1 > 0 ? formatShortTime(row.s1) : '—'}</span>
-        <span>${row.s2 > 0 ? formatShortTime(row.s2) : '—'}</span>
-        <span>${row.s3 > 0 ? formatShortTime(row.s3) : '—'}</span>
-        <strong>${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong>
+        <span class="${sectorClass(row.s1, bestS1)}">${row.s1 > 0 ? formatShortTime(row.s1) : '—'}</span>
+        <span class="${sectorClass(row.s2, bestS2)}">${row.s2 > 0 ? formatShortTime(row.s2) : '—'}</span>
+        <span class="${sectorClass(row.s3, bestS3)}">${row.s3 > 0 ? formatShortTime(row.s3) : '—'}</span>
+        <strong class="${this.timingClass(lapTone)}">${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong>
       </div>`;
     }).join('');
   }
@@ -592,6 +669,11 @@ export class ThreeRaceGame {
       return '—';
     });
 
+    const playerBest = this.playerBestLap();
+    const lastTone = timingTone(this.timing.lastLapTime, playerBest, this.sessionFastestLap);
+    const bestTone = playerBest === undefined ? 'neutral' : timingTone(playerBest, playerBest, this.sessionFastestLap);
+    const fastestText = this.sessionFastestLap === undefined ? '--:--.---' : formatLapTime(this.sessionFastestLap);
+
     const bannerHtml = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
     const finishHtml = this.flow.phase === 'FINISHED'
       ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
@@ -606,7 +688,7 @@ export class ThreeRaceGame {
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${Math.min(this.lap, TOTAL_LAPS)}/${TOTAL_LAPS}</span></div>
-        <div class="timing-strip"><span>S1 <b>${sectorDisplay[0]}</b></span><span>S2 <b>${sectorDisplay[1]}</b></span><span>S3 <b>${sectorDisplay[2]}</b></span><span>LAST <b>${formatLapTime(this.timing.lastLapTime)}</b></span><span>BEST <b>${formatLapTime(this.timing.bestLapTime)}</b></span><span>Δ <b>${delta}</b></span></div>
+        <div class="timing-strip"><span>S1 <b>${sectorDisplay[0]}</b></span><span>S2 <b>${sectorDisplay[1]}</b></span><span>S3 <b>${sectorDisplay[2]}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
       <div class="tower">${towerHtml}</div>
       <div class="race-telemetry">
@@ -618,7 +700,7 @@ export class ThreeRaceGame {
         <div class="race-data">
           <div><small>HYBRID</small><b class="energy-${this.energyMode.toLowerCase()}">${this.energyMode}</b><span>1 / 2 / 3</span></div>
           <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED · GRIP ${(this.tire.grip * 100).toFixed(0)}%</span></div>
-          <div><small>ENERGY</small><b>${energyPct}%</b><span>${energyFlow}</span></div>
+          <div class="energy-card"><small>ENERGY</small><b class="energy-${this.energyMode.toLowerCase()}">${energyFlow}</b><span class="energy-meter energy-${this.energyMode.toLowerCase()} ${energyPct < 20 ? 'energy-low' : ''}" aria-label="battery charge"><i style="width:${energyPct}%"></i></span></div>
           <div><small>RACE</small><b>${raceState}</b><span>${pitLabel}</span></div>
         </div>
       </div>

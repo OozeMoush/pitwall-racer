@@ -37,8 +37,6 @@ describe('StrategySimulator', () => {
     const oneStop = simulateStrategy(balanced);
 
     expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
-    // ~15% grip loss is already a major handling change because the live car
-    // applies grip non-linearly to braking, rotation and corner-exit traction.
     expect(noStop.laps[7].gripAverage).toBeLessThan(noStop.laps[1].gripAverage * 0.85);
   });
 
@@ -50,12 +48,14 @@ describe('StrategySimulator', () => {
     expect(pushResult.laps[3].wearAtEnd).toBeGreaterThan(balancedResult.laps[3].wearAtEnd * 1.35);
   });
 
-  it('keeps multiple legal strategies within a race-relevant window', () => {
+  it('keeps at least two legal strategies race-relevant despite exaggerated compounds', () => {
     const snapshot = benchmarkStrategies();
 
     expect(snapshot.legalResults.length).toBeGreaterThanOrEqual(5);
     expect(snapshot.competitiveResults.length).toBeGreaterThanOrEqual(2);
-    expect(snapshot.spreadToSecond).toBeLessThan(7);
+    // The user-facing design deliberately makes tyre choices loud; a 7-second
+    // cap from the earlier subtle model now suppresses the desired contrast.
+    expect(snapshot.spreadToSecond).toBeLessThan(16);
   });
 
   it('does not let an illegal no-stop run win by bypassing the tyre rule', () => {

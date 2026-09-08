@@ -12,9 +12,9 @@ function metresToProgress(metres: number): number {
 }
 
 /**
- * Lightweight AI profile from the authoritative spline. Compound grip now
- * changes corner speed strongly but barely touches straight-line speed, so a
- * Soft AI visibly gains time in bends instead of just carrying a coloured tyre.
+ * AI pace profile derived from the authoritative spline. Compound grip is a
+ * first-class pace input: a fresh Soft should carry obviously more speed in a
+ * bend than a Medium, while a Hard or worn tyre has to brake earlier.
  */
 export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfileSample {
   const here = signedHeadingDelta(progress - metresToProgress(22), progress + metresToProgress(22));
@@ -29,19 +29,19 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
     ),
   );
 
-  const safeSkill = clamp(skill, 0.9, 1.13);
-  const safeGrip = clamp(grip, 0.48, 1.22);
+  const safeSkill = clamp(skill, 0.94, 1.24);
+  const safeGrip = clamp(grip, 0.30, 1.42);
 
-  const straightSpeed = 110 + (safeSkill - 0.9) * 34;
-  const baseCornerFloor = 44 + (safeSkill - 0.9) * 46;
-  // 1.20 grip -> ~35% more corner capability than a fresh Medium; 0.84 grip
-  // gives up a lot. Straight speed remains almost identical.
-  const cornerGripFactor = clamp(Math.pow(safeGrip, 1.7), 0.58, 1.36);
+  const straightSpeed = 112 + (safeSkill - 0.94) * 39;
+  const baseCornerFloor = 45 + (safeSkill - 0.94) * 62;
+  // Exaggerated by design: 1.3+ grip becomes a qualifying-lap weapon, while
+  // sub-0.8 grip gives away a huge amount in technical sectors.
+  const cornerGripFactor = clamp(Math.pow(safeGrip, 2.12), 0.34, 1.82);
   const cornerFloor = baseCornerFloor * cornerGripFactor;
   const targetSpeed = clamp(
     straightSpeed - severity * (straightSpeed - cornerFloor),
-    30,
-    118,
+    24,
+    124,
   );
 
   const signedTurn = here * 0.62 + near * 0.38;

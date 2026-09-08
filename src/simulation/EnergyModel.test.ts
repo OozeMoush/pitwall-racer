@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { createEnergy, stepEnergy } from './EnergyModel';
 
 describe('EnergyModel', () => {
-  it('charges while the throttle is held in HARVEST mode', () => {
+  it('charges while the throttle is held in HARVEST mode and sacrifices obvious pace', () => {
     const initial = createEnergy(0.35, 'HARVEST');
     const next = stepEnergy(initial, { throttle: 1, brake: 0, speed: 75, mode: 'HARVEST' }, 2);
 
     expect(next.soc).toBeGreaterThan(initial.soc);
     expect(next.harvesting).toBeGreaterThan(0);
-    expect(next.powerBoost).toBeLessThan(0);
+    expect(next.powerBoost).toBeLessThanOrEqual(-0.4);
   });
 
   it('keeps NORMAL sustainable instead of emptying the battery under held throttle', () => {
@@ -26,8 +26,9 @@ describe('EnergyModel', () => {
     const normal = stepEnergy(initial, { throttle: 1, brake: 0, speed: 90, mode: 'NORMAL' }, 1);
     const deploy = stepEnergy(initial, { throttle: 1, brake: 0, speed: 90, mode: 'DEPLOY' }, 1);
 
-    expect(deploy.soc).toBeLessThan(normal.soc - 0.04);
-    expect(deploy.powerBoost).toBeGreaterThan(normal.powerBoost * 3);
+    expect(deploy.soc).toBeLessThan(normal.soc - 0.06);
+    expect(deploy.powerBoost).toBeGreaterThan(0.3);
+    expect(deploy.powerBoost).toBeGreaterThan(normal.powerBoost * 4);
   });
 
   it('recovers charge strongly under braking', () => {

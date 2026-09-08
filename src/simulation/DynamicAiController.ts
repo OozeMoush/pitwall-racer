@@ -56,8 +56,8 @@ export function dynamicAiControl(
     && !emergencyGap
     && ahead !== undefined
     && aheadGap < 50
-    && driver.tire.wear < 0.88;
-  const playerThreat = behind?.isPlayer === true && behindGap < 38;
+    && driver.tire.wear < 0.9;
+  const playerThreat = behind?.isPlayer === true && behindGap < 42;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
@@ -81,8 +81,6 @@ export function dynamicAiControl(
     targetLane = clamp(inside, -11, 11);
   }
 
-  // Once an AI reaches the edge it gives up its attack immediately and recovers
-  // toward the centre instead of repeatedly steering farther into the runoff.
   if (projection.distance > 27) {
     targetLane = 0;
     battleState = 'CLEAR';
@@ -95,7 +93,7 @@ export function dynamicAiControl(
   const headingError = wrapAngle(targetHeading - vehicle.heading);
   const lateralError = clamp((targetLane - projection.laneOffset) / 18, -1, 1);
   const recoveryGain = projection.distance > 24 ? 0.48 : 0.28;
-  const steer = clamp(headingError * 1.98 + lateralError * recoveryGain, -1, 1);
+  const steer = clamp(headingError * 2.05 + lateralError * recoveryGain, -1, 1);
 
   const nextProfile = trackProfile(
     projection.progress + clamp(70 + speed * 0.74, 78, 150) / TRACK_LENGTH,
@@ -103,33 +101,35 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
 
-  const skillPace = 1.03 + clamp(driver.skill - 1, -0.08, 0.13) * 0.9;
-  let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 7) * skillPace;
+  // The AI is deliberately strong. A fresh Soft rival should be something a
+  // Medium player needs DEPLOY and better braking technique to beat.
+  const skillPace = 1.045 + clamp(driver.skill - 1, -0.08, 0.24) * 0.78;
+  let targetSpeed = Math.min(profile.targetSpeed, nextProfile.targetSpeed + 8) * skillPace;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.30) targetSpeed += 6.5;
+  if (battleState === 'ATTACK' && profile.severity < 0.32) targetSpeed += 8;
   if (laneBlocked && ahead) {
-    const desiredGap = 29;
+    const desiredGap = 27;
     if (aheadGap < desiredGap + 12) {
-      const closingAllowance = clamp((aheadGap - desiredGap) * 0.3, -8, 4);
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.32, -9, 5);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < 23) targetSpeed = Math.min(targetSpeed, Math.max(26, ahead.speed - 7));
+    if (aheadGap < 22) targetSpeed = Math.min(targetSpeed, Math.max(24, ahead.speed - 8));
   }
   if (projection.distance > 27) targetSpeed = Math.min(targetSpeed, 54);
   if (projection.distance > 34) targetSpeed = Math.min(targetSpeed, 42);
-  targetSpeed = clamp(targetSpeed, 28, 111);
+  targetSpeed = clamp(targetSpeed, 26, 122);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.1
-    ? clamp((-speedError - 0.2) / 13, 0.2, 1)
+  const brake = speedError < -1.0
+    ? clamp((-speedError - 0.15) / 12.2, 0.18, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
-    : speedError > 7
+    : speedError > 6
       ? 1
-      : speedError > 0.8
-        ? clamp(0.36 + speedError / 12, 0.36, 0.96)
-        : 0.16;
+      : speedError > 0.7
+        ? clamp(0.40 + speedError / 11, 0.40, 1)
+        : 0.19;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
