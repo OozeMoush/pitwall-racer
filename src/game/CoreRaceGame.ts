@@ -684,10 +684,19 @@ export class CoreRaceGame {
     }
 
     const personalBest = this.playerBestLap();
-    const bestS1 = this.playerBestSector('s1');
-    const bestS2 = this.playerBestSector('s2');
-    const bestS3 = this.playerBestSector('s3');
-    const bestSectors = [bestS1, bestS2, bestS3];
+    const historicalBestSectors = [
+      this.playerBestSector('s1'),
+      this.playerBestSector('s2'),
+      this.playerBestSector('s3'),
+    ];
+    // S1/S2 completed on the active lap are valid PB candidates immediately.
+    // Including them here makes the previous green cell lose its PB color in
+    // the very same frame that the new completed split goes green.
+    const bestSectors = historicalBestSectors.map((best, index) => {
+      const live = this.sectorTimes[index];
+      if (live === undefined) return best;
+      return best === undefined ? live : Math.min(best, live);
+    });
     return rows.slice(-10).map((row) => {
       const current = row.lap === displayLap && this.flow.phase !== 'FINISHED';
       const completed = !current;
@@ -695,8 +704,9 @@ export class CoreRaceGame {
       const sectorValues = [row.s1, row.s2, row.s3];
       const sectorCell = (index: number) => {
         const value = sectorValues[index];
+        const liveSectorCompleted = index < this.sectorTimes.length;
         const tone = current && value > 0
-          ? liveTimingTone(value, bestSectors[index], this.sessionFastestSectors[index])
+          ? liveTimingTone(value, bestSectors[index], this.sessionFastestSectors[index], liveSectorCompleted)
           : completed
             ? timingTone(value, bestSectors[index], this.sessionFastestSectors[index])
             : 'neutral';
