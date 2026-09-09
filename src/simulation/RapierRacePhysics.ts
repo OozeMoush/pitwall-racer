@@ -13,6 +13,7 @@ import {
   type PitStopState,
 } from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
+import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { projectTrack, sampleTrack } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
@@ -71,6 +72,7 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
       const projection = projectTrack(state.x, state.y);
+      const surface = surfaceEffect(projection.distance);
       const aero = aerodynamicEffect(
         {
           id: driver.id,
@@ -83,7 +85,8 @@ export class RapierRacePhysics {
 
       // All cars share the same straight-line baseline. Racecraft can earn a
       // tow, but the dirty wake costs cornering grip until the AI moves out of
-      // line, exactly like the player-facing model.
+      // line, exactly like the player-facing model. The same runoff/grass
+      // physics also applies to AI so cutting the circuit is never rewarded.
       const driverExecution = Math.max(0, driver.skill - 1) * 0.20;
       const attackCommitment = control.battleState === 'ATTACK' ? 0.035 : 0;
 
@@ -92,10 +95,10 @@ export class RapierRacePhysics {
         brake: control.brake,
         steer: control.steer,
         tireGrip: driver.tire.grip * 1.13 * (1 - aero.dirtyAir * 0.36),
-        surfaceGrip: 1,
+        surfaceGrip: surface.gripMultiplier,
         powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment + aero.tow * 0.22,
-        powerMultiplier: 1,
-        rollingResistance: 0,
+        powerMultiplier: surface.powerMultiplier,
+        rollingResistance: surface.rollingResistance,
       }, dt);
     });
   }
