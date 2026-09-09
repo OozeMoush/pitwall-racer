@@ -284,6 +284,7 @@ export class CoreRaceGame {
       powerBoost: CORE_POWER_BOOST + aero.tow * 0.22,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
+      speedDrag: surface.speedDrag,
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
@@ -655,7 +656,12 @@ export class CoreRaceGame {
   }
 
   private playerBestSector(key: 's1' | 's2' | 's3'): number | undefined {
-    return minimumPositive(this.lapHistory.map((row) => row[key]));
+    const index = key === 's1' ? 0 : key === 's2' ? 1 : 2;
+    const currentCompleted = this.sectorTimes[index];
+    return minimumPositive([
+      ...this.lapHistory.map((row) => row[key]),
+      ...(currentCompleted !== undefined ? [currentCompleted] : []),
+    ]);
   }
 
   private timingClass(tone: TimingTone): string {
@@ -665,6 +671,7 @@ export class CoreRaceGame {
   private renderLapBoard(): string {
     const rows = [...this.lapHistory];
     const displayLap = Math.max(1, this.lap);
+    const completedCurrentSectors = this.sectorTimes.length;
     if (this.flow.phase !== 'FINISHED' && this.lap <= this.totalLaps) {
       const elapsed = this.timing.currentLapTime;
       const s1 = this.sectorTimes[0];
@@ -695,7 +702,8 @@ export class CoreRaceGame {
       const sectorValues = [row.s1, row.s2, row.s3];
       const sectorCell = (index: number) => {
         const value = sectorValues[index];
-        const tone = current && value > 0
+        const currentSectorIsComplete = current && index < completedCurrentSectors;
+        const tone = currentSectorIsComplete && value > 0
           ? liveTimingTone(value, bestSectors[index], this.sessionFastestSectors[index])
           : completed
             ? timingTone(value, bestSectors[index], this.sessionFastestSectors[index])
