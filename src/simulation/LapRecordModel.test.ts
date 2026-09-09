@@ -3,7 +3,7 @@ import { lapTyreLabel, liveTimingTone } from './LapRecordModel';
 
 describe('lap record presentation', () => {
   it('marks the lap where the car changes compound in the pits', () => {
-    expect(lapTyreLabel('MEDIUM', 'SOFT', true)).toBe('M→S·P');
+    expect(lapTyreLabel('MEDIUM', 'SOFT', true)).toBe('M→S PIT');
     expect(lapTyreLabel('HARD', 'HARD', false)).toBe('H');
   });
 
