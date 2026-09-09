@@ -1,3 +1,5 @@
+import { degradedTyreSlipFactor } from './TyrePerformanceModel';
+
 export interface PlanarMotion {
   vx: number;
   vy: number;
@@ -30,6 +32,13 @@ export interface ArcadeCarControlResult {
  * Arcade handling where tyre grip primarily changes braking, rotation and
  * combined traction. Compound choice should not behave like an engine map:
  * with the wheel straight, S/M/H accelerate almost the same way.
+ *
+ * Degradation is deliberately game-facing rather than a tyre simulation. Once
+ * effective grip falls below a healthy-race-tyre window, asking for lots of
+ * steering at speed makes the car hang onto lateral motion and scrub forward
+ * speed. In game terms: sliding is readable time loss, not realism for its own
+ * sake. Fresh Hard still sits above the slide threshold; this is mainly a late-
+ * stint / overheated / heavily compromised tyre behaviour.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -54,7 +63,9 @@ export function controlArcadeCar(
   const lateralSpeed = motion.vx * rightX + motion.vy * rightY;
   const speed = Math.hypot(motion.vx, motion.vy);
   const normalizedGrip = clamp01((tireGrip - 0.30) / 1.04);
+  const steeringGrip = 0.42 + normalizedGrip * 0.58;
   const superGrip = Math.max(0, tireGrip - 1);
+  const degradedSlip = degradedTyreSlipFactor(tireGrip);
 
   // A small global speed lift: enough to make straights feel more urgent after
   // pulling the camera back, without turning starts into rocket launches.
@@ -83,10 +94,19 @@ export function controlArcadeCar(
   const roughSurface = clamp01((1 - surfaceGrip) / 0.50);
   const roughSurfaceDrag = roughSurface
     * (0.80 + speed * 0.045 + speed * speed * 0.00070);
+
+  // A tired tyre can still point the car into the corner, but if it is pushed
+  // hard it starts scrubbing speed. That makes tyre age a driving problem rather
+  // than simply turning the steering sensitivity down every lap.
+  const tyreSlideDrag = degradedSlip
+    * steeringLoad
+    * (0.55 + throttle * 0.45)
+    * (1.35 + speed * 0.055);
+
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
 
-  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag;
+  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag - tyreSlideDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
     longitudinalAcceleration -= Math.sign(forwardSpeed) * brakingAcceleration;
   } else if (brake > 0.05) {
@@ -98,24 +118,26 @@ export function controlArcadeCar(
   if (throttle >= 0 && nextForward < -3) nextForward = -3;
 
   const highSpeedSlip = clamp01(speed / 132);
-  const tyreLateralAuthority = 0.34 + Math.pow(normalizedGrip, 1.86) * 1.52 + superGrip * 0.55;
+  const tyreLateralAuthority = 0.34 + Math.pow(steeringGrip, 1.70) * 1.52 + superGrip * 0.55;
+  const degradedLateralRetention = 1 - degradedSlip * steeringLoad * 0.42;
   const lateralGripRate = 9.35
     * tyreLateralAuthority
     * surfaceGrip
-    * (1 - highSpeedSlip * 0.22);
+    * (1 - highSpeedSlip * 0.22)
+    * degradedLateralRetention;
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
-  // Keep high-speed cornering demanding, but make the whole car more willing to
-  // rotate than the previous build. Medium should feel like a racing tyre, not
-  // like the steering suddenly stopped working after a Soft stint.
+  // Keep high-speed cornering demanding, but preserve most of the steering on
+  // an old tyre. Late-stint performance now falls more through slide/speed loss
+  // than through making the steering itself disappear.
   const speedAuthority = 2.52 / (1 + Math.pow(speed / 49, 1.62)) + 0.060;
   const lowSpeedBuild = clamp01(speed / 12);
   const fastCorner = clamp01((speed - 38) / 66);
   const freshHighSpeedAuthority = 0.16
-    + Math.pow(normalizedGrip, 1.90) * 1.40
+    + Math.pow(steeringGrip, 1.72) * 1.40
     + superGrip * 0.76;
-  const tyreTurnFactor = (1 - fastCorner) * (0.66 + normalizedGrip * 0.54)
+  const tyreTurnFactor = (1 - fastCorner) * (0.66 + steeringGrip * 0.54)
     + fastCorner * freshHighSpeedAuthority;
   const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.07 + (1 - normalizedGrip) * 0.50);
   const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.10 : 1;
