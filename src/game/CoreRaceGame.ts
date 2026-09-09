@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RaceAudio } from '../audio/RaceAudio';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
@@ -45,6 +46,7 @@ const CAMERA_OFFSET = new THREE.Vector3(17, 30, 17);
 const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
+const TIMING_EPSILON = 0.0005;
 
 interface LapTelemetry {
   lap: number;
@@ -59,6 +61,9 @@ interface AiLapClock {
   lap: number;
   lapStartTime: number;
   bestLap?: number;
+  lastProgress: number;
+  nextSector: number;
+  sectorStartTime: number;
 }
 
 export class CoreRaceGame {
@@ -75,6 +80,7 @@ export class CoreRaceGame {
   private readonly aiCars: FormulaCar3D[];
   private readonly cameraTarget = new THREE.Vector3();
   private readonly physics: RapierRacePhysics;
+  private readonly audio = new RaceAudio();
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -98,9 +104,11 @@ export class CoreRaceGame {
   private nextSector = 1;
   private sectorStartTime = 0;
   private sectorTimes: number[] = [];
+  private sectorTones: TimingTone[] = [];
   private lapHistory: LapTelemetry[] = [];
   private aiLapClocks = new Map<string, AiLapClock>();
   private sessionFastestLap?: number;
+  private sessionFastestSectors: Array<number | undefined> = [undefined, undefined, undefined];
 
   constructor(container: HTMLElement, hud: HTMLElement, setup: RaceSetup) {
     this.container = container;
@@ -136,6 +144,7 @@ export class CoreRaceGame {
     this.bindInput();
     this.resize();
     window.addEventListener('resize', this.resize);
+    this.audio.unlock();
     this.syncVisuals(true);
     requestAnimationFrame(this.frame);
   }
@@ -163,6 +172,7 @@ export class CoreRaceGame {
 
   private bindInput(): void {
     window.addEventListener('keydown', (event) => {
+      this.audio.unlock();
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
       this.keys.add(event.code);
       if (event.repeat) return;
@@ -172,6 +182,7 @@ export class CoreRaceGame {
       if (event.code === 'KeyF' && this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.pitRequested = !this.pitRequested;
       if (event.code === 'KeyC') this.handleRecoveryOrRestart();
     });
+    this.container.addEventListener('pointerdown', () => this.audio.unlock(), { passive: true });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
     window.addEventListener('blur', () => this.keys.clear());
   }
@@ -202,6 +213,7 @@ export class CoreRaceGame {
 
     this.syncVisuals(false);
     this.updateCamera(dt);
+    this.updateAudio(dt);
     this.renderHud();
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame(this.frame);
@@ -247,7 +259,7 @@ export class CoreRaceGame {
 
     const beforeTrack = projectTrack(this.vehicle.x, this.vehicle.y);
     const surface = surfaceEffect(beforeTrack.distance);
-    const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
+    const aero = aeroEffect(this.lap, beforeTrack.progress, this.ai, beforeTrack.laneOffset);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
     const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.92;
     const brakingLoad = brake * speedLoad * 0.82;
@@ -324,7 +336,11 @@ export class CoreRaceGame {
     while (this.nextSector <= 2) {
       const threshold = SECTOR_BOUNDARIES[this.nextSector - 1];
       if (this.lastTrackProgress < threshold && this.trackProgress >= threshold) {
-        this.sectorTimes.push(this.timing.raceTime - this.sectorStartTime);
+        const index = this.nextSector - 1;
+        const sectorTime = this.timing.raceTime - this.sectorStartTime;
+        this.sectorTimes.push(sectorTime);
+        this.sectorTones.push(this.newSectorTone(index, sectorTime));
+        this.registerSessionFastestSector(index, sectorTime);
         this.sectorStartTime = this.timing.raceTime;
         this.nextSector += 1;
       } else break;
@@ -339,6 +355,7 @@ export class CoreRaceGame {
       if (crossedStart) {
         this.lap = 1;
         this.nextCheckpoint = 1;
+        this.sectorStartTime = this.timing.raceTime;
       }
       return;
     }
@@ -351,6 +368,8 @@ export class CoreRaceGame {
     const s1 = this.sectorTimes[0] ?? lapTime / 3;
     const s2 = this.sectorTimes[1] ?? lapTime / 3;
     const s3 = Math.max(0, lapTime - s1 - s2);
+    this.sectorTones[2] = this.newSectorTone(2, s3);
+    this.registerSessionFastestSector(2, s3);
     this.lapHistory.push({ lap: this.lap, compound: this.tire.compound, s1, s2, s3, lapTime });
     this.lapHistory = this.lapHistory.slice(-this.totalLaps);
     if (this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
@@ -361,6 +380,7 @@ export class CoreRaceGame {
     this.nextSector = 1;
     this.sectorStartTime = this.timing.raceTime;
     this.sectorTimes = [];
+    this.sectorTones = [];
 
     if (this.lap > this.totalLaps) {
       const legal = isTwoCompoundLegal(this.usedCompounds);
@@ -377,17 +397,38 @@ export class CoreRaceGame {
     for (const driver of this.ai) {
       const clock = this.aiLapClocks.get(driver.id);
       if (!clock) {
-        this.aiLapClocks.set(driver.id, { lap: driver.lap, lapStartTime: this.timing.raceTime });
+        this.aiLapClocks.set(driver.id, this.createAiClock(driver));
         continue;
       }
-      if (driver.lap <= clock.lap) continue;
-      const completedLap = this.timing.raceTime - clock.lapStartTime;
-      if (clock.lap >= 2 && completedLap > 10) {
-        clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
-        this.registerSessionFastest(completedLap);
+
+      if (driver.lap > clock.lap) {
+        if (clock.lap >= 1) {
+          const s3 = this.timing.raceTime - clock.sectorStartTime;
+          if (s3 > 0.5) this.registerSessionFastestSector(2, s3);
+        }
+        const completedLap = this.timing.raceTime - clock.lapStartTime;
+        if (clock.lap >= 2 && completedLap > 10) {
+          clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
+          this.registerSessionFastest(completedLap);
+        }
+        clock.lap = driver.lap;
+        clock.lapStartTime = this.timing.raceTime;
+        clock.lastProgress = driver.progress;
+        clock.nextSector = 1;
+        clock.sectorStartTime = this.timing.raceTime;
+        continue;
       }
-      clock.lap = driver.lap;
-      clock.lapStartTime = this.timing.raceTime;
+
+      if (driver.lap >= 1 && clock.nextSector <= 2) {
+        const threshold = SECTOR_BOUNDARIES[clock.nextSector - 1];
+        if (clock.lastProgress < threshold && driver.progress >= threshold) {
+          const sectorTime = this.timing.raceTime - clock.sectorStartTime;
+          if (sectorTime > 0.5) this.registerSessionFastestSector(clock.nextSector - 1, sectorTime);
+          clock.sectorStartTime = this.timing.raceTime;
+          clock.nextSector += 1;
+        }
+      }
+      clock.lastProgress = driver.progress;
     }
   }
 
@@ -395,8 +436,31 @@ export class CoreRaceGame {
     this.sessionFastestLap = this.sessionFastestLap === undefined ? lapTime : Math.min(this.sessionFastestLap, lapTime);
   }
 
+  private registerSessionFastestSector(index: number, sectorTime: number): void {
+    const previous = this.sessionFastestSectors[index];
+    this.sessionFastestSectors[index] = previous === undefined ? sectorTime : Math.min(previous, sectorTime);
+  }
+
+  private newSectorTone(index: number, sectorTime: number): TimingTone {
+    const personalBest = this.playerBestSector((['s1', 's2', 's3'] as const)[index]);
+    const sessionBest = this.sessionFastestSectors[index];
+    if (sessionBest === undefined || sectorTime < sessionBest - TIMING_EPSILON) return 'session-best';
+    if (personalBest === undefined || sectorTime < personalBest - TIMING_EPSILON) return 'personal-best';
+    return 'neutral';
+  }
+
+  private createAiClock(driver: DriverState): AiLapClock {
+    return {
+      lap: driver.lap,
+      lapStartTime: this.timing.raceTime,
+      lastProgress: driver.progress,
+      nextSector: 1,
+      sectorStartTime: this.timing.raceTime,
+    };
+  }
+
   private resetAiTiming(): void {
-    this.aiLapClocks = new Map(this.ai.map((driver) => [driver.id, { lap: driver.lap, lapStartTime: this.timing.raceTime }]));
+    this.aiLapClocks = new Map(this.ai.map((driver) => [driver.id, this.createAiClock(driver)]));
   }
 
   private estimateTrafficPressure(): number {
@@ -449,6 +513,21 @@ export class CoreRaceGame {
     this.camera.lookAt(this.cameraTarget);
   }
 
+  private updateAudio(dt: number): void {
+    const surface = surfaceEffect(this.trackDistance);
+    this.audio.update({
+      speed: this.vehicle.speed,
+      throttle: this.flow.phase === 'RACING' && this.keys.has('KeyW') && !isPitActive(this.pitStop) ? 1 : 0,
+      brake: this.flow.phase === 'RACING' && this.keys.has('KeyS') && !isPitActive(this.pitStop) ? 1 : 0,
+      steer: this.steerInput,
+      tireGrip: this.tire.grip,
+      surfaceSeverity: surface.severity,
+      trafficPressure: this.trafficPressure,
+      pitService: this.pitStop.phase === 'SERVICE',
+      banner: raceBanner(this.flow),
+    }, dt);
+  }
+
   private chooseCompound(compound: Compound): void {
     if (this.flow.phase !== 'FINISHED' && !isPitActive(this.pitStop)) this.selectedCompound = compound;
   }
@@ -489,11 +568,14 @@ export class CoreRaceGame {
     this.nextSector = 1;
     this.sectorStartTime = 0;
     this.sectorTimes = [];
+    this.sectorTones = [];
     this.lapHistory = [];
     this.sessionFastestLap = undefined;
+    this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
+    this.audio.reset();
     this.playerCar.setCompound(this.startCompound);
     this.syncVisuals(true);
   }
@@ -578,12 +660,20 @@ export class CoreRaceGame {
     const bestS1 = this.playerBestSector('s1');
     const bestS2 = this.playerBestSector('s2');
     const bestS3 = this.playerBestSector('s3');
+    const bestSectors = [bestS1, bestS2, bestS3];
     return rows.slice(-10).map((row) => {
       const current = row.lap === displayLap && this.flow.phase !== 'FINISHED';
       const completed = !current;
       const lapTone = completed ? timingTone(row.lapTime, personalBest, this.sessionFastestLap) : 'neutral';
-      const sectorClass = (value: number, best: number | undefined) => completed && best !== undefined && Math.abs(value - best) < 0.0005 ? 'timing-green' : '';
-      return `<div class="lap-row ${current ? 'current' : ''}"><b>${row.lap}</b><i class="compound-pill tyre-${row.compound.toLowerCase()}">${row.compound[0]}</i><span class="${sectorClass(row.s1, bestS1)}">${row.s1 > 0 ? formatShortTime(row.s1) : '—'}</span><span class="${sectorClass(row.s2, bestS2)}">${row.s2 > 0 ? formatShortTime(row.s2) : '—'}</span><span class="${sectorClass(row.s3, bestS3)}">${row.s3 > 0 ? formatShortTime(row.s3) : '—'}</span><strong class="${this.timingClass(lapTone)}">${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong></div>`;
+      const sectorValues = [row.s1, row.s2, row.s3];
+      const sectorCell = (index: number) => {
+        const value = sectorValues[index];
+        const tone = current
+          ? this.sectorTones[index] ?? 'neutral'
+          : timingTone(value, bestSectors[index], this.sessionFastestSectors[index]);
+        return `<span class="${this.timingClass(tone)}">${value > 0 ? formatShortTime(value) : '—'}</span>`;
+      };
+      return `<div class="lap-row ${current ? 'current' : ''}"><b>${row.lap}</b><i class="compound-pill tyre-${row.compound.toLowerCase()}">${row.compound[0]}</i>${sectorCell(0)}${sectorCell(1)}${sectorCell(2)}<strong class="${this.timingClass(lapTone)}">${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong></div>`;
     }).join('');
   }
 
@@ -591,7 +681,8 @@ export class CoreRaceGame {
     const standings = this.standings();
     const position = standings.findIndex((driver) => driver.id === 'player') + 1;
     const surface = surfaceEffect(this.trackDistance);
-    const aero = aeroEffect(this.lap, this.trackProgress, this.ai);
+    const projection = projectTrack(this.vehicle.x, this.vehicle.y);
+    const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
     const banner = raceBanner(this.flow);
     const legal = isTwoCompoundLegal(this.usedCompounds);
     const displayLap = Math.max(1, Math.min(this.lap, this.totalLaps));
@@ -614,19 +705,25 @@ export class CoreRaceGame {
             : `NEXT ${this.selectedCompound} · F TO BOX`;
     const raceState = surface.label !== 'TRACK'
       ? surface.label
-      : this.trafficPressure > 0.18
-        ? 'SIDE BY SIDE'
+      : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
+        ? 'SIDE BY SIDE · CLEAN AIR'
         : aero.dirtyAir > 0.01
           ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
-          : 'CLEAN AIR';
+          : aero.tow > 0.01
+            ? `TOW ${(aero.tow * 100).toFixed(0)}% · CLEAN AIR`
+            : 'CLEAN AIR';
 
     const currentSector = Math.min(3, this.nextSector);
     const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
     const sectorDisplay = [1, 2, 3].map((sector) => {
       const completed = this.sectorTimes[sector - 1];
-      if (completed !== undefined) return formatShortTime(completed);
-      if (currentSector === sector && this.flow.phase === 'RACING') return formatShortTime(currentSectorElapsed);
-      return '—';
+      if (completed !== undefined) {
+        return { text: formatShortTime(completed), tone: this.sectorTones[sector - 1] ?? 'neutral' as TimingTone };
+      }
+      if (currentSector === sector && this.flow.phase === 'RACING') {
+        return { text: formatShortTime(currentSectorElapsed), tone: 'neutral' as TimingTone };
+      }
+      return { text: '—', tone: 'neutral' as TimingTone };
     });
 
     const playerBest = this.playerBestLap();
@@ -647,7 +744,7 @@ export class CoreRaceGame {
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
-        <div class="timing-strip"><span>S1 <b>${sectorDisplay[0]}</b></span><span>S2 <b>${sectorDisplay[1]}</b></span><span>S3 <b>${sectorDisplay[2]}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
+        <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
       <div class="tower">${towerHtml}</div>
       <div class="race-telemetry">
@@ -659,7 +756,7 @@ export class CoreRaceGame {
         <div class="race-data core-race-data">
           <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED · GRIP ${(this.tire.grip * 100).toFixed(0)}%</span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
-          <div><small>RACE</small><b>${raceState}</b><span>CORE RACE · ENERGY OFF</span></div>
+          <div><small>RACE</small><b>${raceState}</b><span>CORE RACE · AUDIO ON</span></div>
         </div>
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER</div>`;
