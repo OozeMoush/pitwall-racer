@@ -22,9 +22,16 @@ export function raceAudioParameters(input: RaceAudioInput): RaceAudioParameters 
   const load = clamp01(input.throttle * 0.78 + speed * 0.38);
   const engineFrequency = 58 + speed * 245 + load * 34;
   const engineGain = input.pitService ? 0.025 : 0.035 + speed * 0.055 + input.throttle * 0.035;
-  const slipDemand = clamp01(Math.abs(input.steer) * speed * 1.35 + input.brake * speed * 0.55);
-  const gripStress = clamp01((1.04 - input.tireGrip) * 1.8 + slipDemand * 0.75);
-  const tireGain = speed < 0.15 ? 0 : gripStress * 0.095;
+
+  // Do not hiss merely because the steering key is held. The tyre layer now
+  // wakes up only when the driver is close to or beyond the available grip:
+  // heavy braking, very large high-speed steering input, or worn tyres.
+  const steeringStress = Math.abs(input.steer) * speed * Math.max(0.28, 0.92 - input.tireGrip * 0.48);
+  const brakingStress = input.brake * speed * 0.58;
+  const wornTyreStress = Math.abs(input.steer) * speed * clamp01((0.92 - input.tireGrip) * 1.7);
+  const slipDemand = clamp01((steeringStress + brakingStress + wornTyreStress - 0.56) * 2.8);
+  const tireGain = speed < 0.2 ? 0 : slipDemand * 0.075;
+
   const surfaceGain = clamp01(input.surfaceSeverity) * (0.025 + speed * 0.075);
   return { engineFrequency, engineGain, tireGain, surfaceGain };
 }
@@ -63,7 +70,7 @@ export class RaceAudio {
     this.engineB?.frequency.setTargetAtTime(params.engineFrequency * 1.985, now, 0.03);
     this.engineGain?.gain.setTargetAtTime(params.engineGain, now, 0.035);
     this.engineFilter?.frequency.setTargetAtTime(520 + clamp01(input.speed / 112) * 2100 + input.throttle * 850, now, 0.045);
-    this.tireGain?.gain.setTargetAtTime(params.tireGain, now, 0.025);
+    this.tireGain?.gain.setTargetAtTime(params.tireGain, now, 0.035);
     this.surfaceGain?.gain.setTargetAtTime(params.surfaceGain, now, 0.04);
 
     if (input.banner !== this.lastBanner) {
