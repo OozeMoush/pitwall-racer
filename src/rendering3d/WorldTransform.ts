@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-// Fixed-direction top-down cameras hide longitudinal motion because the camera
-// follows the player. Deliberately render simulation metres larger so track
-// detail crosses the viewport quickly while keeping HUD speed honest.
-export const WORLD_SCALE = 0.30;
+// The fixed GeneRally-style camera follows position without rotating. A larger
+// world scale makes trackside reference objects cross the viewport quickly so
+// 250-350 km/h actually reads as fast instead of looking like a slow pan.
+export const WORLD_SCALE = 0.34;
 export const WORLD_CENTER_X = 1110;
 export const WORLD_CENTER_Y = 600;
 
