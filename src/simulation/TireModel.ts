@@ -46,11 +46,11 @@ export function gripPercent(grip: number): number {
 /**
  * Arcade tyre model for a longer race.
  *
- * Degradation removes braking and turning confidence first. Medium can be
- * nursed toward twelve laps, but the late stint still costs enough corner time
- * that a legal stop is attractive. Soft retains a short peak because its wear
- * multiplier is much higher. Hard stays close enough on fresh grip to remain
- * raceable, then becomes the endurance option as race length grows.
+ * Tyre age should not mainly feel like the steering rack disappearing. Peak
+ * cornering grip still fades, but more gently than before; the car controller
+ * uses the wear value separately to make an over-driven old tyre slide and
+ * bleed speed. That keeps the feedback simple: an old tyre can still turn, but
+ * asking too much from it costs lap time.
  */
 export function stepTire(state: TireState, mode: PaceMode, load: number, dt: number): TireState {
   const spec = compound[state.compound];
@@ -70,13 +70,16 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
     * heatWear;
   const wear = Math.min(1, state.wear + wearRate * dt);
 
-  const baseWearLoss = wear * 0.045;
-  const lateWear = Math.max(0, wear - 0.47);
-  const cliff = Math.pow(lateWear, 1.20) * 1.58;
+  // Keep enough steering authority on an old tyre to make the degradation
+  // playable. The larger late-stint cost now comes from wear-driven sliding in
+  // ArcadeCarController rather than an extreme loss of nominal grip.
+  const baseWearLoss = wear * 0.030;
+  const lateWear = Math.max(0, wear - 0.56);
+  const cliff = Math.pow(lateWear, 1.20) * 0.96;
   const temperatureLoss = Math.max(0, tempDelta - 5) * 0.0048;
   const tempGrip = Math.max(0.80, 1 - temperatureLoss);
-  const wearGrip = Math.max(0.45, 1 - baseWearLoss - cliff);
-  const grip = Math.max(0.36, spec.baseGrip * map.grip * tempGrip * wearGrip);
+  const wearGrip = Math.max(0.58, 1 - baseWearLoss - cliff);
+  const grip = Math.max(0.44, spec.baseGrip * map.grip * tempGrip * wearGrip);
 
   return { ...state, wear, temperature, grip };
 }
