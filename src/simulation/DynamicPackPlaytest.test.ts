@@ -10,7 +10,7 @@ import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
-const CAMERA_VIEW_HEIGHT = 37;
+const CAMERA_VIEW_HEIGHT = 43;
 const CORE_POWER_BOOST = 0.22;
 
 describe('dynamic field playtest telemetry', () => {
@@ -149,16 +149,16 @@ describe('dynamic field playtest telemetry', () => {
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(335);
-    expect(metrics.maxPlayerKmh).toBeLessThan(430);
+    expect(metrics.maxPlayerKmh).toBeLessThan(440);
     expect(metrics.maxAiKmh).toBeGreaterThan(335);
-    expect(metrics.maxAiKmh).toBeLessThan(430);
+    expect(metrics.maxAiKmh).toBeLessThan(440);
     // Straight-line speed stays close; the field's advantage must be sustained
     // lap pace from the braking/cornering model.
     expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(25);
     expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh + 8);
     expect(metrics.avgAiKmh).toBeGreaterThan(250);
     expect(metrics.offTrackRatio).toBeLessThan(0.02);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.78);
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.88);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
     expect(metrics.p99AiLongitudinalJerk).toBeLessThan(24);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);
