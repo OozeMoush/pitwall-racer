@@ -1,4 +1,4 @@
-import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
+import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 
 export interface StrategyPlan {
   name: string;
@@ -36,6 +36,8 @@ const BASE_LAP_SECONDS = 62;
 const PIT_LOSS_SECONDS = 7;
 const REPRESENTATIVE_SECONDS_PER_LAP = 58;
 const DT = 0.5;
+const CORNER_TIME_FRACTION = 0.45;
+const GRIP_RESPONSE_EXPONENT = 0.85;
 
 const modeLoad: Record<PaceMode, number> = {
   CONSERVE: 0.48,
@@ -67,7 +69,15 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyRe
     }
 
     const gripAverage = gripSum / Math.max(1, samples);
-    const lapTime = BASE_LAP_SECONDS / Math.max(0.56, gripAverage) + modeLapAdjustment[pace];
+    // Tyres change braking/rotation/corner exit, not the engine. Only the
+    // cornering share of the lap therefore scales with grip; the straight-line
+    // share remains compound-neutral just like the live physics model.
+    const straightSeconds = BASE_LAP_SECONDS * (1 - CORNER_TIME_FRACTION);
+    const cornerSeconds = BASE_LAP_SECONDS * CORNER_TIME_FRACTION;
+    const relativeGrip = Math.max(0.56, gripRatioToMedium(gripAverage));
+    const lapTime = straightSeconds
+      + cornerSeconds / Math.pow(relativeGrip, GRIP_RESPONSE_EXPONENT)
+      + modeLapAdjustment[pace];
     totalTime += lapTime;
     laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });
 
@@ -102,6 +112,7 @@ export function benchmarkStrategies(totalLaps = 12): BalanceSnapshot {
     { name: 'M→S lap7', startCompound: 'MEDIUM', stopAfterLap: 7, nextCompound: 'SOFT', paceForLap: balancedPace },
     { name: 'M→H lap7', startCompound: 'MEDIUM', stopAfterLap: 7, nextCompound: 'HARD', paceForLap: balancedPace },
     { name: 'H→S lap8', startCompound: 'HARD', stopAfterLap: 8, nextCompound: 'SOFT', paceForLap: balancedPace },
+    { name: 'S→H lap4', startCompound: 'SOFT', stopAfterLap: 4, nextCompound: 'HARD', paceForLap: balancedPace },
   ];
 
   const legalResults = plans
@@ -111,7 +122,7 @@ export function benchmarkStrategies(totalLaps = 12): BalanceSnapshot {
 
   const fastest = legalResults[0];
   const second = legalResults[1] ?? fastest;
-  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 25);
+  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 12);
 
   return {
     fastest,
