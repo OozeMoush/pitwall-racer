@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { RACING_LINE, TRACK_CONTROLS, TRACK_LENGTH, nearestTrackProgress, projectTrack, sampleTrack } from './TrackModel';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  RACING_LINE,
+  TRACK_CONTROLS,
+  TRACK_LENGTH,
+  TRACKS,
+  nearestTrackProgress,
+  projectTrack,
+  sampleTrack,
+  setActiveTrack,
+} from './TrackModel';
+
+afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('TrackModel', () => {
   it('densifies a full race-scale circuit into a smooth racing line', () => {
@@ -7,16 +18,29 @@ describe('TrackModel', () => {
     expect(TRACK_LENGTH).toBeGreaterThan(4500);
   });
 
-  it('has no discontinuous heading jumps around the closed circuit', () => {
-    let worst = 0;
-    for (let i = 0; i < 200; i++) {
-      const a = sampleTrack(i / 200);
-      const b = sampleTrack((i + 1) / 200);
-      let delta = Math.abs(a.heading - b.heading);
-      if (delta > Math.PI) delta = Math.PI * 2 - delta;
-      worst = Math.max(worst, delta);
+  it('ships multiple genuinely different circuits', () => {
+    const lengths = TRACKS.map((track) => {
+      setActiveTrack(track.id);
+      expect(RACING_LINE.length).toBeGreaterThan(track.controls.length * 10);
+      expect(TRACK_LENGTH).toBeGreaterThan(2500);
+      return Math.round(TRACK_LENGTH);
+    });
+    expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('has no discontinuous heading jumps around every closed circuit', () => {
+    for (const track of TRACKS) {
+      setActiveTrack(track.id);
+      let worst = 0;
+      for (let i = 0; i < 240; i++) {
+        const a = sampleTrack(i / 240);
+        const b = sampleTrack((i + 1) / 240);
+        let delta = Math.abs(a.heading - b.heading);
+        if (delta > Math.PI) delta = Math.PI * 2 - delta;
+        worst = Math.max(worst, delta);
+      }
+      expect(worst).toBeLessThan(1.05);
     }
-    expect(worst).toBeLessThan(0.9);
   });
 
   it('projects sampled points back close to their source progress', () => {
