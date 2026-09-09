@@ -18,6 +18,7 @@ import type { VehicleState } from './VehicleModel';
 
 const CAR_HALF_LENGTH = 8.5;
 const CAR_HALF_WIDTH = 4.1;
+const CORE_POWER_BASELINE = 0.22;
 
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
@@ -69,21 +70,19 @@ export class RapierRacePhysics {
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
 
-      // Compound choice is not an engine mode. Every AI gets the same hybrid
-      // baseline on a straight; tyre grip earns time through braking, line and
-      // corner speed instead. Driver skill and an active attack may still add a
-      // small power edge so racecraft remains visible.
-      const baseHybridBoost = 0.30;
-      const skillBoost = Math.max(0, driver.skill - 1) * 0.75;
-      const attackBoost = control.battleState === 'ATTACK' ? 0.085 : 0;
+      // Core-race phase: there is no hidden AI energy mode. The baseline power
+      // is the same one the player uses. Difficulty comes from braking later,
+      // carrying the tyre through the corner and hitting the line accurately.
+      const driverExecution = Math.max(0, driver.skill - 1) * 0.20;
+      const attackCommitment = control.battleState === 'ATTACK' ? 0.035 : 0;
 
       this.driveAi(index, {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * 1.08,
+        tireGrip: driver.tire.grip * 1.13,
         surfaceGrip: 1,
-        powerBoost: baseHybridBoost + skillBoost + attackBoost,
+        powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, dt);
@@ -93,7 +92,7 @@ export class RapierRacePhysics {
   driveAi(index: number, input: ArcadeCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.driveBody(body, input, dt, 0.90);
+    this.driveBody(body, input, dt, 0.92);
   }
 
   step(dt: number): void {
