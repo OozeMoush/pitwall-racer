@@ -14,6 +14,7 @@ export interface ArcadeCarInput {
   powerBoost?: number;
   powerMultiplier?: number;
   rollingResistance?: number;
+  speedDrag?: number;
 }
 
 export interface ArcadeCarControlResult {
@@ -44,6 +45,7 @@ export function controlArcadeCar(
   const powerBoost = clamp(input.powerBoost ?? 0, -0.55, 0.48);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
   const rollingResistance = clamp(input.rollingResistance ?? 0, 0, 14);
+  const speedDrag = clamp(input.speedDrag ?? 0, 0, 0.18);
 
   const cos = Math.cos(motion.heading);
   const sin = Math.sin(motion.heading);
@@ -76,10 +78,11 @@ export function controlArcadeCar(
 
   const aeroDrag = 0.000235 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
+  const surfaceSpeedDrag = speedDrag * speed;
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
 
-  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag;
+  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - surfaceSpeedDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
     longitudinalAcceleration -= Math.sign(forwardSpeed) * brakingAcceleration;
   } else if (brake > 0.05) {
@@ -92,10 +95,12 @@ export function controlArcadeCar(
 
   const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.30 + Math.pow(normalizedGrip, 1.95) * 1.46 + superGrip * 0.52;
-  const lateralGripRate = 9.1
+  // Slightly stronger lateral settling across every compound. This makes the
+  // whole car friendlier without erasing Soft/Medium/Hard differences.
+  const lateralGripRate = 9.85
     * tyreLateralAuthority
     * surfaceGrip
-    * (1 - highSpeedSlip * 0.24);
+    * (1 - highSpeedSlip * 0.22);
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
@@ -107,7 +112,7 @@ export function controlArcadeCar(
     + superGrip * 0.72;
   const tyreTurnFactor = (1 - fastCorner) * (0.62 + normalizedGrip * 0.52)
     + fastCorner * freshHighSpeedAuthority;
-  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.10 + (1 - normalizedGrip) * 0.68);
+  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.09 + (1 - normalizedGrip) * 0.60);
   const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.10 : 1;
   const brakingRotation = 1 + brake * (0.28 + fastCorner * 0.14);
   const targetAngularVelocity = steer
@@ -115,10 +120,11 @@ export function controlArcadeCar(
     * lowSpeedBuild
     * tyreTurnFactor
     * surfaceGrip
-    * Math.max(0.31, throttleUndersteer)
+    * Math.max(0.34, throttleUndersteer)
     * liftRotation
-    * brakingRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.5 + (1 - highSpeedSlip) * 2.0));
+    * brakingRotation
+    * 1.10;
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.8 + (1 - highSpeedSlip) * 2.1));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 
