@@ -1,6 +1,8 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { ThreeRaceGame } from './game/ThreeRaceGame';
+import { CoreRaceGame } from './game/CoreRaceGame';
+import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
+import { showPreRaceMenu } from './ui/PreRaceMenu';
 import './style.css';
 
 async function bootstrap(): Promise<void> {
@@ -10,9 +12,12 @@ async function bootstrap(): Promise<void> {
 
   hud.innerHTML = '<div class="physics-loading">INITIALIZING PHYSICS…</div>';
   await RAPIER.init();
+
+  const setup = await showPreRaceMenu(hud);
+  setActiveTrack(setup.trackId);
   hud.innerHTML = '';
   installHudEnhancer(hud);
-  new ThreeRaceGame(game, hud);
+  new CoreRaceGame(game, hud, setup);
 }
 
 bootstrap().catch((error) => {
