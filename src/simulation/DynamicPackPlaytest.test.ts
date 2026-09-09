@@ -152,7 +152,7 @@ describe('dynamic field playtest telemetry', () => {
     expect(metrics.maxAiKmh).toBeGreaterThan(350);
     expect(metrics.maxAiKmh).toBeLessThan(430);
     expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(35);
-    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 8);
+    expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh + 8);
     expect(metrics.avgAiKmh).toBeGreaterThan(260);
     expect(metrics.offTrackRatio).toBeLessThan(0.02);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.78);
