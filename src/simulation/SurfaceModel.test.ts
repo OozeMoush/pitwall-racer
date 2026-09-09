@@ -9,6 +9,7 @@ describe('surfaceEffect', () => {
       gripMultiplier: 1,
       powerMultiplier: 1,
       rollingResistance: 0,
+      speedDrag: 0,
       label: 'TRACK',
     });
     expect(surfaceEffect(34).label).toBe('RUNOFF');
@@ -22,7 +23,27 @@ describe('surfaceEffect', () => {
     expect(runoff.gripMultiplier).toBeLessThan(1);
     expect(grass.powerMultiplier).toBeLessThan(runoff.powerMultiplier);
     expect(grass.rollingResistance).toBeGreaterThan(runoff.rollingResistance);
+    expect(grass.speedDrag).toBeGreaterThan(runoff.speedDrag);
     expect(grass.label).toBe('GRASS');
+  });
+
+  it('punishes high-speed grass much more than low-speed grass', () => {
+    const grass = surfaceEffect(120);
+    const input = {
+      throttle: 1,
+      brake: 0,
+      steer: 0,
+      tireGrip: 1,
+      surfaceGrip: grass.gripMultiplier,
+      powerMultiplier: grass.powerMultiplier,
+      rollingResistance: grass.rollingResistance,
+      speedDrag: grass.speedDrag,
+    };
+    const low = controlArcadeCar({ vx: 5, vy: 0, heading: 0, angularVelocity: 0 }, input, 1 / 60);
+    const fast = controlArcadeCar({ vx: 90, vy: 0, heading: 0, angularVelocity: 0 }, input, 1 / 60);
+
+    expect(low.acceleration).toBeGreaterThan(0);
+    expect(fast.acceleration).toBeLessThan(-8);
   });
 
   it('still lets a slowed car accelerate through full grass and drive back', () => {
@@ -37,6 +58,7 @@ describe('surfaceEffect', () => {
         surfaceGrip: grass.gripMultiplier,
         powerMultiplier: grass.powerMultiplier,
         rollingResistance: grass.rollingResistance,
+        speedDrag: grass.speedDrag,
       },
       1 / 60,
     );
