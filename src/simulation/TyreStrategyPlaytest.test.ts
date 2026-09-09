@@ -39,7 +39,7 @@ const plans: StrategyPlan[] = [
 ];
 
 describe('tyre strategy playtest telemetry', () => {
-  it('makes a twelve-lap pit decision pay in pace, not only in the rule book', () => {
+  it('makes a twelve-lap pit decision pay through late-stint slide loss, not dead steering', () => {
     const results = plans.map((plan) => simulateStrategy(plan, TOTAL_LAPS));
     const noStop = results[0];
     const legal = results.slice(1).sort((a, b) => a.totalTime - b.totalTime);
@@ -53,6 +53,9 @@ describe('tyre strategy playtest telemetry', () => {
       secondLegal: secondLegal.name,
       secondBestGapSeconds: Number((secondLegal.totalTime - bestLegal.totalTime).toFixed(2)),
       pitBenefitSeconds: Number((noStop.totalTime - bestLegal.totalTime).toFixed(2)),
+      noStopLap4Seconds: Number(noStop.laps[3].lapTime.toFixed(2)),
+      noStopLap8Seconds: Number(noStop.laps[7].lapTime.toFixed(2)),
+      noStopLap12Seconds: Number(noStop.laps[11].lapTime.toFixed(2)),
       noStopLap4Grip: Number(noStop.laps[3].gripAverage.toFixed(3)),
       noStopLap8Grip: Number(noStop.laps[7].gripAverage.toFixed(3)),
       noStopLap12Grip: Number(noStop.laps[11].gripAverage.toFixed(3)),
@@ -64,7 +67,9 @@ describe('tyre strategy playtest telemetry', () => {
     expect(metrics.pitBenefitSeconds).toBeGreaterThan(20);
     expect(metrics.pitBenefitSeconds).toBeLessThan(120);
     expect(metrics.noStopLap8Grip).toBeGreaterThan(metrics.noStopLap4Grip * 0.88);
-    expect(metrics.noStopLap12Grip).toBeLessThan(metrics.noStopLap4Grip * 0.72);
+    expect(metrics.noStopLap12Grip).toBeLessThan(metrics.noStopLap4Grip * 0.92);
+    expect(metrics.noStopLap12Grip).toBeGreaterThan(metrics.noStopLap4Grip * 0.82);
+    expect(metrics.noStopLap12Seconds).toBeGreaterThan(metrics.noStopLap4Seconds + 8);
     expect(metrics.noStopLap12Wear).toBeGreaterThanOrEqual(0.68);
     expect(metrics.noStopLap12Wear).toBeLessThan(0.90);
     expect(metrics.secondBestGapSeconds).toBeLessThan(30);
