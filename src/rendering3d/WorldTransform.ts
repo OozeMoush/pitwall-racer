@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { sampleTrack } from '../simulation/TrackModel';
 
-// The fixed GeneRally-style camera follows position without rotating. A larger
-// world scale makes trackside reference objects cross the viewport quickly so
-// 250-350 km/h actually reads as fast instead of looking like a slow pan.
-export const WORLD_SCALE = 0.34;
+// Keep the fixed GeneRally-style camera readable from a little farther away,
+// while scaling the circuit up enough that trackside reference objects still
+// sweep across the viewport quickly. The goal is "wide but fast", not zoomed-in
+// shimmer.
+export const WORLD_SCALE = 0.40;
 export const WORLD_CENTER_X = 1110;
 export const WORLD_CENTER_Y = 600;
 
