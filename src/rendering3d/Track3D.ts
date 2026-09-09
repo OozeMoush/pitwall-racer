@@ -73,34 +73,47 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
   return geometry;
 }
 
-function addEdgeLines(root: THREE.Group): void {
-  const geometry = new THREE.BoxGeometry(0.7, 0.022, 0.075);
-  const material = new THREE.MeshStandardMaterial({ color: 0xf2f3ef, roughness: 0.76 });
-  const count = 520;
-  const edges = new THREE.InstancedMesh(geometry, material, count * 2);
-  const matrix = new THREE.Matrix4();
-  const quaternion = new THREE.Quaternion();
-  const yAxis = new THREE.Vector3(0, 1, 0);
-  let index = 0;
-  for (let i = 0; i < count; i++) {
-    const progress = i / count;
-    for (const side of [-1, 1] as const) {
-      const p = sampleTrack(progress, side * (ROAD_HALF_WIDTH - 0.55));
-      const world = toWorld(p.x, p.y, 0.072);
-      quaternion.setFromAxisAngle(yAxis, headingToYaw(p.heading));
-      matrix.compose(world, quaternion, new THREE.Vector3(1, 1, 1));
-      edges.setMatrixAt(index++, matrix);
+function offsetRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  for (let i = 0; i <= SAMPLE_COUNT; i++) {
+    const progress = i / SAMPLE_COUNT;
+    const a = sampleTrack(progress, offsetA);
+    const b = sampleTrack(progress, offsetB);
+    const aw = toWorld(a.x, a.y, height);
+    const bw = toWorld(b.x, b.y, height);
+    vertices.push(aw.x, aw.y, aw.z, bw.x, bw.y, bw.z);
+    if (i < SAMPLE_COUNT) {
+      const i0 = i * 2;
+      const i1 = i0 + 1;
+      const i2 = i0 + 2;
+      const i3 = i0 + 3;
+      indices.push(i0, i2, i1, i1, i2, i3);
     }
   }
-  edges.instanceMatrix.needsUpdate = true;
-  root.add(edges);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function addEdgeLines(root: THREE.Group): void {
+  const material = new THREE.MeshStandardMaterial({ color: 0xf2f3ef, roughness: 0.76 });
+  for (const side of [-1, 1] as const) {
+    const inner = side * (ROAD_HALF_WIDTH - 0.82);
+    const outer = side * (ROAD_HALF_WIDTH - 0.18);
+    const line = new THREE.Mesh(offsetRibbonGeometry(inner, outer, 0.073), material);
+    line.receiveShadow = true;
+    root.add(line);
+  }
 }
 
 function addCornerKerbs(root: THREE.Group): void {
-  const geometry = new THREE.BoxGeometry(0.68, 0.075, 0.25);
+  const geometry = new THREE.BoxGeometry(0.76, 0.075, 0.28);
   const red = new THREE.MeshStandardMaterial({ color: 0xe74343, roughness: 0.72 });
   const white = new THREE.MeshStandardMaterial({ color: 0xf3f3ee, roughness: 0.72 });
-  const pieces = 300;
+  const pieces = 250;
   for (let i = 0; i < pieces; i++) {
     const progress = i / pieces;
     const profile = trackProfile(progress);
@@ -143,8 +156,8 @@ function addGridBoxes(root: THREE.Group): void {
 }
 
 function addSafetyBarriers(root: THREE.Group): void {
-  const perSide = 210;
-  const geometry = new THREE.BoxGeometry(0.85, 0.44, 0.12);
+  const perSide = 190;
+  const geometry = new THREE.BoxGeometry(0.95, 0.44, 0.13);
   const material = new THREE.MeshStandardMaterial({ color: 0xa9afb0, roughness: 0.78, metalness: 0.16 });
   const barriers = new THREE.InstancedMesh(geometry, material, perSide * 2);
   const matrix = new THREE.Matrix4();
@@ -220,8 +233,8 @@ function addBrakingBoards(root: THREE.Group): void {
 }
 
 function addSpeedReferencePosts(root: THREE.Group): void {
-  const count = 520;
-  const geometry = new THREE.BoxGeometry(0.085, 0.58, 0.085);
+  const count = 320;
+  const geometry = new THREE.BoxGeometry(0.13, 0.72, 0.13);
   const material = new THREE.MeshStandardMaterial({ color: 0xd7dcd7, roughness: 0.92 });
   const posts = new THREE.InstancedMesh(geometry, material, count);
   const matrix = new THREE.Matrix4();
@@ -229,7 +242,7 @@ function addSpeedReferencePosts(root: THREE.Group): void {
     const side = i % 2 === 0 ? 1 : -1;
     const p = sampleTrack((i + 0.37) / count, side * 47);
     const world = toWorld(p.x, p.y, 0);
-    matrix.compose(new THREE.Vector3(world.x, 0.29, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+    matrix.compose(new THREE.Vector3(world.x, 0.36, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
     posts.setMatrixAt(i, matrix);
   }
   posts.instanceMatrix.needsUpdate = true;
