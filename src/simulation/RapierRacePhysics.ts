@@ -13,6 +13,7 @@ import {
   type PitStopState,
 } from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
+import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { projectTrack, sampleTrack } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
@@ -103,7 +104,16 @@ export class RapierRacePhysics {
   driveAi(index: number, input: ArcadeCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.driveBody(body, input, dt, 0.92);
+    const position = body.translation();
+    const projection = projectTrack(position.x, position.y);
+    const surface = surfaceEffect(projection.distance);
+    this.driveBody(body, {
+      ...input,
+      surfaceGrip: (input.surfaceGrip ?? 1) * surface.gripMultiplier,
+      powerMultiplier: (input.powerMultiplier ?? 1) * surface.powerMultiplier,
+      rollingResistance: (input.rollingResistance ?? 0) + surface.rollingResistance,
+      speedDrag: Math.max(input.speedDrag ?? 0, surface.speedDrag),
+    }, dt, 0.92);
   }
 
   step(dt: number): void {
