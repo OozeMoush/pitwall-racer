@@ -1,4 +1,4 @@
-export const REPRESENTATIVE_SLIDE_PENALTY_SECONDS = 40;
+export const REPRESENTATIVE_SLIDE_PENALTY_SECONDS = 45;
 
 /**
  * One simple degradation signal shared by live handling and strategy tools.
