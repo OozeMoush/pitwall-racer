@@ -56,10 +56,9 @@ export function controlArcadeCar(
   const normalizedGrip = clamp01((tireGrip - 0.30) / 1.04);
   const superGrip = Math.max(0, tireGrip - 1);
 
-  // Raise the whole race's speed ceiling without giving the car an arcade
-  // rocket launch. Acceleration stays progressive; the extra pace appears at
-  // the far end of a straight where the visual speed references can sell it.
-  const usefulTopSpeed = 118 + powerBoost * 58;
+  // A small global speed lift: enough to make straights feel more urgent after
+  // pulling the camera back, without turning starts into rocket launches.
+  const usefulTopSpeed = 123 + powerBoost * 58;
   const positiveForward = Math.max(0, forwardSpeed);
   const speedRatio = clamp01(positiveForward / Math.max(60, usefulTopSpeed));
   const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.90));
@@ -68,7 +67,7 @@ export function controlArcadeCar(
   const straightTraction = 0.985 + normalizedGrip * 0.015;
   const combinedTraction = 1 - steeringLoad * throttle * (0.10 + (1 - normalizedGrip) * 0.58);
   const engineAcceleration = throttle
-    * 13.8
+    * 14.15
     * powerTaper
     * (1 + powerBoost * 0.58)
     * powerMultiplier
