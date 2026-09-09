@@ -15,18 +15,19 @@ export interface SharedAeroEffect {
 
 const MAX_WAKE_DISTANCE = 78;
 const MIN_WAKE_DISTANCE = 6;
-const TOW_HALF_WIDTH = 22;
-const DIRTY_HALF_WIDTH = 11.5;
+const TOW_HALF_WIDTH = 24;
+const DIRTY_HALF_WIDTH = 11;
 const SIDE_BY_SIDE_LONGITUDINAL = 18;
 const SIDE_BY_SIDE_LATERAL = 7;
 
 /**
- * Lightweight game-facing aero wake model shared by player and AI.
+ * Game-facing aero wake shared by player and AI.
  *
- * - Tow has a wider wake than dirty air.
- * - Dirty air is strongest only when sitting close to the car ahead's line.
- * - Once a car genuinely pulls alongside, both effects collapse so moving out
- *   of the wake before turn-in is a meaningful racecraft action.
+ * The effect is intentionally exaggerated enough to read during play:
+ * - a car tucked in behind gets a strong straight-line tow;
+ * - staying directly in the wake costs obvious cornering grip;
+ * - moving laterally sheds dirty air before the tow disappears;
+ * - once genuinely alongside, both effects collapse.
  */
 export function aerodynamicEffect(
   subject: AeroCarPose,
@@ -49,8 +50,8 @@ export function aerodynamicEffect(
     const longitudinalStrength = clamp01(
       (MAX_WAKE_DISTANCE - longitudinal) / (MAX_WAKE_DISTANCE - MIN_WAKE_DISTANCE),
     );
-    const towStrength = 0.105 * longitudinalStrength * clamp01(1 - lateral / TOW_HALF_WIDTH);
-    const dirtyStrength = 0.18 * longitudinalStrength * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
+    const towStrength = 0.15 * longitudinalStrength * clamp01(1 - lateral / TOW_HALF_WIDTH);
+    const dirtyStrength = 0.28 * longitudinalStrength * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
 
     tow = Math.max(tow, towStrength);
     dirtyAir = Math.max(dirtyAir, dirtyStrength);
