@@ -3,16 +3,18 @@ export interface SurfaceEffect {
   gripMultiplier: number;
   powerMultiplier: number;
   rollingResistance: number;
+  speedDrag: number;
   label: 'TRACK' | 'RUNOFF' | 'GRASS';
 }
 
 /**
  * The physical road is intentionally narrow. A wheel-width mistake is allowed,
- * but using the grey runoff as extra race track immediately costs speed and grip.
+ * but using runoff or grass as extra race track must cost meaningful time.
  *
- * Full grass must still be driveable at low speed. The previous values removed
- * so much power and added so much rolling resistance that a slowed car could no
- * longer accelerate at all, effectively turning any excursion into a soft lock.
+ * Keep low-speed recovery possible by avoiding huge constant resistance. The
+ * extra penalty is speed-proportional instead: almost harmless while crawling
+ * back to the road, but strong enough at racing speed that cutting across the
+ * runoff/grass is never the fast line.
  */
 export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
   const edge = 29;
@@ -21,9 +23,13 @@ export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
 
   return {
     severity,
-    gripMultiplier: 1 - severity * 0.42,
-    powerMultiplier: 1 - severity * 0.26,
-    rollingResistance: severity * 4.8,
+    gripMultiplier: 1 - severity * 0.48,
+    powerMultiplier: 1 - severity * 0.24,
+    rollingResistance: severity * 4.4,
+    // m/s^2 contribution is speedDrag * current speed in ArcadeCarController.
+    // Full grass at 100 m/s therefore adds ~12 m/s^2 of deceleration, while at
+    // 10 m/s it adds only ~1.2 m/s^2 so the car can still drive back out.
+    speedDrag: severity * (0.07 + severity * 0.05),
     label,
   };
 }
