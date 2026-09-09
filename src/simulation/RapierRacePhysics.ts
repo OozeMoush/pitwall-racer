@@ -1,4 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
+import { aerodynamicEffect } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import { dynamicAiControl } from './DynamicAiController';
 import {
@@ -13,7 +14,7 @@ import {
 } from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
 import { createTire } from './TireModel';
-import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { projectTrack, sampleTrack } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
 const CAR_HALF_LENGTH = 8.5;
@@ -69,10 +70,20 @@ export class RapierRacePhysics {
 
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
+      const projection = projectTrack(state.x, state.y);
+      const aero = aerodynamicEffect(
+        {
+          id: driver.id,
+          lap: this.aiLaps[index] ?? driver.lap,
+          progress: projection.progress,
+          laneOffset: projection.laneOffset,
+        },
+        traffic,
+      );
 
-      // Core-race phase: there is no hidden AI energy mode. The baseline power
-      // is the same one the player uses. Difficulty comes from braking later,
-      // carrying the tyre through the corner and hitting the line accurately.
+      // All cars share the same straight-line baseline. Racecraft can earn a
+      // tow, but the dirty wake costs cornering grip until the AI moves out of
+      // line, exactly like the player-facing model.
       const driverExecution = Math.max(0, driver.skill - 1) * 0.20;
       const attackCommitment = control.battleState === 'ATTACK' ? 0.035 : 0;
 
@@ -80,9 +91,9 @@ export class RapierRacePhysics {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * 1.13,
+        tireGrip: driver.tire.grip * 1.13 * (1 - aero.dirtyAir * 0.36),
         surfaceGrip: 1,
-        powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment,
+        powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment + aero.tow * 0.22,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, dt);

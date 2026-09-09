@@ -1,3 +1,4 @@
+import { aerodynamicEffect } from './AeroModel';
 import { aiGridSlot } from './GridModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
@@ -74,8 +75,6 @@ export function createAiField(): DriverState[] {
       id: `ai-${index}`,
       name,
       progress: grid.progress,
-      // Lap zero means 'on the starting grid, before crossing the line'. The
-      // first crossing starts lap one; it must not complete lap one.
       lap: 0,
       speed: 0,
       tire: createTire(start),
@@ -328,11 +327,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-/**
- * Lap zero is the short launch from the physical grid to the start line.
- * Adding lap directly makes the ordering continuous across that first crossing:
- * P1 at lap 0 / 0.996 is behind P1 at lap 1 / 0.002.
- */
 export function raceDistance(lap: number, progress: number): number {
   return Math.max(0, lap) + progress;
 }
@@ -341,29 +335,18 @@ export function classify<T extends { lap: number; progress: number; id: string }
   return [...drivers].sort((a, b) => raceDistance(b.lap, b.progress) - raceDistance(a.lap, a.progress));
 }
 
-export function aeroEffect(playerLap: number, playerProgress: number, ai: DriverState[]): AeroEffect {
-  const playerDistance = raceDistance(playerLap, playerProgress);
-  let nearest: DriverState | undefined;
-  let delta = Number.POSITIVE_INFINITY;
-
-  for (const car of ai) {
-    const d = raceDistance(car.lap, car.progress) - playerDistance;
-    if (d > 0 && d < delta) {
-      delta = d;
-      nearest = car;
-    }
-  }
-
-  if (!nearest) return { tow: 0, dirtyAir: 0 };
-  const metres = delta * TRACK_LENGTH;
-  if (metres > 70) return { tow: 0, dirtyAir: 0 };
-
-  const proximity = 1 - metres / 70;
-  return {
-    tow: 0.09 * proximity,
-    dirtyAir: 0.17 * proximity,
-    carAhead: nearest,
-  };
+export function aeroEffect(
+  playerLap: number,
+  playerProgress: number,
+  ai: DriverState[],
+  playerLaneOffset = 0,
+): AeroEffect {
+  const shared = aerodynamicEffect(
+    { id: 'player', lap: playerLap, progress: playerProgress, laneOffset: playerLaneOffset },
+    ai.map((car) => ({ id: car.id, lap: car.lap, progress: car.progress, laneOffset: car.laneOffset })),
+  );
+  const carAhead = shared.sourceId === undefined ? undefined : ai.find((car) => car.id === shared.sourceId);
+  return { tow: shared.tow, dirtyAir: shared.dirtyAir, carAhead };
 }
 
 export function isTwoCompoundLegal(used: Set<Compound>): boolean {
