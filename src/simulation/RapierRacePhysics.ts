@@ -94,7 +94,7 @@ export class RapierRacePhysics {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * 1.13 * (1 - aero.dirtyAir * 0.36),
+        tireGrip: driver.tire.grip * 1.145 * (1 - aero.dirtyAir * 0.36),
         surfaceGrip: surface.gripMultiplier,
         powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment + aero.tow * 0.22,
         powerMultiplier: surface.powerMultiplier,
