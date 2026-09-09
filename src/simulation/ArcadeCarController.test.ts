@@ -78,20 +78,35 @@ describe('ArcadeCarController', () => {
     expect(Math.abs(trailBrake.angularVelocity)).toBeGreaterThan(Math.abs(lift.angularVelocity));
   });
 
-  it('makes a worn tyre brake and rotate materially worse than a fresh tyre', () => {
+  it('makes a degraded tyre lose corner speed without making steering disappear', () => {
     const fresh = controlArcadeCar(
-      { vx: 78, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 0, brake: 0.7, steer: 0.75, tireGrip: 1.02 },
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 1.02 },
       0.2,
     );
-    const worn = controlArcadeCar(
-      { vx: 78, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 0, brake: 0.7, steer: 0.75, tireGrip: 0.66 },
+    const degraded = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 0.74 },
       0.2,
     );
 
-    expect(worn.vx).toBeGreaterThan(fresh.vx + 1.2);
-    expect(Math.abs(worn.angularVelocity)).toBeLessThan(Math.abs(fresh.angularVelocity) * 0.72);
+    expect(degraded.vx).toBeLessThan(fresh.vx - 0.45);
+    expect(Math.abs(degraded.angularVelocity)).toBeGreaterThan(Math.abs(fresh.angularVelocity) * 0.68);
+  });
+
+  it('does not punish a healthy fresh Hard-level grip with the slide-loss system', () => {
+    const healthy = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 0.99 },
+      0.2,
+    );
+    const reference = controlArcadeCar(
+      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 1.02 },
+      0.2,
+    );
+
+    expect(healthy.vx).toBeGreaterThan(reference.vx - 0.18);
   });
 
   it('braking removes speed decisively without instantly reversing the car', () => {
