@@ -3,7 +3,7 @@ import { timingTone, type TimingTone } from './TimingToneModel';
 
 export function lapTyreLabel(start: Compound, end: Compound, pitted: boolean): string {
   if (!pitted && start === end) return start[0];
-  return `${start[0]}→${end[0]}·P`;
+  return `${start[0]}→${end[0]} PIT`;
 }
 
 /**
