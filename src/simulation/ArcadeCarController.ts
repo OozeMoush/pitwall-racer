@@ -10,7 +10,6 @@ export interface ArcadeCarInput {
   brake: number;
   steer: number;
   tireGrip: number;
-  tireWear?: number;
   surfaceGrip?: number;
   powerBoost?: number;
   powerMultiplier?: number;
@@ -32,10 +31,12 @@ export interface ArcadeCarControlResult {
  * combined traction. Compound choice should not behave like an engine map:
  * with the wheel straight, S/M/H accelerate almost the same way.
  *
- * Wear is deliberately simpler than a tyre simulation. A worn tyre can still
- * rotate the car, but when the player asks for a lot of steering at speed it
- * hangs onto lateral motion for longer and scrubs forward speed. In game terms:
- * sliding is readable time loss, not a realism goal of its own.
+ * Degradation is deliberately game-facing rather than a tyre simulation. Once
+ * effective grip falls below a healthy-race-tyre window, asking for lots of
+ * steering at speed makes the car hang onto lateral motion and scrub forward
+ * speed. In game terms: sliding is readable time loss, not realism for its own
+ * sake. Fresh Hard still sits above the slide threshold; this is mainly a late-
+ * stint / overheated / heavily compromised tyre behaviour.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -46,7 +47,6 @@ export function controlArcadeCar(
   const brake = clamp01(input.brake);
   const steer = clamp(input.steer, -1, 1);
   const tireGrip = clamp(input.tireGrip, 0.30, 1.42);
-  const tireWear = clamp01(input.tireWear ?? 0);
   const surfaceGrip = clamp(input.surfaceGrip ?? 1, 0.42, 1.05);
   const powerBoost = clamp(input.powerBoost ?? 0, -0.55, 0.48);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
@@ -62,7 +62,7 @@ export function controlArcadeCar(
   const speed = Math.hypot(motion.vx, motion.vy);
   const normalizedGrip = clamp01((tireGrip - 0.30) / 1.04);
   const superGrip = Math.max(0, tireGrip - 1);
-  const wornSlip = Math.pow(clamp01((tireWear - 0.28) / 0.72), 1.35);
+  const degradedSlip = Math.pow(clamp01((0.98 - tireGrip) / 0.38), 1.30);
 
   // A small global speed lift: enough to make straights feel more urgent after
   // pulling the camera back, without turning starts into rocket launches.
@@ -92,10 +92,10 @@ export function controlArcadeCar(
   const roughSurfaceDrag = roughSurface
     * (0.80 + speed * 0.045 + speed * speed * 0.00070);
 
-  // Old tyres do not simply "refuse to turn". When steering demand is high,
-  // they scrub speed instead. This makes the player feel the stint age through
-  // lap time while keeping the car controllable enough to race.
-  const wearSlideDrag = wornSlip
+  // A tired tyre can still point the car into the corner, but if it is pushed
+  // hard it starts scrubbing speed. That makes tyre age a driving problem rather
+  // than simply turning the steering sensitivity down every lap.
+  const tyreSlideDrag = degradedSlip
     * steeringLoad
     * (0.55 + throttle * 0.45)
     * (1.35 + speed * 0.055);
@@ -103,7 +103,7 @@ export function controlArcadeCar(
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
 
-  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag - wearSlideDrag;
+  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag - tyreSlideDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
     longitudinalAcceleration -= Math.sign(forwardSpeed) * brakingAcceleration;
   } else if (brake > 0.05) {
@@ -116,18 +116,18 @@ export function controlArcadeCar(
 
   const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.34 + Math.pow(normalizedGrip, 1.86) * 1.52 + superGrip * 0.55;
-  const wearLateralRetention = 1 - wornSlip * steeringLoad * 0.42;
+  const degradedLateralRetention = 1 - degradedSlip * steeringLoad * 0.42;
   const lateralGripRate = 9.35
     * tyreLateralAuthority
     * surfaceGrip
     * (1 - highSpeedSlip * 0.22)
-    * wearLateralRetention;
+    * degradedLateralRetention;
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
   // Keep high-speed cornering demanding, but make the whole car willing to
-  // rotate. Wear is intentionally not multiplied directly into this authority;
-  // the main late-stint penalty is the slide/speed-loss behaviour above.
+  // rotate. Late-stint performance now falls more through slide/speed loss than
+  // through making the steering itself disappear.
   const speedAuthority = 2.52 / (1 + Math.pow(speed / 49, 1.62)) + 0.060;
   const lowSpeedBuild = clamp01(speed / 12);
   const fastCorner = clamp01((speed - 38) / 66);
