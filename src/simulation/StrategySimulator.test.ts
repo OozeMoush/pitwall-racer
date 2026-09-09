@@ -32,13 +32,14 @@ describe('StrategySimulator', () => {
     expect(legal.legal).toBe(true);
   });
 
-  it('makes a sensible stop faster than nursing one Medium set to the flag even before legality', () => {
+  it('makes a sensible stop faster while late-stint loss comes from sliding, not a dead steering rack', () => {
     const noStop = simulateStrategy(noStopMedium);
     const oneStop = simulateStrategy(balanced);
 
     expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
-    expect(noStop.laps[11].gripAverage).toBeLessThan(noStop.laps[3].gripAverage * 0.80);
-    expect(noStop.laps[7].gripAverage).toBeGreaterThan(noStop.laps[3].gripAverage * 0.88);
+    expect(noStop.laps[11].lapTime).toBeGreaterThan(noStop.laps[3].lapTime + 8);
+    expect(noStop.laps[11].gripAverage).toBeGreaterThan(noStop.laps[3].gripAverage * 0.82);
+    expect(noStop.laps[7].lapTime).toBeLessThan(noStop.laps[3].lapTime + 1.2);
   });
 
   it('makes PUSH buy opening pace by spending materially more tyre', () => {
