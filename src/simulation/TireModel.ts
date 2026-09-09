@@ -8,13 +8,14 @@ export interface TireState {
   grip: number;
 }
 
-// Twelve-lap core races need readable compound differences without turning the
-// tyres into engine maps. Soft attacks corners, Medium is the reference and
-// Hard gives away corner speed in exchange for a genuinely long stint.
+// Keep the compounds close enough that all three can be strategic choices.
+// Soft wins on cornering but pays for it in stint length. Medium is the race
+// reference. Hard gives away a modest amount of corner speed rather than
+// feeling like a different class of car, then earns that loss back in long runs.
 const compound = {
-  SOFT: { baseGrip: 1.26, wear: 2.42, ideal: 103 },
-  MEDIUM: { baseGrip: 1.0, wear: 1.0, ideal: 97 },
-  HARD: { baseGrip: 0.82, wear: 0.48, ideal: 90 },
+  SOFT: { baseGrip: 1.16, wear: 2.20, ideal: 103 },
+  MEDIUM: { baseGrip: 1.05, wear: 1.00, ideal: 97 },
+  HARD: { baseGrip: 1.01, wear: 0.50, ideal: 90 },
 } satisfies Record<Compound, { baseGrip: number; wear: number; ideal: number }>;
 
 const pace = {
@@ -33,13 +34,23 @@ export function createTire(compoundName: Compound): TireState {
   };
 }
 
+/** Medium's nominal peak is the 100% reference used by UI/strategy tools. */
+export function gripRatioToMedium(grip: number): number {
+  return grip / compound.MEDIUM.baseGrip;
+}
+
+export function gripPercent(grip: number): number {
+  return gripRatioToMedium(grip) * 100;
+}
+
 /**
  * Arcade tyre model for a longer race.
  *
  * Degradation removes braking and turning confidence first. Medium can be
  * nursed toward twelve laps, but the late stint still costs enough corner time
  * that a legal stop is attractive. Soft retains a short peak because its wear
- * multiplier is much higher even though the common base rate is calmer.
+ * multiplier is much higher. Hard stays close enough on fresh grip to remain
+ * raceable, then becomes the endurance option as race length grows.
  */
 export function stepTire(state: TireState, mode: PaceMode, load: number, dt: number): TireState {
   const spec = compound[state.compound];

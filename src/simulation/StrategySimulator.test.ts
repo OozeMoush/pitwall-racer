@@ -36,8 +36,8 @@ describe('StrategySimulator', () => {
     const noStop = simulateStrategy(noStopMedium);
     const oneStop = simulateStrategy(balanced);
 
-    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 15);
-    expect(noStop.laps[11].gripAverage).toBeLessThan(noStop.laps[3].gripAverage * 0.78);
+    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
+    expect(noStop.laps[11].gripAverage).toBeLessThan(noStop.laps[3].gripAverage * 0.80);
     expect(noStop.laps[7].gripAverage).toBeGreaterThan(noStop.laps[3].gripAverage * 0.88);
   });
 
@@ -49,12 +49,20 @@ describe('StrategySimulator', () => {
     expect(pushResult.laps[5].wearAtEnd).toBeGreaterThan(balancedResult.laps[5].wearAtEnd * 1.35);
   });
 
-  it('keeps at least two legal strategies race-relevant in the longer race', () => {
-    const snapshot = benchmarkStrategies();
+  it('keeps multiple legal strategies race-relevant at twelve laps', () => {
+    const snapshot = benchmarkStrategies(12);
+    const bestHard = snapshot.legalResults.find((result) => result.usedCompounds.has('HARD'));
 
-    expect(snapshot.legalResults.length).toBeGreaterThanOrEqual(5);
-    expect(snapshot.competitiveResults.length).toBeGreaterThanOrEqual(2);
-    expect(snapshot.spreadToSecond).toBeLessThan(25);
+    expect(snapshot.competitiveResults.length).toBeGreaterThanOrEqual(3);
+    expect(snapshot.spreadToSecond).toBeLessThan(6);
+    expect(bestHard).toBeDefined();
+    expect((bestHard?.totalTime ?? Infinity) - snapshot.fastest.totalTime).toBeLessThan(8);
+  });
+
+  it('makes Hard a genuine winning option in the longest selectable race', () => {
+    const snapshot = benchmarkStrategies(16);
+    expect(snapshot.fastest.usedCompounds.has('HARD')).toBe(true);
+    expect(snapshot.competitiveResults.some((result) => result.usedCompounds.has('SOFT') && result.usedCompounds.has('MEDIUM'))).toBe(true);
   });
 
   it('does not let an illegal no-stop run win by bypassing the tyre rule', () => {

@@ -1,0 +1,10 @@
+/* A live sector can become the new PB before it is committed to lapHistory.
+   If both the old historical PB and the new live PB carry the green class for
+   one render, visually retire the older row immediately. */
+.lap-row:has(~ .lap-row > :nth-child(3).timing-green) > :nth-child(3).timing-green,
+.lap-row:has(~ .lap-row > :nth-child(4).timing-green) > :nth-child(4).timing-green,
+.lap-row:has(~ .lap-row > :nth-child(5).timing-green) > :nth-child(5).timing-green,
+.lap-row:has(~ .lap-row > :nth-child(6).timing-green) > :nth-child(6).timing-green {
+  color: #c0cac5 !important;
+  text-shadow: none !important;
+}

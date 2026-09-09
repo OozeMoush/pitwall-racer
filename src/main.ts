@@ -4,6 +4,7 @@ import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { showPreRaceMenu } from './ui/PreRaceMenu';
 import './style.css';
+import './timing-highlight-fix.css';
 
 async function bootstrap(): Promise<void> {
   const game = document.querySelector<HTMLElement>('#game');

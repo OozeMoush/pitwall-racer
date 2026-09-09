@@ -1,4 +1,4 @@
-import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
+import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 
 export interface StrategyPlan {
   name: string;
@@ -36,6 +36,9 @@ const BASE_LAP_SECONDS = 62;
 const PIT_LOSS_SECONDS = 7;
 const REPRESENTATIVE_SECONDS_PER_LAP = 58;
 const DT = 0.5;
+const CORNER_TIME_FRACTION = 0.45;
+const GRIP_RESPONSE_EXPONENT = 0.85;
+const COMPOUNDS: readonly Compound[] = ['SOFT', 'MEDIUM', 'HARD'];
 
 const modeLoad: Record<PaceMode, number> = {
   CONSERVE: 0.48,
@@ -67,7 +70,15 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyRe
     }
 
     const gripAverage = gripSum / Math.max(1, samples);
-    const lapTime = BASE_LAP_SECONDS / Math.max(0.56, gripAverage) + modeLapAdjustment[pace];
+    // Tyres change braking/rotation/corner exit, not the engine. Only the
+    // cornering share of the lap therefore scales with grip; the straight-line
+    // share remains compound-neutral just like the live physics model.
+    const straightSeconds = BASE_LAP_SECONDS * (1 - CORNER_TIME_FRACTION);
+    const cornerSeconds = BASE_LAP_SECONDS * CORNER_TIME_FRACTION;
+    const relativeGrip = Math.max(0.56, gripRatioToMedium(gripAverage));
+    const lapTime = straightSeconds
+      + cornerSeconds / Math.pow(relativeGrip, GRIP_RESPONSE_EXPONENT)
+      + modeLapAdjustment[pace];
     totalTime += lapTime;
     laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });
 
@@ -96,13 +107,24 @@ export function pushAlways(): PaceMode {
 }
 
 export function benchmarkStrategies(totalLaps = 12): BalanceSnapshot {
-  const plans: StrategyPlan[] = [
-    { name: 'M→S lap8', startCompound: 'MEDIUM', stopAfterLap: 8, nextCompound: 'SOFT', paceForLap: balancedPace },
-    { name: 'S→M lap4', startCompound: 'SOFT', stopAfterLap: 4, nextCompound: 'MEDIUM', paceForLap: balancedPace },
-    { name: 'M→S lap7', startCompound: 'MEDIUM', stopAfterLap: 7, nextCompound: 'SOFT', paceForLap: balancedPace },
-    { name: 'M→H lap7', startCompound: 'MEDIUM', stopAfterLap: 7, nextCompound: 'HARD', paceForLap: balancedPace },
-    { name: 'H→S lap8', startCompound: 'HARD', stopAfterLap: 8, nextCompound: 'SOFT', paceForLap: balancedPace },
-  ];
+  // Evaluate every legal one-stop compound pairing at every possible stop lap.
+  // Fixed stop laps hide the value of Hard in a 16-lap race and overstate it in
+  // shorter races; the benchmark should measure the best version of each idea.
+  const plans: StrategyPlan[] = [];
+  for (const start of COMPOUNDS) {
+    for (const next of COMPOUNDS) {
+      if (start === next) continue;
+      for (let stopAfterLap = 1; stopAfterLap < totalLaps; stopAfterLap++) {
+        plans.push({
+          name: `${start[0]}→${next[0]} lap${stopAfterLap}`,
+          startCompound: start,
+          stopAfterLap,
+          nextCompound: next,
+          paceForLap: balancedPace,
+        });
+      }
+    }
+  }
 
   const legalResults = plans
     .map((plan) => simulateStrategy(plan, totalLaps))
@@ -111,7 +133,7 @@ export function benchmarkStrategies(totalLaps = 12): BalanceSnapshot {
 
   const fastest = legalResults[0];
   const second = legalResults[1] ?? fastest;
-  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 25);
+  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 12);
 
   return {
     fastest,
