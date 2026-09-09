@@ -11,12 +11,17 @@ export function lapTyreLabel(start: Compound, end: Compound, pitted: boolean): s
  * the provisional personal best when it beats the historical PB, but always
  * compare it against the latest session record so an older purple sector can
  * turn green/neutral as soon as somebody else beats it.
+ *
+ * An unfinished running split is only an elapsed clock, not a sector result;
+ * it must stay neutral until the timing line is crossed.
  */
 export function liveTimingTone(
   value: number,
   historicalPersonalBest: number | undefined,
   sessionBest: number | undefined,
+  completed = true,
 ): TimingTone {
+  if (!completed) return 'neutral';
   const personalBest = historicalPersonalBest === undefined
     ? value
     : Math.min(value, historicalPersonalBest);

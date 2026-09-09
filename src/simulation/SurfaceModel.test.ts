@@ -25,6 +25,25 @@ describe('surfaceEffect', () => {
     expect(grass.label).toBe('GRASS');
   });
 
+  it('makes full grass lose speed at race pace even with full throttle', () => {
+    const grass = surfaceEffect(120);
+    const result = controlArcadeCar(
+      { vx: 90, vy: 0, heading: 0, angularVelocity: 0 },
+      {
+        throttle: 1,
+        brake: 0,
+        steer: 0,
+        tireGrip: 1,
+        surfaceGrip: grass.gripMultiplier,
+        powerMultiplier: grass.powerMultiplier,
+        rollingResistance: grass.rollingResistance,
+      },
+      1 / 60,
+    );
+
+    expect(result.acceleration).toBeLessThan(-3);
+  });
+
   it('still lets a slowed car accelerate through full grass and drive back', () => {
     const grass = surfaceEffect(120);
     const result = controlArcadeCar(

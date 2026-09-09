@@ -65,21 +65,28 @@ export function controlArcadeCar(
 
   const steeringLoad = Math.abs(steer) * clamp01(speed / 88);
   const straightTraction = 0.985 + normalizedGrip * 0.015;
-  const combinedTraction = 1 - steeringLoad * throttle * (0.10 + (1 - normalizedGrip) * 0.58);
+  const combinedTraction = 1 - steeringLoad * throttle * (0.08 + (1 - normalizedGrip) * 0.48);
   const engineAcceleration = throttle
     * 14.15
     * powerTaper
     * (1 + powerBoost * 0.58)
     * powerMultiplier
     * straightTraction
-    * Math.max(0.34, combinedTraction);
+    * Math.max(0.38, combinedTraction);
 
   const aeroDrag = 0.000235 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
+  // Runoff/grass must not be a shortcut at race speed, but it still has to let
+  // a nearly stopped car drive back to the circuit. Derive a speed-dependent
+  // rough-surface drag from the grip loss: mild at walking pace, severe at
+  // 250-350 km/h.
+  const roughSurface = clamp01((1 - surfaceGrip) / 0.50);
+  const roughSurfaceDrag = roughSurface
+    * (0.80 + speed * 0.045 + speed * speed * 0.00070);
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
 
-  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag;
+  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
     longitudinalAcceleration -= Math.sign(forwardSpeed) * brakingAcceleration;
   } else if (brake > 0.05) {
@@ -91,23 +98,26 @@ export function controlArcadeCar(
   if (throttle >= 0 && nextForward < -3) nextForward = -3;
 
   const highSpeedSlip = clamp01(speed / 132);
-  const tyreLateralAuthority = 0.30 + Math.pow(normalizedGrip, 1.95) * 1.46 + superGrip * 0.52;
-  const lateralGripRate = 9.1
+  const tyreLateralAuthority = 0.34 + Math.pow(normalizedGrip, 1.86) * 1.52 + superGrip * 0.55;
+  const lateralGripRate = 9.35
     * tyreLateralAuthority
     * surfaceGrip
-    * (1 - highSpeedSlip * 0.24);
+    * (1 - highSpeedSlip * 0.22);
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
-  const speedAuthority = 2.34 / (1 + Math.pow(speed / 47, 1.66)) + 0.052;
+  // Keep high-speed cornering demanding, but make the whole car more willing to
+  // rotate than the previous build. Medium should feel like a racing tyre, not
+  // like the steering suddenly stopped working after a Soft stint.
+  const speedAuthority = 2.52 / (1 + Math.pow(speed / 49, 1.62)) + 0.060;
   const lowSpeedBuild = clamp01(speed / 12);
   const fastCorner = clamp01((speed - 38) / 66);
-  const freshHighSpeedAuthority = 0.12
-    + Math.pow(normalizedGrip, 2.05) * 1.34
-    + superGrip * 0.72;
-  const tyreTurnFactor = (1 - fastCorner) * (0.62 + normalizedGrip * 0.52)
+  const freshHighSpeedAuthority = 0.16
+    + Math.pow(normalizedGrip, 1.90) * 1.40
+    + superGrip * 0.76;
+  const tyreTurnFactor = (1 - fastCorner) * (0.66 + normalizedGrip * 0.54)
     + fastCorner * freshHighSpeedAuthority;
-  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.10 + (1 - normalizedGrip) * 0.68);
+  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.07 + (1 - normalizedGrip) * 0.50);
   const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.10 : 1;
   const brakingRotation = 1 + brake * (0.28 + fastCorner * 0.14);
   const targetAngularVelocity = steer
@@ -115,10 +125,10 @@ export function controlArcadeCar(
     * lowSpeedBuild
     * tyreTurnFactor
     * surfaceGrip
-    * Math.max(0.31, throttleUndersteer)
+    * Math.max(0.38, throttleUndersteer)
     * liftRotation
     * brakingRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.5 + (1 - highSpeedSlip) * 2.0));
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.8 + (1 - highSpeedSlip) * 2.0));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 

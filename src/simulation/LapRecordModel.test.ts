@@ -12,4 +12,8 @@ describe('lap record presentation', () => {
     expect(liveTimingTone(30, 31, 29.8)).toBe('personal-best');
     expect(liveTimingTone(30, 29.5, 29.2)).toBe('neutral');
   });
+
+  it('never treats a still-running sector clock as a personal or session best', () => {
+    expect(liveTimingTone(8.4, 23.1, 22.9, false)).toBe('neutral');
+  });
 });
