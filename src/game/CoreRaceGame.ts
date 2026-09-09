@@ -42,8 +42,8 @@ import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simu
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
-const CAMERA_HALF_HEIGHT = 18.5;
-const CAMERA_OFFSET = new THREE.Vector3(17, 30, 17);
+const CAMERA_HALF_HEIGHT = 21.5;
+const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
