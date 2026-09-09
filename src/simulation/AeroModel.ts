@@ -13,7 +13,7 @@ export interface SharedAeroEffect {
   sourceId?: string;
 }
 
-const MAX_WAKE_DISTANCE = 86;
+const MAX_WAKE_DISTANCE = 78;
 const MIN_WAKE_DISTANCE = 6;
 const TOW_HALF_WIDTH = 24;
 const DIRTY_HALF_WIDTH = 11;
