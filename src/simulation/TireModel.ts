@@ -10,12 +10,12 @@ export interface TireState {
 
 // Keep the compounds close enough that all three can be strategic choices.
 // Soft wins on cornering but pays for it in stint length. Medium is the race
-// reference. Hard gives away a modest amount of corner speed rather than
-// feeling like a different class of car, then earns that loss back in long runs.
+// reference. Hard gives away only a modest amount of fresh corner speed, then
+// earns that loss back through long-run stability and life.
 const compound = {
   SOFT: { baseGrip: 1.16, wear: 2.20, ideal: 103 },
   MEDIUM: { baseGrip: 1.05, wear: 1.00, ideal: 97 },
-  HARD: { baseGrip: 1.01, wear: 0.50, ideal: 90 },
+  HARD: { baseGrip: 1.025, wear: 0.50, ideal: 90 },
 } satisfies Record<Compound, { baseGrip: number; wear: number; ideal: number }>;
 
 const pace = {
@@ -48,9 +48,9 @@ export function gripPercent(grip: number): number {
  *
  * Tyre age should not mainly feel like the steering rack disappearing. Peak
  * cornering grip still fades, but more gently than before; the car controller
- * uses the wear value separately to make an over-driven old tyre slide and
- * bleed speed. That keeps the feedback simple: an old tyre can still turn, but
- * asking too much from it costs lap time.
+ * uses the resulting effective grip separately to make an over-driven old tyre
+ * slide and bleed speed. That keeps the feedback simple: an old tyre can still
+ * turn, but asking too much from it costs lap time.
  */
 export function stepTire(state: TireState, mode: PaceMode, load: number, dt: number): TireState {
   const spec = compound[state.compound];
@@ -71,8 +71,8 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
   const wear = Math.min(1, state.wear + wearRate * dt);
 
   // Keep enough steering authority on an old tyre to make the degradation
-  // playable. The larger late-stint cost now comes from wear-driven sliding in
-  // ArcadeCarController rather than an extreme loss of nominal grip.
+  // playable. The larger late-stint cost now comes from slide/speed loss in the
+  // controller rather than an extreme loss of nominal grip.
   const baseWearLoss = wear * 0.030;
   const lateWear = Math.max(0, wear - 0.56);
   const cliff = Math.pow(lateWear, 1.20) * 0.96;
