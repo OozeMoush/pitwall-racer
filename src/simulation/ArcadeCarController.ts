@@ -56,14 +56,15 @@ export function controlArcadeCar(
   const normalizedGrip = clamp01((tireGrip - 0.30) / 1.04);
   const superGrip = Math.max(0, tireGrip - 1);
 
-  const usefulTopSpeed = 110 + powerBoost * 60;
+  // Raise the whole race's speed ceiling without giving the car an arcade
+  // rocket launch. Acceleration stays progressive; the extra pace appears at
+  // the far end of a straight where the visual speed references can sell it.
+  const usefulTopSpeed = 118 + powerBoost * 58;
   const positiveForward = Math.max(0, forwardSpeed);
-  const speedRatio = clamp01(positiveForward / Math.max(56, usefulTopSpeed));
-  const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.85));
+  const speedRatio = clamp01(positiveForward / Math.max(60, usefulTopSpeed));
+  const powerTaper = Math.max(0, 1 - Math.pow(speedRatio, 1.90));
 
-  const steeringLoad = Math.abs(steer) * clamp01(speed / 84);
-  // Keep compound influence tiny with a straight steering wheel. The large
-  // difference should appear once the tyre is asked to brake or turn.
+  const steeringLoad = Math.abs(steer) * clamp01(speed / 88);
   const straightTraction = 0.985 + normalizedGrip * 0.015;
   const combinedTraction = 1 - steeringLoad * throttle * (0.10 + (1 - normalizedGrip) * 0.58);
   const engineAcceleration = throttle
@@ -74,7 +75,7 @@ export function controlArcadeCar(
     * straightTraction
     * Math.max(0.34, combinedTraction);
 
-  const aeroDrag = 0.00025 * speed * speed;
+  const aeroDrag = 0.000235 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
@@ -90,7 +91,7 @@ export function controlArcadeCar(
   if (brake > 0 && forwardSpeed > 0 && nextForward < 0) nextForward = 0;
   if (throttle >= 0 && nextForward < -3) nextForward = -3;
 
-  const highSpeedSlip = clamp01(speed / 128);
+  const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.30 + Math.pow(normalizedGrip, 1.95) * 1.46 + superGrip * 0.52;
   const lateralGripRate = 9.1
     * tyreLateralAuthority
@@ -99,9 +100,9 @@ export function controlArcadeCar(
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const nextLateral = lateralSpeed * lateralRetention;
 
-  const speedAuthority = 2.34 / (1 + Math.pow(speed / 45, 1.66)) + 0.052;
+  const speedAuthority = 2.34 / (1 + Math.pow(speed / 47, 1.66)) + 0.052;
   const lowSpeedBuild = clamp01(speed / 12);
-  const fastCorner = clamp01((speed - 36) / 62);
+  const fastCorner = clamp01((speed - 38) / 66);
   const freshHighSpeedAuthority = 0.12
     + Math.pow(normalizedGrip, 2.05) * 1.34
     + superGrip * 0.72;

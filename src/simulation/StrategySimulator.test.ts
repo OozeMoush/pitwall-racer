@@ -4,7 +4,7 @@ import { benchmarkStrategies, pushAlways, simulateStrategy, type StrategyPlan } 
 const balanced: StrategyPlan = {
   name: 'balanced',
   startCompound: 'MEDIUM',
-  stopAfterLap: 4,
+  stopAfterLap: 8,
   nextCompound: 'SOFT',
   paceForLap: () => 'BALANCED',
 };
@@ -12,7 +12,7 @@ const balanced: StrategyPlan = {
 const push: StrategyPlan = {
   name: 'push',
   startCompound: 'MEDIUM',
-  stopAfterLap: 4,
+  stopAfterLap: 8,
   nextCompound: 'SOFT',
   paceForLap: pushAlways,
 };
@@ -36,8 +36,9 @@ describe('StrategySimulator', () => {
     const noStop = simulateStrategy(noStopMedium);
     const oneStop = simulateStrategy(balanced);
 
-    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
-    expect(noStop.laps[7].gripAverage).toBeLessThan(noStop.laps[1].gripAverage * 0.85);
+    expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 15);
+    expect(noStop.laps[11].gripAverage).toBeLessThan(noStop.laps[3].gripAverage * 0.78);
+    expect(noStop.laps[7].gripAverage).toBeGreaterThan(noStop.laps[3].gripAverage * 0.88);
   });
 
   it('makes PUSH buy opening pace by spending materially more tyre', () => {
@@ -45,17 +46,15 @@ describe('StrategySimulator', () => {
     const pushResult = simulateStrategy(push);
 
     expect(pushResult.laps[0].lapTime).toBeLessThan(balancedResult.laps[0].lapTime);
-    expect(pushResult.laps[3].wearAtEnd).toBeGreaterThan(balancedResult.laps[3].wearAtEnd * 1.35);
+    expect(pushResult.laps[5].wearAtEnd).toBeGreaterThan(balancedResult.laps[5].wearAtEnd * 1.35);
   });
 
-  it('keeps at least two legal strategies race-relevant despite exaggerated compounds', () => {
+  it('keeps at least two legal strategies race-relevant in the longer race', () => {
     const snapshot = benchmarkStrategies();
 
     expect(snapshot.legalResults.length).toBeGreaterThanOrEqual(5);
     expect(snapshot.competitiveResults.length).toBeGreaterThanOrEqual(2);
-    // The user-facing design deliberately makes tyre choices loud; a 7-second
-    // cap from the earlier subtle model now suppresses the desired contrast.
-    expect(snapshot.spreadToSecond).toBeLessThan(16);
+    expect(snapshot.spreadToSecond).toBeLessThan(25);
   });
 
   it('does not let an illegal no-stop run win by bypassing the tyre rule', () => {

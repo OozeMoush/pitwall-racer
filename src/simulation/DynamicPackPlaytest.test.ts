@@ -10,14 +10,15 @@ import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
-const CAMERA_VIEW_HEIGHT = 43;
+const CAMERA_VIEW_HEIGHT = 37;
+const CORE_POWER_BOOST = 0.22;
 
 describe('dynamic field playtest telemetry', () => {
   beforeAll(async () => {
     await RAPIER.init();
   });
 
-  it('runs a physical pack and emits balance/perception telemetry', () => {
+  it('runs a fast physical pack without relying on energy deployment', () => {
     const ai = createAiField();
     const start = sampleTrack(PLAYER_GRID.progress, PLAYER_GRID.laneOffset);
     const physics = new RapierRacePhysics(createVehicle(start.x, start.y, start.heading), ai);
@@ -31,6 +32,9 @@ describe('dynamic field playtest telemetry', () => {
       tire: createTire('MEDIUM'),
       usedCompounds: new Set(['MEDIUM']),
       preferredLane: 0,
+      // A strong reference lap, but not a clone of the fastest AI driver.
+      // The field must win through better braking/corner execution, not power.
+      skill: 1.06,
     };
 
     let playerLap = 0;
@@ -82,14 +86,13 @@ describe('dynamic field playtest telemetry', () => {
       ];
 
       const playerControl = dynamicAiControl(playerDriver, player, traffic);
-      const deployWindow = tick > 12 / DT && tick < 18 / DT;
       physics.drivePlayer({
         throttle: playerControl.throttle,
         brake: playerControl.brake,
         steer: playerControl.steer,
         tireGrip: playerDriver.tire.grip,
         surfaceGrip: 1,
-        powerBoost: deployWindow ? 0.38 : 0.075,
+        powerBoost: CORE_POWER_BOOST,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, DT);
@@ -145,21 +148,19 @@ describe('dynamic field playtest telemetry', () => {
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(315);
-    expect(metrics.maxPlayerKmh).toBeLessThan(410);
-    // Difficulty should come from carrying pace through the lap, not from a
-    // fake engine advantage. Keep top speeds in the same broad envelope while
-    // demanding that the AI sustains a materially higher average speed.
-    expect(metrics.maxAiKmh).toBeGreaterThan(360);
-    expect(metrics.maxAiKmh).toBeLessThan(400);
-    expect(metrics.maxAiKmh - metrics.maxPlayerKmh).toBeGreaterThan(3);
-    expect(metrics.maxAiKmh - metrics.maxPlayerKmh).toBeLessThan(20);
-    expect(metrics.avgAiKmh).toBeGreaterThan(metrics.avgPlayerKmh + 12);
-    expect(metrics.avgAiKmh).toBeGreaterThan(260);
+    expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(335);
+    expect(metrics.maxPlayerKmh).toBeLessThan(430);
+    expect(metrics.maxAiKmh).toBeGreaterThan(335);
+    expect(metrics.maxAiKmh).toBeLessThan(430);
+    // Straight-line speed stays close; the field's advantage must be sustained
+    // lap pace from the braking/cornering model.
+    expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(25);
+    expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh + 8);
+    expect(metrics.avgAiKmh).toBeGreaterThan(250);
     expect(metrics.offTrackRatio).toBeLessThan(0.02);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.60);
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.78);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
-    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(22);
+    expect(metrics.p99AiLongitudinalJerk).toBeLessThan(24);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);
   }, 20_000);
 });

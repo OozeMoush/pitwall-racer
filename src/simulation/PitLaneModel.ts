@@ -7,7 +7,6 @@ export const PIT_SERVICE_SECONDS = 2.6;
 export const PIT_SPEED = 55;
 
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
-const PIT_T_RATE = PIT_SPEED / (PIT_SPAN * TRACK_LENGTH);
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
@@ -62,7 +61,11 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
     };
   }
 
-  const t = Math.min(1, state.t + PIT_T_RATE * dt);
+  // TRACK_LENGTH is a live binding because the circuit can be selected before
+  // race construction. Never cache this at module load or other circuits inherit
+  // Pitwall GP's pit transit time.
+  const pitTRate = PIT_SPEED / Math.max(1, PIT_SPAN * TRACK_LENGTH);
+  const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= PIT_BOX_T) {
     return {
       phase: 'SERVICE',

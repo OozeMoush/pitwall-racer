@@ -1,5 +1,14 @@
 export interface TrackPoint { x: number; y: number }
 
+export type TrackId = 'pitwall-gp' | 'velocity-park' | 'switchback-ring';
+
+export interface TrackDefinition {
+  id: TrackId;
+  name: string;
+  subtitle: string;
+  controls: readonly TrackPoint[];
+}
+
 export interface TrackProjection {
   progress: number;
   distance: number;
@@ -9,66 +18,75 @@ export interface TrackProjection {
   y: number;
 }
 
-// Clockwise fictional circuit designed as a readable arcade race track rather
-// than a smooth test spline. It keeps one long acceleration zone, a fast upper
-// section, a real left-right chicane and a final braking corner.
-export const TRACK_CONTROLS: readonly TrackPoint[] = [
-  { x: 560, y: 930 },
-  { x: 1080, y: 930 },
-  { x: 1580, y: 930 },
-  { x: 1940, y: 920 },
-  { x: 2110, y: 865 },
-  { x: 2180, y: 750 },
-  { x: 2150, y: 625 },
-  { x: 2040, y: 550 },
-  { x: 1840, y: 520 },
-  { x: 1640, y: 520 },
-  { x: 1480, y: 470 },
-  { x: 1370, y: 375 },
-  { x: 1395, y: 270 },
-  { x: 1280, y: 205 },
-  { x: 1110, y: 220 },
-  { x: 950, y: 300 },
-  { x: 800, y: 345 },
-  { x: 675, y: 300 },
-  { x: 560, y: 220 },
-  { x: 410, y: 225 },
-  { x: 285, y: 315 },
-  { x: 220, y: 445 },
-  { x: 245, y: 565 },
-  // Chicane has a readable approach, right kink, left transition and exit.
-  // The offsets are large enough to demand steering, but radii remain smooth.
-  { x: 345, y: 620 },
-  { x: 355, y: 675 },
-  { x: 305, y: 730 },
-  { x: 290, y: 790 },
-  { x: 345, y: 850 },
+const PITWALL_GP: readonly TrackPoint[] = [
+  { x: 560, y: 930 }, { x: 1080, y: 930 }, { x: 1580, y: 930 }, { x: 1940, y: 920 },
+  { x: 2110, y: 865 }, { x: 2180, y: 750 }, { x: 2150, y: 625 }, { x: 2040, y: 550 },
+  { x: 1840, y: 520 }, { x: 1640, y: 520 }, { x: 1480, y: 470 }, { x: 1370, y: 375 },
+  { x: 1395, y: 270 }, { x: 1280, y: 205 }, { x: 1110, y: 220 }, { x: 950, y: 300 },
+  { x: 800, y: 345 }, { x: 675, y: 300 }, { x: 560, y: 220 }, { x: 410, y: 225 },
+  { x: 285, y: 315 }, { x: 220, y: 445 }, { x: 245, y: 565 }, { x: 345, y: 620 },
+  { x: 355, y: 675 }, { x: 305, y: 730 }, { x: 290, y: 790 }, { x: 345, y: 850 },
   { x: 430, y: 910 },
 ];
 
-const SAMPLES_PER_CONTROL = 28;
+// High-speed circuit: long straights, broad sweepers and one heavy braking complex.
+const VELOCITY_PARK: readonly TrackPoint[] = [
+  { x: 520, y: 900 }, { x: 1020, y: 930 }, { x: 1580, y: 925 }, { x: 2040, y: 880 },
+  { x: 2220, y: 780 }, { x: 2240, y: 650 }, { x: 2160, y: 545 }, { x: 1980, y: 485 },
+  { x: 1680, y: 470 }, { x: 1430, y: 500 }, { x: 1260, y: 455 }, { x: 1160, y: 365 },
+  { x: 1070, y: 255 }, { x: 890, y: 205 }, { x: 660, y: 220 }, { x: 430, y: 300 },
+  { x: 275, y: 420 }, { x: 235, y: 575 }, { x: 295, y: 725 }, { x: 390, y: 820 },
+];
 
-export const RACING_LINE: readonly TrackPoint[] = buildClosedCatmullRom(TRACK_CONTROLS, SAMPLES_PER_CONTROL);
+// Technical circuit: repeated direction changes and short straights reward braking and tyre grip.
+const SWITCHBACK_RING: readonly TrackPoint[] = [
+  { x: 560, y: 910 }, { x: 870, y: 930 }, { x: 1160, y: 895 }, { x: 1370, y: 805 },
+  { x: 1450, y: 690 }, { x: 1375, y: 590 }, { x: 1190, y: 555 }, { x: 1040, y: 620 },
+  { x: 1000, y: 745 }, { x: 855, y: 800 }, { x: 700, y: 740 }, { x: 680, y: 610 },
+  { x: 805, y: 530 }, { x: 1010, y: 495 }, { x: 1130, y: 410 }, { x: 1110, y: 300 },
+  { x: 955, y: 225 }, { x: 735, y: 215 }, { x: 530, y: 265 }, { x: 375, y: 365 },
+  { x: 285, y: 500 }, { x: 295, y: 650 }, { x: 385, y: 780 }, { x: 470, y: 865 },
+];
+
+export const TRACKS: readonly TrackDefinition[] = [
+  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'BALANCED · CHICANE · LONG STRAIGHT', controls: PITWALL_GP },
+  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'HIGH SPEED · SWEEPERS · HEAVY BRAKING', controls: VELOCITY_PARK },
+  { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'TECHNICAL · DIRECTION CHANGES · TYRE TEST', controls: SWITCHBACK_RING },
+] as const;
+
+const SAMPLES_PER_CONTROL = 28;
 
 interface Segment { a: TrackPoint; b: TrackPoint; length: number; start: number }
 
-const segments: Segment[] = [];
-let total = 0;
-for (let i = 0; i < RACING_LINE.length; i++) {
-  const a = RACING_LINE[i];
-  const b = RACING_LINE[(i + 1) % RACING_LINE.length];
-  const length = Math.hypot(b.x - a.x, b.y - a.y);
-  segments.push({ a, b, length, start: total });
-  total += length;
+let activeTrackId: TrackId = 'pitwall-gp';
+export let TRACK_CONTROLS: readonly TrackPoint[] = PITWALL_GP;
+export let RACING_LINE: readonly TrackPoint[] = [];
+export let TRACK_LENGTH = 0;
+let segments: Segment[] = [];
+
+rebuildTrack(PITWALL_GP);
+
+export function setActiveTrack(id: TrackId): void {
+  const definition = TRACKS.find((track) => track.id === id);
+  if (!definition) throw new Error(`Unknown track: ${id}`);
+  activeTrackId = id;
+  TRACK_CONTROLS = definition.controls;
+  rebuildTrack(definition.controls);
 }
 
-export const TRACK_LENGTH = total;
+export function getActiveTrack(): TrackDefinition {
+  return TRACKS.find((track) => track.id === activeTrackId) ?? TRACKS[0];
+}
+
+export function getTrackDefinition(id: TrackId): TrackDefinition {
+  return TRACKS.find((track) => track.id === id) ?? TRACKS[0];
+}
 
 export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { heading: number } {
   const p = ((progress % 1) + 1) % 1;
   const distance = p * TRACK_LENGTH;
   const segment = segmentAtDistance(distance);
-  const t = Math.max(0, Math.min(1, (distance - segment.start) / segment.length));
+  const t = Math.max(0, Math.min(1, (distance - segment.start) / Math.max(0.0001, segment.length)));
   const dx = segment.b.x - segment.a.x;
   const dy = segment.b.y - segment.a.y;
   const heading = Math.atan2(dy, dx);
@@ -123,6 +141,21 @@ export function projectTrack(x: number, y: number): TrackProjection {
 export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {
   const projection = projectTrack(x, y);
   return { progress: projection.progress, distance: projection.distance };
+}
+
+function rebuildTrack(controls: readonly TrackPoint[]): void {
+  RACING_LINE = buildClosedCatmullRom(controls, SAMPLES_PER_CONTROL);
+  const nextSegments: Segment[] = [];
+  let total = 0;
+  for (let i = 0; i < RACING_LINE.length; i++) {
+    const a = RACING_LINE[i];
+    const b = RACING_LINE[(i + 1) % RACING_LINE.length];
+    const length = Math.hypot(b.x - a.x, b.y - a.y);
+    nextSegments.push({ a, b, length, start: total });
+    total += length;
+  }
+  segments = nextSegments;
+  TRACK_LENGTH = total;
 }
 
 function segmentAtDistance(distance: number): Segment {
