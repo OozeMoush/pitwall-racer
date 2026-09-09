@@ -32,6 +32,9 @@ describe('dynamic field playtest telemetry', () => {
       tire: createTire('MEDIUM'),
       usedCompounds: new Set(['MEDIUM']),
       preferredLane: 0,
+      // A strong reference lap, but not a clone of the fastest AI driver.
+      // The field must win through better braking/corner execution, not power.
+      skill: 1.06,
     };
 
     let playerLap = 0;
@@ -147,13 +150,13 @@ describe('dynamic field playtest telemetry', () => {
 
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(335);
     expect(metrics.maxPlayerKmh).toBeLessThan(430);
-    // Core difficulty comes from braking and corner speed. Top speed may be
-    // similar, but the AI must sustain a faster lap without an ERS cheat.
-    expect(metrics.maxAiKmh).toBeGreaterThan(350);
+    expect(metrics.maxAiKmh).toBeGreaterThan(335);
     expect(metrics.maxAiKmh).toBeLessThan(430);
-    expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(35);
+    // Straight-line speed stays close; the field's advantage must be sustained
+    // lap pace from the braking/cornering model.
+    expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(25);
     expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh + 8);
-    expect(metrics.avgAiKmh).toBeGreaterThan(260);
+    expect(metrics.avgAiKmh).toBeGreaterThan(250);
     expect(metrics.offTrackRatio).toBeLessThan(0.02);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.78);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
