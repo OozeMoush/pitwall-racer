@@ -3,13 +3,13 @@ import { PIT_BOX_T, pitLanePose } from '../simulation/PitLaneModel';
 import { headingToYaw, toWorld } from './WorldTransform';
 
 const SAMPLES = 96;
-const HALF_WIDTH = 20;
+export const PIT_LANE_HALF_WIDTH = 20;
 const EDGE_LINE_WIDTH = 0.7;
 
 export function createPitLane3D(): THREE.Group {
   const root = new THREE.Group();
   const road = new THREE.Mesh(
-    pitRibbonGeometry(-HALF_WIDTH, HALF_WIDTH, 0.04),
+    pitRibbonGeometry(-PIT_LANE_HALF_WIDTH, PIT_LANE_HALF_WIDTH, 0.04),
     new THREE.MeshStandardMaterial({ color: 0x34383b, roughness: 0.9, metalness: 0.02 }),
   );
   road.receiveShadow = true;
@@ -17,7 +17,7 @@ export function createPitLane3D(): THREE.Group {
 
   const lineMat = new THREE.MeshStandardMaterial({ color: 0xf0f2ed, roughness: 0.78 });
   for (const side of [-1, 1] as const) {
-    const center = side * (HALF_WIDTH - 0.45);
+    const center = side * (PIT_LANE_HALF_WIDTH - 0.45);
     const edge = new THREE.Mesh(
       pitRibbonGeometry(center - EDGE_LINE_WIDTH / 2, center + EDGE_LINE_WIDTH / 2, 0.067),
       lineMat,
@@ -64,17 +64,25 @@ function addPitWall(root: THREE.Group): void {
   }
 }
 
-function pitRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
+/**
+ * Keep the first vertex on the left side of travel and the second on the right.
+ * Track3D uses the same winding. The old pit code accepted (-width, +width)
+ * literally, flipping every triangle downward; Three.js then backface-culled
+ * the road from the overhead camera and exposed the grass beneath it.
+ */
+export function pitRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
+  const leftOffset = Math.max(offsetA, offsetB);
+  const rightOffset = Math.min(offsetA, offsetB);
   const vertices: number[] = [];
   const indices: number[] = [];
   for (let i = 0; i <= SAMPLES; i++) {
     const t = i / SAMPLES;
     const pose = pitLanePose(t);
-    const a = offsetPose(pose, offsetA);
-    const b = offsetPose(pose, offsetB);
-    const aw = toWorld(a.x, a.y, height);
-    const bw = toWorld(b.x, b.y, height);
-    vertices.push(aw.x, aw.y, aw.z, bw.x, bw.y, bw.z);
+    const left = offsetPose(pose, leftOffset);
+    const right = offsetPose(pose, rightOffset);
+    const lw = toWorld(left.x, left.y, height);
+    const rw = toWorld(right.x, right.y, height);
+    vertices.push(lw.x, lw.y, lw.z, rw.x, rw.y, rw.z);
     if (i < SAMPLES) {
       const i0 = i * 2;
       const i1 = i0 + 1;
