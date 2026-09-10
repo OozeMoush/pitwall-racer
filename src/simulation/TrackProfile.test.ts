@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { trackProfile } from './TrackProfile';
+import { racingLineOffset, signedHeadingDelta, trackProfile } from './TrackProfile';
+import { TRACK_LENGTH } from './TrackModel';
 
 function sampleProfiles() {
   return Array.from({ length: 240 }, (_, index) => ({
@@ -19,11 +20,30 @@ describe('TrackProfile', () => {
     expect(fastest.profile.targetSpeed - slowest.profile.targetSpeed).toBeGreaterThan(28);
   });
 
-  it('moves the racing line toward the inside of meaningful corners', () => {
+  it('moves the apex target toward the inside of meaningful corners', () => {
     const corner = sampleProfiles().reduce((best, sample) => sample.profile.severity > best.profile.severity ? sample : best);
     expect(corner.profile.severity).toBeGreaterThan(0.6);
     expect(Math.abs(corner.profile.apexOffset)).toBeGreaterThan(7);
     expect(Math.sign(corner.profile.apexOffset)).toBe(Math.sign(corner.profile.signedTurn));
+  });
+
+  it('builds an outside-apex-outside line instead of hugging the inside all corner', () => {
+    const metres = (value: number) => value / TRACK_LENGTH;
+    const local = Array.from({ length: 360 }, (_, index) => {
+      const progress = index / 360;
+      return {
+        progress,
+        turn: signedHeadingDelta(progress - metres(18), progress + metres(18)),
+      };
+    });
+    const apex = local.reduce((best, sample) => Math.abs(sample.turn) > Math.abs(best.turn) ? sample : best);
+    const apexOffset = racingLineOffset(apex.progress, 1.06);
+    const approaches = [110, 90, 70, 50, 30]
+      .map((distance) => racingLineOffset(apex.progress - metres(distance), 1.06));
+
+    expect(Math.abs(apexOffset)).toBeGreaterThan(5);
+    expect(Math.sign(apexOffset)).toBe(Math.sign(apex.turn));
+    expect(approaches.some((offset) => Math.abs(offset) > 3 && Math.sign(offset) === -Math.sign(apex.turn))).toBe(true);
   });
 
   it('lets stronger drivers carry a little more corner speed without changing the track', () => {
