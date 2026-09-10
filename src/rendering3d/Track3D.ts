@@ -1,19 +1,26 @@
 import * as THREE from 'three';
 import { aiGridSlot, PLAYER_GRID } from '../simulation/GridModel';
+import {
+  TRACK_KERB_INNER_OFFSET,
+  TRACK_KERB_OUTER_OFFSET,
+  TRACK_ROAD_HALF_WIDTH,
+  TRACK_RUNOFF_HALF_WIDTH,
+} from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
 import { sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
-export const ROAD_HALF_WIDTH = 28;
+export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
 export const EDGE_LINE_WIDTH_METRES = 0.75;
 export const KERB_SEGMENT_METRES = 12;
 export const BARRIER_SEGMENT_METRES = 24;
 export const SPEED_REFERENCE_SPACING_METRES = 24;
 
-const RUNOFF_HALF_WIDTH = 40;
+const RUNOFF_HALF_WIDTH = TRACK_RUNOFF_HALF_WIDTH;
+const RUBBERED_HALF_WIDTH = 10.5;
 const SAMPLE_COUNT = 460;
-const KERB_INNER_OFFSET = ROAD_HALF_WIDTH + 0.15;
-const KERB_OUTER_OFFSET = ROAD_HALF_WIDTH + 2.65;
+const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
+const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
@@ -29,7 +36,7 @@ export function createTrack3D(): THREE.Group {
 
   addRibbon(root, RUNOFF_HALF_WIDTH, 0.004, 0x62686a, 0.98);
   addRibbon(root, ROAD_HALF_WIDTH, 0.032, 0x2d3033, 0.9);
-  addRibbon(root, 14.5, 0.043, 0x242729, 0.98);
+  addRibbon(root, RUBBERED_HALF_WIDTH, 0.043, 0x242729, 0.98);
   addEdgeLines(root);
   addCornerKerbs(root);
   addStartFinish(root);
@@ -150,9 +157,6 @@ function addCornerKerbs(root: THREE.Group): void {
     const profile = trackProfile(mid);
     if (profile.severity < 0.20 || Math.abs(profile.signedTurn) < 0.028) continue;
 
-    // Kerbs belong to the apex side of a corner and are drawn as broad,
-    // continuous bands. The old implementation placed hundreds of tiny boxes
-    // on both sides of the circuit, which looked like confetti after scaling.
     const side = Math.sign(profile.signedTurn);
     const inner = side * KERB_INNER_OFFSET;
     const outer = side * KERB_OUTER_OFFSET;
@@ -232,7 +236,7 @@ function addSafetyBarriers(root: THREE.Group): void {
 }
 
 function addPitBuildings(root: THREE.Group): void {
-  const start = sampleTrack(0.035, 58);
+  const start = sampleTrack(0.035, RUNOFF_HALF_WIDTH + 16);
   const world = toWorld(start.x, start.y, 0);
   const buildingMat = new THREE.MeshStandardMaterial({ color: 0x252c31, roughness: 0.7, metalness: 0.08 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x78a9b8, roughness: 0.28, metalness: 0.16 });
@@ -253,8 +257,9 @@ function addPitBuildings(root: THREE.Group): void {
 function addGrandstands(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0x6c7376, roughness: 0.9 });
   const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x1c2226, roughness: 0.72, metalness: 0.08 });
-  for (const [progress, lane, length] of [[0.15, -60, 9], [0.47, 60, 11], [0.76, -60, 9]] as Array<[number, number, number]>) {
-    const p = sampleTrack(progress, lane);
+  const grandstandOffset = RUNOFF_HALF_WIDTH + 18;
+  for (const [progress, side, length] of [[0.15, -1, 9], [0.47, 1, 11], [0.76, -1, 9]] as Array<[number, number, number]>) {
+    const p = sampleTrack(progress, side * grandstandOffset);
     const world = toWorld(p.x, p.y, 0);
     const stand = new THREE.Mesh(new THREE.BoxGeometry(length, 2.2, 3.4), material);
     stand.position.set(world.x, 1.1, world.z);
@@ -272,7 +277,7 @@ function addBrakingBoards(root: THREE.Group): void {
   const postMat = new THREE.MeshStandardMaterial({ color: 0xe8e9e4, roughness: 0.82 });
   const boardMat = new THREE.MeshStandardMaterial({ color: 0x171e22, roughness: 0.64 });
   for (const progress of [0.13, 0.31, 0.49, 0.67, 0.85]) {
-    const p = sampleTrack(progress, 51);
+    const p = sampleTrack(progress, RUNOFF_HALF_WIDTH + 6);
     const world = toWorld(p.x, p.y, 0);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.5, 0.14), postMat);
     post.position.set(world.x, 1.25, world.z);
@@ -292,7 +297,7 @@ function addSpeedReferencePosts(root: THREE.Group): void {
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    const p = sampleTrack((i + 0.5) / count, side * 47);
+    const p = sampleTrack((i + 0.5) / count, side * (RUNOFF_HALF_WIDTH + 3));
     const world = toWorld(p.x, p.y, 0);
     matrix.compose(new THREE.Vector3(world.x, 0.48, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
     posts.setMatrixAt(i, matrix);
