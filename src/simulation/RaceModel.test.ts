@@ -173,7 +173,7 @@ describe('RaceModel', () => {
 
     const [next] = stepAiField([driver], 0.1, 8, [player]);
     expect(next.battleState).toBe('SIDE_BY_SIDE');
-    expect(next.laneOffset).toBeGreaterThan(driver.laneOffset);
+    expect(Math.abs(next.laneOffset - player.laneOffset)).toBeGreaterThanOrEqual(7.4);
   });
 
   it('undercuts one lap early when genuinely trapped in the same lane', () => {
