@@ -78,12 +78,12 @@ describe('RaceModel', () => {
     chaser.progress = 0.5;
     leader.skill = 1.04;
     chaser.skill = 0.92;
-    leader.laneOffset = 8;
-    chaser.laneOffset = -8;
+    leader.laneOffset = 3;
+    chaser.laneOffset = -3;
 
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 8);
     expect(nextChaser.battleState).toBe('FOLLOW');
-    expect(nextChaser.laneOffset).toBeGreaterThan(-8);
+    expect(nextChaser.laneOffset).toBeGreaterThan(-3);
   });
 
   it('moves a fresh Soft off line to attack a slower Hard at close range', () => {
@@ -110,8 +110,8 @@ describe('RaceModel', () => {
     chaser.speed = 88;
     leader.skill = 0.94;
     chaser.skill = 1.09;
-    leader.laneOffset = -42;
-    chaser.laneOffset = 42;
+    leader.laneOffset = -10;
+    chaser.laneOffset = 10;
 
     const [, nextChaser] = stepAiField([leader, chaser], 0.15, 8);
     expect(nextChaser.battleState).toBe('ATTACK');
@@ -147,7 +147,7 @@ describe('RaceModel', () => {
       lap: driver.lap,
       progress: 0.5 - 20 / TRACK_LENGTH,
       speed: 92,
-      laneOffset: -12,
+      laneOffset: -8,
       performance: 1.08,
       isPlayer: true,
     };
@@ -160,13 +160,13 @@ describe('RaceModel', () => {
   it('leaves lateral space when the player is genuinely alongside', () => {
     const [driver] = createAiField();
     driver.progress = 0.55;
-    driver.laneOffset = 8;
+    driver.laneOffset = 4;
     const player: RaceTrafficCar = {
       id: 'player',
       lap: driver.lap,
       progress: 0.55,
       speed: 78,
-      laneOffset: -18,
+      laneOffset: -4,
       performance: 1,
       isPlayer: true,
     };
