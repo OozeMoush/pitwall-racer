@@ -7,6 +7,7 @@ export interface RaceAudioInput {
   surfaceSeverity: number;
   trafficPressure: number;
   pitService: boolean;
+  slideSeverity?: number;
   banner?: string;
 }
 
@@ -23,14 +24,16 @@ export function raceAudioParameters(input: RaceAudioInput): RaceAudioParameters 
   const engineFrequency = 58 + speed * 245 + load * 34;
   const engineGain = input.pitService ? 0.025 : 0.035 + speed * 0.055 + input.throttle * 0.035;
 
-  // Do not hiss merely because the steering key is held. The tyre layer now
-  // wakes up only when the driver is close to or beyond the available grip:
-  // heavy braking, very large high-speed steering input, or worn tyres.
-  const steeringStress = Math.abs(input.steer) * speed * Math.max(0.28, 0.92 - input.tireGrip * 0.48);
-  const brakingStress = input.brake * speed * 0.58;
-  const wornTyreStress = Math.abs(input.steer) * speed * clamp01((0.92 - input.tireGrip) * 1.7);
-  const slipDemand = clamp01((steeringStress + brakingStress + wornTyreStress - 0.56) * 2.8);
-  const tireGain = speed < 0.2 ? 0 : slipDemand * 0.075;
+  // Ordinary steering stays quiet. Limit noise still exists for a very hard
+  // high-speed input or braking, but wear itself no longer creates a permanent
+  // hiss. A rear-slide event gets its own short, unmistakable tyre burst.
+  const steeringStress = Math.abs(input.steer) * speed * Math.max(0.24, 0.78 - input.tireGrip * 0.36);
+  const brakingStress = input.brake * speed * 0.60;
+  const limitDemand = clamp01((steeringStress + brakingStress - 0.61) * 3.0);
+  const slideSeverity = clamp01(input.slideSeverity ?? 0);
+  const limitGain = limitDemand * 0.068;
+  const slideGain = slideSeverity * (0.052 + speed * 0.040);
+  const tireGain = speed < 0.2 ? 0 : Math.max(limitGain, slideGain);
 
   const surfaceGain = clamp01(input.surfaceSeverity) * (0.025 + speed * 0.075);
   return { engineFrequency, engineGain, tireGain, surfaceGain };
@@ -70,7 +73,7 @@ export class RaceAudio {
     this.engineB?.frequency.setTargetAtTime(params.engineFrequency * 1.985, now, 0.03);
     this.engineGain?.gain.setTargetAtTime(params.engineGain, now, 0.035);
     this.engineFilter?.frequency.setTargetAtTime(520 + clamp01(input.speed / 112) * 2100 + input.throttle * 850, now, 0.045);
-    this.tireGain?.gain.setTargetAtTime(params.tireGain, now, 0.035);
+    this.tireGain?.gain.setTargetAtTime(params.tireGain, now, 0.025);
     this.surfaceGain?.gain.setTargetAtTime(params.surfaceGain, now, 0.04);
 
     if (input.banner !== this.lastBanner) {
