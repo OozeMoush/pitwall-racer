@@ -24,11 +24,11 @@ export function raceAudioParameters(input: RaceAudioInput): RaceAudioParameters 
   const engineFrequency = 58 + speed * 245 + load * 34;
   const engineGain = input.pitService ? 0.025 : 0.035 + speed * 0.055 + input.throttle * 0.035;
 
-  // Ordinary steering stays quiet. Limit noise still exists for a very hard
-  // high-speed input or braking, but wear itself no longer creates a permanent
-  // hiss. A rear-slide event gets its own short, unmistakable tyre burst.
+  // Ordinary steering stays quiet. Limit noise still exists for a genuinely
+  // hard high-speed input or braking, but wear itself no longer creates a
+  // permanent hiss. A rear-slide event gets its own short, unmistakable burst.
   const steeringStress = Math.abs(input.steer) * speed * Math.max(0.24, 0.78 - input.tireGrip * 0.36);
-  const brakingStress = input.brake * speed * 0.60;
+  const brakingStress = input.brake * speed;
   const limitDemand = clamp01((steeringStress + brakingStress - 0.61) * 3.0);
   const slideSeverity = clamp01(input.slideSeverity ?? 0);
   const limitGain = limitDemand * 0.068;
