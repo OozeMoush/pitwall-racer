@@ -13,6 +13,29 @@ function countSlides(wear: number, seconds = 10): number {
   return count;
 }
 
+function countFragmentedCornerSlides(wear: number, laps = 1): number {
+  let state = createTyreSlideState(0.37);
+  let count = 0;
+  const dt = 1 / 120;
+
+  for (let lap = 0; lap < laps; lap++) {
+    for (let corner = 0; corner < 8; corner++) {
+      for (let elapsed = 0; elapsed < 1.5; elapsed += dt) {
+        const step = stepTyreSlide(state, { wear, speed: 92, steer: 0.95, throttle: 1 }, dt);
+        state = step.state;
+        if (step.triggered) count += 1;
+      }
+      for (let elapsed = 0; elapsed < 4; elapsed += dt) {
+        const step = stepTyreSlide(state, { wear, speed: 108, steer: 0, throttle: 1 }, dt);
+        state = step.state;
+        if (step.triggered) count += 1;
+      }
+    }
+  }
+
+  return count;
+}
+
 describe('wear-driven tyre slide events', () => {
   it('keeps fresh tyres stable while increasing event risk with wear', () => {
     expect(tyreSlideRisk(0.05)).toBe(0);
@@ -27,6 +50,16 @@ describe('wear-driven tyre slide events', () => {
 
     expect(fresh).toBe(0);
     expect(used).toBeGreaterThan(fresh);
+    expect(worn).toBeGreaterThan(used);
+  });
+
+  it('keeps corner stress between bends so a used Medium-like tyre actually slides in a lap', () => {
+    const fresh = countFragmentedCornerSlides(0.05, 2);
+    const used = countFragmentedCornerSlides(0.50, 1);
+    const worn = countFragmentedCornerSlides(0.80, 1);
+
+    expect(fresh).toBe(0);
+    expect(used).toBeGreaterThanOrEqual(1);
     expect(worn).toBeGreaterThan(used);
   });
 
