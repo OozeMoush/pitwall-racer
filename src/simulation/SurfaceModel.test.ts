@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { controlArcadeCar } from './ArcadeCarController';
 import { surfaceEffect } from './SurfaceModel';
+import {
+  DEEP_CUT_DISTANCE,
+  FREE_KERB_DISTANCE,
+  TRACK_ROAD_HALF_WIDTH,
+  TRACK_RUNOFF_HALF_WIDTH,
+} from './TrackLimitsModel';
 
 describe('surfaceEffect', () => {
-  it('allows one-side kerb use but penalizes a deep four-wheel cut', () => {
-    expect(surfaceEffect(29.2)).toEqual({
+  it('allows one-side kerb use but penalizes a deep four-wheel cut on the narrow road', () => {
+    expect(surfaceEffect(FREE_KERB_DISTANCE - 0.2)).toEqual({
       severity: 0,
       gripMultiplier: 1,
       powerMultiplier: 1,
@@ -12,15 +18,20 @@ describe('surfaceEffect', () => {
       label: 'TRACK',
     });
 
-    const deepKerb = surfaceEffect(30.9);
+    const deepKerb = surfaceEffect(DEEP_CUT_DISTANCE - 0.15);
     expect(deepKerb.label).toBe('RUNOFF');
-    expect(deepKerb.severity).toBeGreaterThan(0.25);
-    expect(deepKerb.powerMultiplier).toBeLessThan(0.94);
+    expect(deepKerb.severity).toBeGreaterThan(0.35);
+    expect(deepKerb.powerMultiplier).toBeLessThan(0.90);
+  });
+
+  it('keeps the actual asphalt width far below the old 56 metre arcade road', () => {
+    expect(TRACK_ROAD_HALF_WIDTH * 2).toBeLessThanOrEqual(34);
+    expect(TRACK_ROAD_HALF_WIDTH * 2).toBeGreaterThanOrEqual(28);
   });
 
   it('progressively slows a car that runs beyond the road edge', () => {
-    const runoff = surfaceEffect(36);
-    const grass = surfaceEffect(70);
+    const runoff = surfaceEffect(DEEP_CUT_DISTANCE + 3);
+    const grass = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH + 5);
 
     expect(runoff.powerMultiplier).toBeLessThan(1);
     expect(runoff.gripMultiplier).toBeLessThan(1);
@@ -30,8 +41,8 @@ describe('surfaceEffect', () => {
   });
 
   it('makes a deep kerb cut lose speed at race pace', () => {
-    const deepKerb = surfaceEffect(30.9);
-    const track = surfaceEffect(28);
+    const deepKerb = surfaceEffect(DEEP_CUT_DISTANCE - 0.15);
+    const track = surfaceEffect(TRACK_ROAD_HALF_WIDTH - 0.5);
     const input = {
       throttle: 1,
       brake: 0,
