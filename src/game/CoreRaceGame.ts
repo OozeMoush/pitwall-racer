@@ -9,7 +9,11 @@ import { PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
-import { formatRaceGap, raceGapSeconds } from '../simulation/RaceGapModel';
+import {
+  estimatedSignedGapSeconds,
+  formatSignedRaceGap,
+  RaceIntervalTracker,
+} from '../simulation/RaceIntervalModel';
 import {
   PIT_SPEED,
   beginPitStop,
@@ -43,7 +47,10 @@ import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simu
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
-const CAMERA_HALF_HEIGHT = 21.5;
+// Actual top speed was already high. Pull the fixed camera in modestly instead
+// of inflating vehicle speed further; combined with the narrower circuit this
+// makes reference objects cross the view faster and raises perceived urgency.
+const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
@@ -87,6 +94,7 @@ export class CoreRaceGame {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly physics: RapierRacePhysics;
   private readonly audio = new RaceAudio();
+  private readonly raceIntervals = new RaceIntervalTracker();
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -258,6 +266,7 @@ export class CoreRaceGame {
     if (this.stepPhysicalPit(dt)) {
       this.physics.step(dt);
       this.updateAiLapTiming();
+      this.updateRaceIntervals();
       return;
     }
 
@@ -306,6 +315,7 @@ export class CoreRaceGame {
     }
 
     this.trafficPressure = this.estimateTrafficPressure();
+    this.updateRaceIntervals();
   }
 
   private stepPhysicalPit(dt: number): boolean {
@@ -458,6 +468,13 @@ export class CoreRaceGame {
     }
   }
 
+  private updateRaceIntervals(): void {
+    this.raceIntervals.update([
+      { id: 'player', lap: this.lap, progress: this.trackProgress },
+      ...this.ai.map((driver) => ({ id: driver.id, lap: driver.lap, progress: driver.progress })),
+    ], this.timing.raceTime);
+  }
+
   private registerSessionFastest(lapTime: number): void {
     this.sessionFastestLap = this.sessionFastestLap === undefined ? lapTime : Math.min(this.sessionFastestLap, lapTime);
   }
@@ -602,6 +619,7 @@ export class CoreRaceGame {
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
+    this.raceIntervals.reset();
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
     this.audio.reset();
@@ -630,19 +648,6 @@ export class CoreRaceGame {
   private lastLapFor(id: string): number | undefined {
     if (id === 'player') return this.timing.lastLapTime;
     return this.aiLapClocks.get(id)?.lastLap;
-  }
-
-  private battleTimingHtml(standings: readonly LiveStandingEntry[], playerIndex: number): string {
-    const player = standings[playerIndex];
-    if (!player) return '';
-    const referenceLap = Math.max(35, Math.min(90, this.sessionFastestLap ?? this.playerBestLap() ?? TRACK_LENGTH / 82));
-    const renderRow = (label: string, other?: LiveStandingEntry) => {
-      if (!other) return `<div><small>${label}</small><b>—</b><span>LAST —</span></div>`;
-      const gap = formatRaceGap(raceGapSeconds(player, other, referenceLap));
-      const lastLap = this.lastLapFor(other.id);
-      return `<div><small>${label}</small><b>${other.name} · ${gap}</b><span>LAST ${lastLap === undefined ? '—' : formatLapTime(lastLap)}</span></div>`;
-    };
-    return `<div class="battle-timing">${renderRow('AHEAD', standings[playerIndex - 1])}${renderRow('BEHIND', standings[playerIndex + 1])}</div>`;
   }
 
   private miniMapSvg(): string {
@@ -742,6 +747,7 @@ export class CoreRaceGame {
     const standings = this.standings();
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
     const position = playerIndex + 1;
+    const playerStanding = standings[playerIndex];
     const surface = surfaceEffect(this.trackDistance);
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
@@ -805,19 +811,24 @@ export class CoreRaceGame {
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
     const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS C TO RECOVER</div>` : '';
+    const referenceLap = Math.max(35, Math.min(90, this.sessionFastestLap ?? this.playerBestLap() ?? TRACK_LENGTH / 82));
     const towerHtml = standings.map((driver, index) => {
       const compound = this.compoundFor(driver.id);
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em>${driver.name}</span>`;
+      const lastLap = this.lastLapFor(driver.id);
+      const gap = !playerStanding || driver.id === 'player'
+        ? 0
+        : this.raceIntervals.gapSeconds(playerStanding, driver)
+          ?? estimatedSignedGapSeconds(playerStanding, driver, referenceLap);
+      const gapClass = gap < -TIMING_EPSILON ? 'gap-ahead' : gap > TIMING_EPSILON ? 'gap-behind' : 'gap-self';
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
-    const battleTimingHtml = this.battleTimingHtml(standings, playerIndex);
 
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
-      <div class="tower">${towerHtml}</div>
-      ${battleTimingHtml}
+      <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i></div>${towerHtml}</div>
       <div class="race-telemetry">
         <div class="mini-map"><header><b>TRACK</b><span>LIVE POSITION</span></header>${this.miniMapSvg()}</div>
         <div class="lap-board"><header><b>LAPS</b><span>TYRE/PIT · S1 · S2 · S3 · LAP</span></header><div class="lap-head" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><i>#</i><i>TYRE</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i></div>${this.renderLapBoard()}</div>
