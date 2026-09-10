@@ -39,7 +39,10 @@ describe('StrategySimulator', () => {
     expect(oneStop.totalTime).toBeLessThan(noStop.totalTime - 8);
     expect(noStop.laps[11].lapTime).toBeGreaterThan(noStop.laps[3].lapTime + 8);
     expect(noStop.laps[11].gripAverage).toBeGreaterThan(noStop.laps[3].gripAverage * 0.82);
-    expect(noStop.laps[7].lapTime).toBeLessThan(noStop.laps[3].lapTime + 1.2);
+    // With event-driven degradation the mid-stint cost is allowed to become
+    // visible earlier: wear raises the expected frequency of rear-slide
+    // moments rather than waiting for a late grip cliff.
+    expect(noStop.laps[7].lapTime).toBeLessThan(noStop.laps[3].lapTime + 4);
   });
 
   it('makes PUSH buy opening pace by spending materially more tyre', () => {

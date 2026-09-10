@@ -1,5 +1,5 @@
 import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
-import { degradedTyreSlipFactor, REPRESENTATIVE_SLIDE_PENALTY_SECONDS } from './TyrePerformanceModel';
+import { REPRESENTATIVE_SLIDE_PENALTY_SECONDS, tyreSlideRisk } from './TyrePerformanceModel';
 
 export interface StrategyPlan {
   name: string;
@@ -62,29 +62,28 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyRe
   for (let lap = 1; lap <= totalLaps; lap++) {
     const pace = plan.paceForLap(lap, tire);
     let gripSum = 0;
-    let slideSum = 0;
+    let slideRiskSum = 0;
     let samples = 0;
 
     for (let elapsed = 0; elapsed < REPRESENTATIVE_SECONDS_PER_LAP; elapsed += DT) {
       tire = stepTire(tire, pace, modeLoad[pace], DT);
       gripSum += tire.grip;
-      slideSum += degradedTyreSlipFactor(tire.grip);
+      slideRiskSum += tyreSlideRisk(tire.wear);
       samples += 1;
     }
 
     const gripAverage = gripSum / Math.max(1, samples);
-    const slideAverage = slideSum / Math.max(1, samples);
-    // Tyres change braking/rotation/corner exit, not the engine. Only the
-    // cornering share of the lap therefore scales with peak grip. Once a tyre
-    // is genuinely degraded, add a separate arcade slide/scrub cost so the
-    // benchmark matches the live rule: an old tyre still turns, but pushing it
-    // wastes speed.
+    const slideRiskAverage = slideRiskSum / Math.max(1, samples);
+    // Compounds still separate through the cornering share of the lap. Wear is
+    // evaluated separately as the expected time cost of short rear-slide
+    // events, matching live play: ageing increases how often mistakes happen
+    // rather than permanently switching the steering to a worse mode.
     const straightSeconds = BASE_LAP_SECONDS * (1 - CORNER_TIME_FRACTION);
     const cornerSeconds = BASE_LAP_SECONDS * CORNER_TIME_FRACTION;
     const relativeGrip = Math.max(0.56, gripRatioToMedium(gripAverage));
     const lapTime = straightSeconds
       + cornerSeconds / Math.pow(relativeGrip, GRIP_RESPONSE_EXPONENT)
-      + slideAverage * REPRESENTATIVE_SLIDE_PENALTY_SECONDS
+      + slideRiskAverage * REPRESENTATIVE_SLIDE_PENALTY_SECONDS
       + modeLapAdjustment[pace];
     totalTime += lapTime;
     laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });

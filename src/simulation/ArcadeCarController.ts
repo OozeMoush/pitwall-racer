@@ -1,5 +1,3 @@
-import { degradedTyreSlipFactor } from './TyrePerformanceModel';
-
 export interface PlanarMotion {
   vx: number;
   vy: number;
@@ -16,6 +14,8 @@ export interface ArcadeCarInput {
   powerBoost?: number;
   powerMultiplier?: number;
   rollingResistance?: number;
+  slideSeverity?: number;
+  slideDirection?: number;
 }
 
 export interface ArcadeCarControlResult {
@@ -29,16 +29,15 @@ export interface ArcadeCarControlResult {
 }
 
 /**
- * Arcade handling where tyre grip primarily changes braking, rotation and
- * combined traction. Compound choice should not behave like an engine map:
- * with the wheel straight, S/M/H accelerate almost the same way.
+ * Game-facing handling rather than a slip-angle simulation. Compound grip
+ * changes braking, corner speed and how much speed can be carried, while the
+ * basic steering stays generous enough that every dry tyre is enjoyable.
  *
- * Degradation is deliberately game-facing rather than a tyre simulation. Once
- * effective grip falls below a healthy-race-tyre window, asking for lots of
- * steering at speed makes the car hang onto lateral motion and scrub forward
- * speed. In game terms: sliding is readable time loss, not realism for its own
- * sake. Fresh Hard still sits above the slide threshold; this is mainly a late-
- * stint / overheated / heavily compromised tyre behaviour.
+ * Tyre age is handled outside this pure controller as short slide events. When
+ * one fires, the rear steps outward, yaw rises and forward speed is scrubbed.
+ * That is deliberately more obvious than the old permanent "slightly less
+ * grip" penalty: the player should be able to point at the moment they lost
+ * time.
  */
 export function controlArcadeCar(
   motion: PlanarMotion,
@@ -53,6 +52,8 @@ export function controlArcadeCar(
   const powerBoost = clamp(input.powerBoost ?? 0, -0.55, 0.48);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
   const rollingResistance = clamp(input.rollingResistance ?? 0, 0, 14);
+  const slideSeverity = clamp01(input.slideSeverity ?? 0);
+  const slideDirection = clamp(input.slideDirection ?? 0, -1, 1);
 
   const cos = Math.cos(motion.heading);
   const sin = Math.sin(motion.heading);
@@ -63,12 +64,13 @@ export function controlArcadeCar(
   const lateralSpeed = motion.vx * rightX + motion.vy * rightY;
   const speed = Math.hypot(motion.vx, motion.vy);
   const normalizedGrip = clamp01((tireGrip - 0.30) / 1.04);
-  const steeringGrip = 0.42 + normalizedGrip * 0.58;
+  // Compress grip's effect on the steering rack. A Hard tyre should give away
+  // corner speed, not make WASD steering feel broken.
+  const steeringGrip = 0.46 + normalizedGrip * 0.54;
   const superGrip = Math.max(0, tireGrip - 1);
-  const degradedSlip = degradedTyreSlipFactor(tireGrip);
 
-  // A small global speed lift: enough to make straights feel more urgent after
-  // pulling the camera back, without turning starts into rocket launches.
+  // A small global speed lift: enough to make straights feel urgent without
+  // turning starts into rocket launches.
   const usefulTopSpeed = 123 + powerBoost * 58;
   const positiveForward = Math.max(0, forwardSpeed);
   const speedRatio = clamp01(positiveForward / Math.max(60, usefulTopSpeed));
@@ -88,25 +90,23 @@ export function controlArcadeCar(
   const aeroDrag = 0.000235 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
   // Runoff/grass must not be a shortcut at race speed, but it still has to let
-  // a nearly stopped car drive back to the circuit. Derive a speed-dependent
-  // rough-surface drag from the grip loss: mild at walking pace, severe at
-  // 250-350 km/h.
+  // a nearly stopped car drive back to the circuit. Most of the penalty is
+  // therefore speed-dependent.
   const roughSurface = clamp01((1 - surfaceGrip) / 0.50);
   const roughSurfaceDrag = roughSurface
     * (0.80 + speed * 0.045 + speed * speed * 0.00070);
 
-  // A tired tyre can still point the car into the corner, but if it is pushed
-  // hard it starts scrubbing speed. That makes tyre age a driving problem rather
-  // than simply turning the steering sensitivity down every lap.
-  const tyreSlideDrag = degradedSlip
-    * steeringLoad
-    * (0.55 + throttle * 0.45)
-    * (1.35 + speed * 0.055);
+  // A triggered rear slide is intentionally decisive and short. It costs a
+  // handful of km/h and creates visible lateral motion instead of silently
+  // reducing steering authority for an entire stint.
+  const rearSlideDrag = slideSeverity
+    * (0.65 + steeringLoad * 0.35)
+    * (3.0 + speed * 0.065);
 
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
 
-  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag - tyreSlideDrag;
+  let longitudinalAcceleration = engineAcceleration - aeroDrag - rollingDrag - roughSurfaceDrag - rearSlideDrag;
   if (Math.abs(forwardSpeed) > 0.15) {
     longitudinalAcceleration -= Math.sign(forwardSpeed) * brakingAcceleration;
   } else if (brake > 0.05) {
@@ -119,38 +119,44 @@ export function controlArcadeCar(
 
   const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.34 + Math.pow(steeringGrip, 1.70) * 1.52 + superGrip * 0.55;
-  const degradedLateralRetention = 1 - degradedSlip * steeringLoad * 0.42;
+  const slideLateralRetention = 1 - slideSeverity * 0.68;
   const lateralGripRate = 9.35
     * tyreLateralAuthority
     * surfaceGrip
     * (1 - highSpeedSlip * 0.22)
-    * degradedLateralRetention;
+    * slideLateralRetention;
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
-  const nextLateral = lateralSpeed * lateralRetention;
+  const rearStepAcceleration = slideDirection
+    * slideSeverity
+    * clamp01(speed / 78)
+    * (10.5 + speed * 0.095);
+  const nextLateral = lateralSpeed * lateralRetention + rearStepAcceleration * Math.max(0, dt);
 
-  // Keep high-speed cornering demanding, but preserve most of the steering on
-  // an old tyre. Late-stint performance now falls more through slide/speed loss
-  // than through making the steering itself disappear.
-  const speedAuthority = 2.52 / (1 + Math.pow(speed / 49, 1.62)) + 0.060;
+  // The whole car is now a little more willing to rotate, especially at high
+  // speed. This is an overhead racing game; readable, responsive direction
+  // changes matter more than reproducing a real F1 steering envelope.
+  const speedAuthority = 2.72 / (1 + Math.pow(speed / 51, 1.60)) + 0.070;
   const lowSpeedBuild = clamp01(speed / 12);
   const fastCorner = clamp01((speed - 38) / 66);
-  const freshHighSpeedAuthority = 0.16
-    + Math.pow(steeringGrip, 1.72) * 1.40
+  const freshHighSpeedAuthority = 0.18
+    + Math.pow(steeringGrip, 1.68) * 1.42
     + superGrip * 0.76;
-  const tyreTurnFactor = (1 - fastCorner) * (0.66 + steeringGrip * 0.54)
+  const tyreTurnFactor = (1 - fastCorner) * (0.69 + steeringGrip * 0.53)
     + fastCorner * freshHighSpeedAuthority;
-  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.07 + (1 - normalizedGrip) * 0.50);
+  const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.055 + (1 - normalizedGrip) * 0.42);
   const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.10 : 1;
   const brakingRotation = 1 + brake * (0.28 + fastCorner * 0.14);
+  const slideRotation = 1 + slideSeverity * 0.58;
   const targetAngularVelocity = steer
     * speedAuthority
     * lowSpeedBuild
     * tyreTurnFactor
     * surfaceGrip
-    * Math.max(0.38, throttleUndersteer)
+    * Math.max(0.44, throttleUndersteer)
     * liftRotation
-    * brakingRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.8 + (1 - highSpeedSlip) * 2.0));
+    * brakingRotation
+    * slideRotation;
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.8 + (1 - highSpeedSlip) * 2.0 + slideSeverity * 1.8));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 

@@ -15,12 +15,18 @@ import {
 import type { DriverState, RaceTrafficCar } from './RaceModel';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
+import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
 import { projectTrack, sampleTrack } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
-const CAR_HALF_LENGTH = 8.5;
-const CAR_HALF_WIDTH = 4.1;
+// Match the collision footprint to the rendered car. The old 8.5 x 4.1 half-
+// extents were roughly twice the visible body after the 3D/world scaling pass,
+// which made wheel-to-wheel racing register contact through empty space.
+export const CAR_COLLIDER_HALF_LENGTH = 4.65;
+export const CAR_COLLIDER_HALF_WIDTH = 2.15;
 const CORE_POWER_BASELINE = 0.22;
+
+type PhysicalCarInput = ArcadeCarInput & { tireWear?: number };
 
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
@@ -29,6 +35,9 @@ export class RapierRacePhysics {
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
   private readonly aiPitStops: PitStopState[];
+  private playerSlideState = createTyreSlideState(0.37);
+  private playerSlideSeverityValue = 0;
+  private aiSlideStates: TyreSlideState[];
   private latestAi: DriverState[] = [];
   private playerLap = 0;
 
@@ -45,10 +54,17 @@ export class RapierRacePhysics {
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
     this.aiPitStops = ai.map(() => createPitStopState());
+    this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
   }
 
-  drivePlayer(input: ArcadeCarInput, dt: number): void {
-    this.driveBody(this.playerBody, input, dt, 1);
+  drivePlayer(input: PhysicalCarInput, dt: number): void {
+    const step = this.driveBody(this.playerBody, input, dt, 1, this.playerSlideState);
+    this.playerSlideState = step.state;
+    this.playerSlideSeverityValue = step.severity;
+  }
+
+  playerSlideSeverity(): number {
+    return this.playerSlideSeverityValue;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -85,8 +101,8 @@ export class RapierRacePhysics {
 
       // All cars share the same straight-line baseline. Racecraft can earn a
       // tow, but the dirty wake costs cornering grip until the AI moves out of
-      // line, exactly like the player-facing model. The same runoff/grass
-      // physics also applies to AI so cutting the circuit is never rewarded.
+      // line, exactly like the player-facing model. Surface physics and the
+      // wear-event system are shared too, so AI cannot cut or ignore old tyres.
       const driverExecution = Math.max(0, driver.skill - 1) * 0.20;
       const attackCommitment = control.battleState === 'ATTACK' ? 0.035 : 0;
 
@@ -95,6 +111,7 @@ export class RapierRacePhysics {
         brake: control.brake,
         steer: control.steer,
         tireGrip: driver.tire.grip * 1.145 * (1 - aero.dirtyAir * 0.36),
+        tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
         powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment + aero.tow * 0.22,
         powerMultiplier: surface.powerMultiplier,
@@ -103,10 +120,12 @@ export class RapierRacePhysics {
     });
   }
 
-  driveAi(index: number, input: ArcadeCarInput, dt: number): void {
+  driveAi(index: number, input: PhysicalCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.driveBody(body, input, dt, 0.92);
+    const state = this.aiSlideStates[index] ?? createTyreSlideState(index + 1.13);
+    const step = this.driveBody(body, input, dt, 0.92, state);
+    this.aiSlideStates[index] = step.state;
   }
 
   step(dt: number): void {
@@ -132,26 +151,32 @@ export class RapierRacePhysics {
 
   setPlayerState(state: VehicleState): void {
     this.setBodyState(this.playerBody, state);
+    this.playerSlideState = createTyreSlideState(0.37);
+    this.playerSlideSeverityValue = 0;
   }
 
   setAiState(index: number, state: VehicleState): void {
     const body = this.aiBodies[index];
     if (!body) return;
     this.setBodyState(body, state);
+    this.aiSlideStates[index] = createTyreSlideState(index + 1.13);
   }
 
   stopPlayer(): void {
     this.stopBody(this.playerBody);
+    this.playerSlideSeverityValue = 0;
   }
 
   stopAll(): void {
     this.stopBody(this.playerBody);
     for (const body of this.aiBodies) this.stopBody(body);
+    this.playerSlideSeverityValue = 0;
   }
 
   reset(playerStart: VehicleState, ai: readonly DriverState[]): void {
     this.setPlayerState(playerStart);
     this.playerLap = 0;
+    this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
     ai.forEach((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
       this.setAiState(index, {
@@ -272,8 +297,21 @@ export class RapierRacePhysics {
     });
   }
 
-  private driveBody(body: RAPIER.RigidBody, input: ArcadeCarInput, dt: number, response: number): void {
+  private driveBody(
+    body: RAPIER.RigidBody,
+    input: PhysicalCarInput,
+    dt: number,
+    response: number,
+    slideState: TyreSlideState,
+  ): { state: TyreSlideState; severity: number } {
     const velocity = body.linvel();
+    const speed = Math.hypot(velocity.x, velocity.y);
+    const slide = stepTyreSlide(slideState, {
+      wear: input.tireWear ?? 0,
+      speed,
+      steer: input.steer,
+      throttle: input.throttle,
+    }, dt);
     const controlled = controlArcadeCar(
       {
         vx: velocity.x,
@@ -281,7 +319,11 @@ export class RapierRacePhysics {
         heading: body.rotation(),
         angularVelocity: body.angvel(),
       },
-      input,
+      {
+        ...input,
+        slideSeverity: slide.severity,
+        slideDirection: slide.direction,
+      },
       dt,
     );
 
@@ -290,6 +332,7 @@ export class RapierRacePhysics {
       y: velocity.y + (controlled.vy - velocity.y) * response,
     }, true);
     body.setAngvel(body.angvel() + (controlled.angularVelocity - body.angvel()) * response, true);
+    return { state: slide.state, severity: slide.severity };
   }
 
   private createDynamicCar(x: number, y: number, heading: number): RAPIER.RigidBody {
@@ -302,7 +345,7 @@ export class RapierRacePhysics {
       .setCcdEnabled(true)
       .setAdditionalSolverIterations(5);
     const body = this.world.createRigidBody(bodyDesc);
-    const collider = RAPIER.ColliderDesc.cuboid(CAR_HALF_LENGTH, CAR_HALF_WIDTH)
+    const collider = RAPIER.ColliderDesc.cuboid(CAR_COLLIDER_HALF_LENGTH, CAR_COLLIDER_HALF_WIDTH)
       .setDensity(0.025)
       .setFriction(0.018)
       .setRestitution(0);

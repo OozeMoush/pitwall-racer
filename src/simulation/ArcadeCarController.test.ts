@@ -42,7 +42,7 @@ describe('ArcadeCarController', () => {
     expect(deploy).toBeGreaterThan(normal + 3);
   });
 
-  it('requires much larger turning radius at high speed', () => {
+  it('requires a larger turning radius at high speed without making the car reluctant to turn', () => {
     const medium = controlArcadeCar(
       { vx: 55, vy: 0, heading: 0, angularVelocity: 0 },
       { throttle: 0, brake: 0, steer: 1, tireGrip: 1 },
@@ -55,6 +55,7 @@ describe('ArcadeCarController', () => {
     );
 
     expect(Math.abs(high.angularVelocity)).toBeLessThan(Math.abs(medium.angularVelocity) * 0.62);
+    expect(Math.abs(high.angularVelocity)).toBeGreaterThan(0.18);
   });
 
   it('rewards lifting or braking instead of holding full throttle through a fast corner', () => {
@@ -74,39 +75,48 @@ describe('ArcadeCarController', () => {
       0.12,
     );
 
-    expect(Math.abs(lift.angularVelocity)).toBeGreaterThan(Math.abs(fullThrottle.angularVelocity) * 1.15);
+    expect(Math.abs(lift.angularVelocity)).toBeGreaterThan(Math.abs(fullThrottle.angularVelocity) * 1.12);
     expect(Math.abs(trailBrake.angularVelocity)).toBeGreaterThan(Math.abs(lift.angularVelocity));
   });
 
-  it('makes a degraded tyre lose corner speed without making steering disappear', () => {
-    const fresh = controlArcadeCar(
-      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 1.02 },
-      0.2,
+  it('keeps a fresh Hard responsive while still giving Soft more corner authority', () => {
+    const soft = controlArcadeCar(
+      { vx: 84, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 1.18 },
+      0.16,
     );
-    const degraded = controlArcadeCar(
-      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 0.74 },
-      0.2,
+    const hard = controlArcadeCar(
+      { vx: 84, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 0.99 },
+      0.16,
     );
 
-    expect(degraded.vx).toBeLessThan(fresh.vx - 0.45);
-    expect(Math.abs(degraded.angularVelocity)).toBeGreaterThan(Math.abs(fresh.angularVelocity) * 0.68);
+    expect(Math.abs(hard.angularVelocity)).toBeGreaterThan(Math.abs(soft.angularVelocity) * 0.72);
+    expect(Math.abs(soft.angularVelocity)).toBeGreaterThan(Math.abs(hard.angularVelocity));
   });
 
-  it('does not punish a healthy fresh Hard-level grip with the slide-loss system', () => {
-    const healthy = controlArcadeCar(
-      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 0.99 },
+  it('makes an active rear-slide event visibly step out and scrub speed', () => {
+    const settled = controlArcadeCar(
+      { vx: 86, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 0.95, tireGrip: 1.02 },
       0.2,
     );
-    const reference = controlArcadeCar(
-      { vx: 82, vy: 0, heading: 0, angularVelocity: 0 },
-      { throttle: 1, brake: 0, steer: 0.9, tireGrip: 1.02 },
+    const sliding = controlArcadeCar(
+      { vx: 86, vy: 0, heading: 0, angularVelocity: 0 },
+      {
+        throttle: 1,
+        brake: 0,
+        steer: 0.95,
+        tireGrip: 1.02,
+        slideSeverity: 0.95,
+        slideDirection: -1,
+      },
       0.2,
     );
 
-    expect(healthy.vx).toBeGreaterThan(reference.vx - 0.18);
+    expect(sliding.vx).toBeLessThan(settled.vx - 1.0);
+    expect(Math.abs(sliding.vy)).toBeGreaterThan(Math.abs(settled.vy) + 2.0);
+    expect(Math.abs(sliding.angularVelocity)).toBeGreaterThan(Math.abs(settled.angularVelocity) * 1.25);
   });
 
   it('braking removes speed decisively without instantly reversing the car', () => {

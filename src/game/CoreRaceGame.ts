@@ -8,7 +8,8 @@ import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
-import { classifyLivePositions } from '../simulation/LiveStandingsModel';
+import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
+import { formatRaceGap, raceGapSeconds } from '../simulation/RaceGapModel';
 import {
   PIT_SPEED,
   beginPitStop,
@@ -65,6 +66,7 @@ interface AiLapClock {
   lap: number;
   lapStartTime: number;
   bestLap?: number;
+  lastLap?: number;
   lastProgress: number;
   nextSector: number;
   sectorStartTime: number;
@@ -280,6 +282,7 @@ export class CoreRaceGame {
       brake,
       steer: this.steerInput,
       tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
+      tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
       powerBoost: CORE_POWER_BOOST + aero.tow * 0.22,
       powerMultiplier: surface.powerMultiplier,
@@ -429,6 +432,7 @@ export class CoreRaceGame {
           if (s3 > 0.5) this.registerSessionFastestSector(2, s3);
         }
         const completedLap = this.timing.raceTime - clock.lapStartTime;
+        if (clock.lap >= 1 && completedLap > 10) clock.lastLap = completedLap;
         if (clock.lap >= 2 && completedLap > 10) {
           clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
           this.registerSessionFastest(completedLap);
@@ -543,6 +547,7 @@ export class CoreRaceGame {
       brake: this.flow.phase === 'RACING' && this.keys.has('KeyS') && !isPitActive(this.pitStop) ? 1 : 0,
       steer: this.steerInput,
       tireGrip: this.tire.grip,
+      slideSeverity: this.physics.playerSlideSeverity(),
       surfaceSeverity: surface.severity,
       trafficPressure: this.trafficPressure,
       pitService: this.pitStop.phase === 'SERVICE',
@@ -609,7 +614,7 @@ export class CoreRaceGame {
     return createVehicle(start.x, start.y, start.heading);
   }
 
-  private standings() {
+  private standings(): LiveStandingEntry[] {
     const aiStates = this.physics.aiStates();
     return classifyLivePositions([
       { id: 'player', name: 'YOU', lap: this.lap, vehicle: this.vehicle },
@@ -620,6 +625,24 @@ export class CoreRaceGame {
   private compoundFor(id: string): Compound {
     if (id === 'player') return this.tire.compound;
     return this.ai.find((driver) => driver.id === id)?.tire.compound ?? 'MEDIUM';
+  }
+
+  private lastLapFor(id: string): number | undefined {
+    if (id === 'player') return this.timing.lastLapTime;
+    return this.aiLapClocks.get(id)?.lastLap;
+  }
+
+  private battleTimingHtml(standings: readonly LiveStandingEntry[], playerIndex: number): string {
+    const player = standings[playerIndex];
+    if (!player) return '';
+    const referenceLap = Math.max(35, Math.min(90, this.sessionFastestLap ?? this.playerBestLap() ?? TRACK_LENGTH / 82));
+    const renderRow = (label: string, other?: LiveStandingEntry) => {
+      if (!other) return `<div><small>${label}</small><b>—</b><span>LAST —</span></div>`;
+      const gap = formatRaceGap(raceGapSeconds(player, other, referenceLap));
+      const lastLap = this.lastLapFor(other.id);
+      return `<div><small>${label}</small><b>${other.name} · ${gap}</b><span>LAST ${lastLap === undefined ? '—' : formatLapTime(lastLap)}</span></div>`;
+    };
+    return `<div class="battle-timing">${renderRow('AHEAD', standings[playerIndex - 1])}${renderRow('BEHIND', standings[playerIndex + 1])}</div>`;
   }
 
   private miniMapSvg(): string {
@@ -689,9 +712,6 @@ export class CoreRaceGame {
       this.playerBestSector('s2'),
       this.playerBestSector('s3'),
     ];
-    // S1/S2 completed on the active lap are valid PB candidates immediately.
-    // Including them here makes the previous green cell lose its PB color in
-    // the very same frame that the new completed split goes green.
     const bestSectors = historicalBestSectors.map((best, index) => {
       const live = this.sectorTimes[index];
       if (live === undefined) return best;
@@ -720,7 +740,8 @@ export class CoreRaceGame {
 
   private renderHud(): void {
     const standings = this.standings();
-    const position = standings.findIndex((driver) => driver.id === 'player') + 1;
+    const playerIndex = standings.findIndex((driver) => driver.id === 'player');
+    const position = playerIndex + 1;
     const surface = surfaceEffect(this.trackDistance);
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
@@ -744,15 +765,18 @@ export class CoreRaceGame {
           : this.pitRequested
             ? `BOX THIS LAP → ${this.selectedCompound}`
             : `NEXT ${this.selectedCompound} · F TO BOX`;
-    const raceState = surface.label !== 'TRACK'
-      ? surface.label
-      : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
-        ? 'SIDE BY SIDE · CLEAN AIR'
-        : aero.dirtyAir > 0.01
-          ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
-          : aero.tow > 0.01
-            ? `TOW ${(aero.tow * 100).toFixed(0)}% · CLEAN AIR`
-            : 'CLEAN AIR';
+    const slideSeverity = this.physics.playerSlideSeverity();
+    const raceState = slideSeverity > 0.15
+      ? 'REAR SLIDE'
+      : surface.label !== 'TRACK'
+        ? surface.label
+        : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
+          ? 'SIDE BY SIDE · CLEAN AIR'
+          : aero.dirtyAir > 0.01
+            ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
+            : aero.tow > 0.01
+              ? `TOW ${(aero.tow * 100).toFixed(0)}% · CLEAN AIR`
+              : 'CLEAN AIR';
 
     const currentSector = Math.min(3, this.nextSector);
     const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
@@ -785,6 +809,7 @@ export class CoreRaceGame {
       const compound = this.compoundFor(driver.id);
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em>${driver.name}</span>`;
     }).join('');
+    const battleTimingHtml = this.battleTimingHtml(standings, playerIndex);
 
     this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
@@ -792,6 +817,7 @@ export class CoreRaceGame {
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
       <div class="tower">${towerHtml}</div>
+      ${battleTimingHtml}
       <div class="race-telemetry">
         <div class="mini-map"><header><b>TRACK</b><span>LIVE POSITION</span></header>${this.miniMapSvg()}</div>
         <div class="lap-board"><header><b>LAPS</b><span>TYRE/PIT · S1 · S2 · S3 · LAP</span></header><div class="lap-head" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><i>#</i><i>TYRE</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i></div>${this.renderLapBoard()}</div>
