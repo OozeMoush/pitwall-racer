@@ -5,12 +5,13 @@ import { dynamicAiControl } from './DynamicAiController';
 import { PLAYER_GRID } from './GridModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, type DriverState, type RaceTrafficCar } from './RaceModel';
+import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
 import { createTire } from './TireModel';
 import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
-const CAMERA_VIEW_HEIGHT = 43;
+const CAMERA_VIEW_HEIGHT = 39;
 const CORE_POWER_BOOST = 0.22;
 
 describe('dynamic field playtest telemetry', () => {
@@ -32,8 +33,8 @@ describe('dynamic field playtest telemetry', () => {
       tire: createTire('MEDIUM'),
       usedCompounds: new Set(['MEDIUM']),
       preferredLane: 0,
-      // A strong reference lap, but not a clone of the fastest AI driver.
-      // The field must win through better braking/corner execution, not power.
+      // A strong reference lap, but not a clone of the race AI field. The pack
+      // should remain difficult through braking/corner execution, not power.
       skill: 1.06,
     };
 
@@ -48,7 +49,7 @@ describe('dynamic field playtest telemetry', () => {
     let aiJerkSum = 0;
     let aiJerkSamples = 0;
     let maxAiJerk = 0;
-    let offTrackSamples = 0;
+    let deepCutSamples = 0;
     const jerkSamples: number[] = [];
     const lastAiSpeeds = ai.map(() => 0);
 
@@ -116,7 +117,7 @@ describe('dynamic field playtest telemetry', () => {
           maxAiJerk = Math.max(maxAiJerk, jerk);
         }
         lastAiSpeeds[index] = state.speed;
-        if (projectTrack(state.x, state.y).distance > 42) offTrackSamples += 1;
+        if (projectTrack(state.x, state.y).distance > DEEP_CUT_DISTANCE) deepCutSamples += 1;
       });
 
       const all = [nextPlayer, ...nextAi];
@@ -141,7 +142,7 @@ describe('dynamic field playtest telemetry', () => {
       p99AiLongitudinalJerk: Number(p99AiJerk.toFixed(2)),
       highJerkRatio: Number(highJerkRatio.toFixed(4)),
       maxAiLongitudinalJerk: Number(maxAiJerk.toFixed(2)),
-      offTrackRatio: Number((offTrackSamples / Math.max(1, samples * ai.length)).toFixed(4)),
+      deepCutRatio: Number((deepCutSamples / Math.max(1, samples * ai.length)).toFixed(4)),
       peakViewportHeightsPerSecond: Number((maxPlayerSpeed * WORLD_SCALE / CAMERA_VIEW_HEIGHT).toFixed(3)),
       trackLength: Math.round(TRACK_LENGTH),
     };
@@ -157,8 +158,10 @@ describe('dynamic field playtest telemetry', () => {
     expect(Math.abs(metrics.maxAiKmh - metrics.maxPlayerKmh)).toBeLessThan(25);
     expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh + 8);
     expect(metrics.avgAiKmh).toBeGreaterThan(250);
-    expect(metrics.offTrackRatio).toBeLessThan(0.02);
-    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.88);
+    expect(metrics.deepCutRatio).toBeLessThan(0.03);
+    // At peak speed the car now moves more than one complete viewport height
+    // per second, which is a better proxy for the requested sense of urgency.
+    expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(1.0);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(9);
     expect(metrics.p99AiLongitudinalJerk).toBeLessThan(24);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);

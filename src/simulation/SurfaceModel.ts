@@ -1,3 +1,10 @@
+import {
+  DEEP_CUT_DISTANCE,
+  FREE_KERB_DISTANCE,
+  FULL_GRASS_DISTANCE,
+  TRACK_RUNOFF_HALF_WIDTH,
+} from './TrackLimitsModel';
+
 export interface SurfaceEffect {
   severity: number;
   gripMultiplier: number;
@@ -6,39 +13,31 @@ export interface SurfaceEffect {
   label: 'TRACK' | 'RUNOFF' | 'GRASS';
 }
 
-// The road edge is at roughly 28 m from the centreline and the visible car is
-// about 4.3 m wide in simulation space. A centreline distance below ~29.6 still
-// represents the normal "one side on the kerb" attack. Beyond that, most/all of
-// the car is outside the white line, so the penalty ramps sharply before the
-// grass. This turns deep apex cuts into an obvious time loss without making the
-// kerb itself untouchable.
-const FREE_KERB_DISTANCE = 29.6;
-const DEEP_KERB_DISTANCE = 31.2;
-const DEEP_KERB_SEVERITY = 0.42;
-const FULL_GRASS_DISTANCE = 53.2;
+const DEEP_KERB_SEVERITY = 0.50;
 
 /**
- * High-speed excursions must lose enough speed that a shortcut is never the
- * optimal line. Low-speed recovery remains possible because the controller's
- * rough-surface drag is strongly speed-dependent rather than a huge constant
- * force.
+ * The visible road is deliberately much narrower than the original arcade
+ * prototype. One-side kerb use remains free, but once the car centre moves far
+ * enough out that the whole car is effectively beyond the white line, the
+ * penalty rises quickly. Runoff and grass then make a shortcut slower than
+ * staying on the circuit while still allowing a low-speed recovery.
  */
 export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
   const distance = Math.max(0, distanceFromLine);
   let severity = 0;
 
-  if (distance > FREE_KERB_DISTANCE && distance <= DEEP_KERB_DISTANCE) {
+  if (distance > FREE_KERB_DISTANCE && distance <= DEEP_CUT_DISTANCE) {
     severity = DEEP_KERB_SEVERITY
-      * clamp01((distance - FREE_KERB_DISTANCE) / (DEEP_KERB_DISTANCE - FREE_KERB_DISTANCE));
-  } else if (distance > DEEP_KERB_DISTANCE) {
+      * clamp01((distance - FREE_KERB_DISTANCE) / (DEEP_CUT_DISTANCE - FREE_KERB_DISTANCE));
+  } else if (distance > DEEP_CUT_DISTANCE) {
     severity = DEEP_KERB_SEVERITY
       + (1 - DEEP_KERB_SEVERITY)
-        * clamp01((distance - DEEP_KERB_DISTANCE) / (FULL_GRASS_DISTANCE - DEEP_KERB_DISTANCE));
+        * clamp01((distance - DEEP_CUT_DISTANCE) / (FULL_GRASS_DISTANCE - DEEP_CUT_DISTANCE));
   }
 
   const label: SurfaceEffect['label'] = severity <= 0
     ? 'TRACK'
-    : distance < 42
+    : distance < TRACK_RUNOFF_HALF_WIDTH
       ? 'RUNOFF'
       : 'GRASS';
 

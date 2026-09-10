@@ -1,5 +1,6 @@
 import { aerodynamicEffect } from './AeroModel';
 import { aiGridSlot } from './GridModel';
+import { AI_SAFE_LANE_LIMIT } from './TrackLimitsModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import { TRACK_LENGTH } from './TrackModel';
@@ -59,14 +60,18 @@ const EMPTY_TRAFFIC: TrafficContext = {
 };
 
 export function createAiField(): DriverState[] {
+  // Keep the entire field close enough in execution that clear air is not the
+  // only thing separating P1 from the pack. Compound and traffic differences
+  // should decide tenths; a back-row AI should not be several seconds per lap
+  // slower just because of a large hidden skill spread.
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 4, 'MEDIUM', -5, 1.115],
-    ['APEX', 'MEDIUM', 6, 'SOFT', 5, 1.125],
-    ['VOLT', 'HARD', 7, 'SOFT', -4, 1.088],
-    ['ORBIT', 'MEDIUM', 5, 'HARD', 4, 1.108],
-    ['KITE', 'SOFT', 3, 'HARD', -5, 1.102],
-    ['RIFT', 'HARD', 6, 'MEDIUM', 4, 1.092],
-    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.105],
+    ['NOVA', 'SOFT', 4, 'MEDIUM', -5, 1.130],
+    ['APEX', 'MEDIUM', 6, 'SOFT', 5, 1.136],
+    ['VOLT', 'HARD', 7, 'SOFT', -4, 1.120],
+    ['ORBIT', 'MEDIUM', 5, 'HARD', 4, 1.131],
+    ['KITE', 'SOFT', 3, 'HARD', -5, 1.127],
+    ['RIFT', 'HARD', 6, 'MEDIUM', 4, 1.118],
+    ['ZEN', 'MEDIUM', 5, 'SOFT', 0, 1.129],
   ];
 
   return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => {
@@ -123,15 +128,15 @@ export function stepAi(
   const pace: PaceMode = remaining <= 2 && tireHealth > 0.35 ? 'PUSH' : tireHealth < 0.28 ? 'CONSERVE' : 'BALANCED';
   const ownPerformance = driver.skill * driver.tire.grip;
 
-  const laneBlocked = traffic.lateralGapAhead < 22;
-  const following = traffic.gapMetres < 74 && laneBlocked;
+  const laneBlocked = traffic.lateralGapAhead < 9;
+  const following = traffic.gapMetres < 68 && laneBlocked;
   const closingFast = traffic.carAhead !== undefined && driver.speed > traffic.carAhead.speed + 1.5;
   const canAttack = traffic.carAhead !== undefined
-    && traffic.gapMetres < 42
+    && traffic.gapMetres < 46
     && tireHealth > 0.16
     && (ownPerformance > traffic.carAhead.performance * 0.94 || closingFast);
   const playerThreatBehind = traffic.carBehind?.isPlayer === true
-    && traffic.gapBehindMetres < 36
+    && traffic.gapBehindMetres < 40
     && traffic.gapBehindMetres > 7;
   const playerAlongside = traffic.alongside?.isPlayer === true;
 
@@ -165,49 +170,49 @@ export function stepAi(
   const paceFactor = pace === 'PUSH' ? 1.035 : pace === 'CONSERVE' ? 0.968 : 1;
   const towFactor = battleState === 'FOLLOW' ? 1.022 : battleState === 'ATTACK' ? 1.058 : 1;
   const attackKick = battleState === 'ATTACK' && profile.severity < 0.28 ? 6.5 : 0;
-  let targetSpeed = Math.min(120, profile.targetSpeed * paceFactor * towFactor + attackKick);
+  let targetSpeed = Math.min(122, profile.targetSpeed * paceFactor * towFactor + attackKick);
 
-  if (traffic.carAhead && traffic.gapMetres < 72 && laneBlocked && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
-    targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.994);
+  if (traffic.carAhead && traffic.gapMetres < 68 && laneBlocked && battleState !== 'ATTACK' && battleState !== 'SIDE_BY_SIDE') {
+    targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.996);
   }
 
   if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
     if (profile.severity < 0.35) {
-      targetSpeed = Math.max(targetSpeed, Math.min(120, traffic.alongside.speed + 6));
+      targetSpeed = Math.max(targetSpeed, Math.min(122, traffic.alongside.speed + 6));
     } else {
       targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 2));
     }
   }
 
-  const speed = approachSpeed(driver.speed, targetSpeed, dt, 48, 112);
+  const speed = approachSpeed(driver.speed, targetSpeed, dt, 50, 116);
 
-  const attackSide = stableSide(driver.id) * 46;
-  const normalLine = profile.apexOffset + driver.preferredLane * 0.35;
+  const attackSide = stableSide(driver.id) * 9;
+  const normalLine = clamp(profile.apexOffset + driver.preferredLane * 0.20, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   let targetLane = normalLine;
 
   if (battleState === 'ATTACK') {
     const leaderLane = traffic.carAhead?.laneOffset ?? 0;
-    const preferredAttack = Math.abs(leaderLane - attackSide) > 21 ? attackSide : -attackSide;
-    targetLane = clamp(profile.apexOffset + preferredAttack, -50, 50);
+    const preferredAttack = Math.abs(leaderLane - attackSide) > 6 ? attackSide : -attackSide;
+    targetLane = clamp(preferredAttack, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   } else if (battleState === 'FOLLOW' && traffic.carAhead) {
-    targetLane = traffic.carAhead.laneOffset;
+    targetLane = clamp(traffic.carAhead.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.04
-      ? Math.sign(profile.signedTurn) * (12 + profile.severity * 10)
-      : stableSide(driver.id) * 10;
-    targetLane = clamp(inside, -24, 24);
+      ? Math.sign(profile.signedTurn) * 6.5
+      : stableSide(driver.id) * 4.5;
+    targetLane = clamp(inside, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   } else if (battleState === 'SIDE_BY_SIDE' && traffic.alongside) {
     const separationSide = driver.laneOffset >= traffic.alongside.laneOffset ? 1 : -1;
-    targetLane = clamp(traffic.alongside.laneOffset + separationSide * 32, -50, 50);
+    targetLane = clamp(traffic.alongside.laneOffset + separationSide * 7.5, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   }
 
   const laneRate = battleState === 'ATTACK'
-    ? 92
+    ? 68
     : battleState === 'SIDE_BY_SIDE'
-      ? 86
+      ? 62
       : battleState === 'DEFEND'
-        ? 40
-        : 48;
+        ? 38
+        : 44;
   const laneOffset = approach(driver.laneOffset, targetLane, dt * laneRate);
 
   if (advanceProgress) {
@@ -287,7 +292,7 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
     }
     const absolute = Math.abs(deltaMetres);
     const lateralGap = Math.abs(other.laneOffset - driver.laneOffset);
-    if (absolute <= 10 && lateralGap >= 9 && lateralGap <= 54 && absolute < alongsideDistance) {
+    if (absolute <= 10 && lateralGap >= 5.5 && lateralGap <= 18 && absolute < alongsideDistance) {
       alongsideDistance = absolute;
       alongside = other;
     }

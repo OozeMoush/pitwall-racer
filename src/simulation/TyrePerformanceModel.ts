@@ -31,8 +31,8 @@ export interface TyreSlideStep {
  * because its nominal grip is lower.
  */
 export function tyreSlideRisk(wear: number): number {
-  const aged = clamp01((wear - 0.12) / 0.78);
-  return Math.pow(aged, 1.35);
+  const aged = clamp01((wear - 0.10) / 0.78);
+  return Math.pow(aged, 1.25);
 }
 
 export function createTyreSlideState(seed = 0): TyreSlideState {
@@ -49,10 +49,16 @@ export function createTyreSlideState(seed = 0): TyreSlideState {
 
 /**
  * Arcade instability rather than slip-angle simulation. High-speed steering
- * builds a hidden pressure meter. Worn tyres fill it faster; crossing the
- * threshold creates one short, obvious rear step, then a cooldown. This gives
- * the player readable "I lost the rear" moments instead of a permanent mushy
- * steering penalty.
+ * builds a hidden pressure meter. The important detail is that pressure now
+ * survives the short straight between corners. The previous implementation
+ * bled the meter dry in a few seconds, so a medium tyre could complete a long
+ * stint without ever crossing the event threshold unless one corner was held
+ * at near-full lock for several seconds.
+ *
+ * Worn tyres therefore accumulate several ordinary loaded corners and then
+ * produce one short, obvious rear step. Fresh tyres still need unrealistic
+ * abuse before the meter can fill, while 40-60% worn rubber should produce
+ * occasional events in normal race driving.
  */
 export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: number): TyreSlideStep {
   const safeDt = Math.max(0, Math.min(0.1, dt));
@@ -75,16 +81,19 @@ export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: 
     };
   }
 
-  const speedDemand = clamp01((input.speed - 46) / 54);
-  const steerDemand = clamp01((Math.abs(input.steer) - 0.38) / 0.54);
-  const driverDemand = speedDemand * steerDemand * (0.58 + clamp01(input.throttle) * 0.42);
+  const speedDemand = clamp01((input.speed - 42) / 58);
+  const steerDemand = clamp01((Math.abs(input.steer) - 0.30) / 0.62);
+  const driverDemand = speedDemand * steerDemand * (0.52 + clamp01(input.throttle) * 0.48);
   const risk = tyreSlideRisk(input.wear);
 
-  if (cooldown > 0 || driverDemand < 0.02) {
+  if (cooldown > 0 || driverDemand < 0.015) {
     return {
       state: {
         ...state,
-        stress: Math.max(0, state.stress - safeDt * 0.58),
+        // Preserve accumulated load between corners. This is intentionally a
+        // very slow leak: long straights still calm the tyre, but a two-second
+        // straight no longer erases the previous corner completely.
+        stress: Math.max(0, state.stress - safeDt * 0.008),
         cooldown,
         direction: 0,
       },
@@ -94,7 +103,7 @@ export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: 
     };
   }
 
-  const stress = state.stress + driverDemand * (0.035 + risk * 1.55) * safeDt;
+  const stress = state.stress + driverDemand * (0.012 + risk * 0.42) * safeDt;
   const threshold = eventThreshold(state.eventIndex, state.seed);
   if (stress < threshold) {
     return {
@@ -107,13 +116,13 @@ export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: 
 
   const steerSign: -1 | 1 = input.steer >= 0 ? 1 : -1;
   const direction: -1 | 1 = steerSign === 1 ? -1 : 1;
-  const intensity = 0.80 + risk * 0.20;
-  const remaining = 0.34 + risk * 0.13;
+  const intensity = 0.84 + risk * 0.16;
+  const remaining = 0.38 + risk * 0.12;
   const next: TyreSlideState = {
     ...state,
     stress: 0,
     remaining,
-    cooldown: 0.48 + (1 - risk) * 0.14,
+    cooldown: 0.50 + (1 - risk) * 0.18,
     intensity,
     direction,
     eventIndex: state.eventIndex + 1,
@@ -124,7 +133,7 @@ export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: 
 function eventThreshold(eventIndex: number, seed: number): number {
   const wave = Math.sin((eventIndex + 1) * 12.9898 + seed * 78.233) * 43758.5453;
   const unit = wave - Math.floor(wave);
-  return 0.72 + unit * 0.24;
+  return 0.68 + unit * 0.22;
 }
 
 function clamp01(value: number): number {

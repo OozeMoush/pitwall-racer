@@ -1,7 +1,10 @@
-.battle-timing{position:absolute;left:24px;top:425px;display:grid;min-width:238px;gap:2px;padding:9px 11px;background:rgba(8,12,14,.86);border:1px solid rgba(255,255,255,.13);backdrop-filter:blur(14px);box-shadow:0 14px 40px rgba(0,0,0,.24)}
-.battle-timing>div{display:grid;grid-template-columns:55px 1fr;grid-template-rows:auto auto;column-gap:8px;align-items:baseline;padding:7px 4px;border-bottom:1px solid rgba(255,255,255,.07)}
-.battle-timing>div:last-child{border-bottom:0}
-.battle-timing small{grid-row:1/3;font-size:10px;font-weight:900;letter-spacing:.11em;color:#7f8c86}
-.battle-timing b{font-size:13px;font-weight:900;letter-spacing:.025em;color:#eef3ef;font-variant-numeric:tabular-nums;white-space:nowrap}
-.battle-timing span{margin-top:3px;font-size:11px;font-weight:700;color:#98a49e;font-variant-numeric:tabular-nums;white-space:nowrap}
-@media(max-width:1050px){.battle-timing{display:none}}
+.tower{min-width:370px!important}
+.tower-head,.tower>span{display:grid!important;grid-template-columns:31px 27px minmax(82px,1fr) 78px 84px!important;align-items:center}
+.tower-head{padding:5px 11px 7px;color:#798680;font-size:10px;font-weight:900;letter-spacing:.105em;border-bottom:1px solid rgba(255,255,255,.09);text-shadow:none}
+.tower-head i{font-style:normal}.tower-head i:nth-child(4),.tower-head i:nth-child(5){text-align:right}
+.tower>span>strong{overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:800;white-space:nowrap}
+.tower>span>b{font-size:14px;font-weight:950;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tower>span>small{font-size:11px;font-weight:750;text-align:right;color:#94a09a;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tower .gap-ahead{color:#45dc82}.tower .gap-behind{color:#e4eae7}.tower .gap-self{color:#31b9ef}
+@media(max-width:1450px){.tower{min-width:330px!important}.tower-head,.tower>span{grid-template-columns:28px 25px minmax(70px,1fr) 70px 76px!important}.tower>span>strong{font-size:13px}.tower>span>b{font-size:13px}.tower>span>small{font-size:10px}}
+@media(max-width:1050px){.tower{min-width:255px!important}.tower-head,.tower>span{grid-template-columns:27px 24px minmax(65px,1fr) 67px!important}.tower-head i:last-child,.tower>span>small{display:none}.tower>span>b{font-size:12px}}
