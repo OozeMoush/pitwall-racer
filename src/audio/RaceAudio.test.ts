@@ -20,11 +20,21 @@ describe('raceAudioParameters', () => {
     expect(fast.engineGain).toBeGreaterThan(idle.engineGain);
   });
 
-  it('keeps ordinary steering quiet and squeals only near the tyre limit', () => {
-    const ordinaryTurn = raceAudioParameters({ ...base, speed: 72, steer: 0.55, tireGrip: 1.02 });
-    const stressed = raceAudioParameters({ ...base, speed: 90, steer: 1, brake: 0.5, tireGrip: 0.78 });
+  it('keeps ordinary steering quiet', () => {
+    const ordinaryTurn = raceAudioParameters({ ...base, speed: 72, steer: 0.55, tireGrip: 0.88 });
     expect(ordinaryTurn.tireGain).toBeLessThan(0.012);
-    expect(stressed.tireGain).toBeGreaterThan(ordinaryTurn.tireGain + 0.04);
+  });
+
+  it('makes an actual rear-slide event audibly obvious without relying on worn-grip hiss', () => {
+    const ordinaryTurn = raceAudioParameters({ ...base, speed: 88, steer: 0.8, tireGrip: 0.88 });
+    const slide = raceAudioParameters({ ...base, speed: 88, steer: 0.8, tireGrip: 0.88, slideSeverity: 0.95 });
+    expect(slide.tireGain).toBeGreaterThan(ordinaryTurn.tireGain + 0.045);
+  });
+
+  it('still squeals under heavy braking near the tyre limit', () => {
+    const ordinary = raceAudioParameters({ ...base, speed: 80, steer: 0.3 });
+    const stressed = raceAudioParameters({ ...base, speed: 95, steer: 0.8, brake: 0.7 });
+    expect(stressed.tireGain).toBeGreaterThan(ordinary.tireGain + 0.04);
   });
 
   it('adds surface noise off track', () => {
