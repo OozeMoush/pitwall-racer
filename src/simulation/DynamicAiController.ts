@@ -49,9 +49,6 @@ export function dynamicAiControl(
     }
   }
 
-  // On the old 56 m road almost every car was considered to be in the same
-  // lane. With a circuit that is actually narrow, distinguish a blocked racing
-  // line from a car that is already offset enough to pass.
   const laneBlocked = ahead !== undefined
     && aheadGap < 62
     && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.5;
@@ -118,10 +115,14 @@ export function dynamicAiControl(
   const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.84);
   const cornerPaceFactor = 1.04 + profile.severity * usableGrip * 0.075;
   const predictionAllowance = 15 + cornerDemand * (8 + usableGrip * 20);
+  // Raise the whole field through corner execution rather than engine power.
+  // There is essentially no extra speed on a straight, while a real corner
+  // lets AI carry a few percent more speed if its grip and line support it.
+  const cornerExecution = 1 + cornerDemand * 0.048;
   let targetSpeed = Math.min(
     profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
-  ) * skillPace;
+  ) * skillPace * cornerExecution;
 
   if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 11;
   if (laneBlocked && ahead) {
@@ -136,8 +137,6 @@ export function dynamicAiControl(
   if (projection.distance > TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 40);
   targetSpeed = clamp(targetSpeed, 28, 132);
 
-  // Carry speed deeper into the braking zone, then brake harder. The previous
-  // controller started trimming speed early and made every AI line look timid.
   const speedError = targetSpeed - speed;
   const brake = speedError < -2.7
     ? clamp((-speedError - 0.8) / 12.5, 0.16, 1)
