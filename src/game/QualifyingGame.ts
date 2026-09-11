@@ -1,0 +1,380 @@
+import * as THREE from 'three';
+import { RaceAudio } from '../audio/RaceAudio';
+import { createFormulaCar } from '../rendering3d/Car3D';
+import { createPitLane3D } from '../rendering3d/PitLane3D';
+import { createTrack3D } from '../rendering3d/Track3D';
+import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
+import { stepSteering } from '../simulation/InputModel';
+import {
+  qualifyingClassification,
+  qualifyingGridOrder,
+  type QualifyingEntry,
+} from '../simulation/QualifyingModel';
+import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
+import { createAiField } from '../simulation/RaceModel';
+import { surfaceEffect } from '../simulation/SurfaceModel';
+import { createTire, stepTire, type TireState } from '../simulation/TireModel';
+import { formatLapTime } from '../simulation/TimingModel';
+import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
+import type { RaceSetup } from './RaceSetup';
+
+const FIXED_DT = 1 / 120;
+const CAMERA_HALF_HEIGHT = 19.5;
+const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
+const START_PROGRESS = 0.958;
+const FLYING_START_SPEED = 72;
+const CORE_POWER_BOOST = 0.22;
+const RESULT_HOLD_SECONDS = 4.2;
+
+type QualifyingPhase = 'COUNTDOWN' | 'APPROACH' | 'FLYING' | 'RESULTS';
+
+export interface QualifyingSessionResult {
+  playerTime: number;
+  playerPosition: number;
+  gridOrder: string[];
+  classification: QualifyingEntry[];
+}
+
+export function runQualifyingSession(
+  container: HTMLElement,
+  hud: HTMLElement,
+  setup: RaceSetup,
+): Promise<QualifyingSessionResult> {
+  return new Promise((resolve) => {
+    new QualifyingGame(container, hud, setup, resolve);
+  });
+}
+
+class QualifyingGame {
+  private readonly container: HTMLElement;
+  private readonly hud: HTMLElement;
+  private readonly setup: RaceSetup;
+  private readonly resolve: (result: QualifyingSessionResult) => void;
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly scene = new THREE.Scene();
+  private readonly camera = new THREE.OrthographicCamera(-40, 40, CAMERA_HALF_HEIGHT, -CAMERA_HALF_HEIGHT, 0.1, 460);
+  private readonly keys = new Set<string>();
+  private readonly car = createFormulaCar(0x31b9ef, 'SOFT', true);
+  private readonly cameraTarget = new THREE.Vector3();
+  private readonly audio = new RaceAudio();
+  private readonly physics: RapierRacePhysics;
+
+  private vehicle: VehicleState;
+  private tire: TireState = createTire('SOFT');
+  private phase: QualifyingPhase = 'COUNTDOWN';
+  private countdown = 3;
+  private fixedAccumulator = 0;
+  private lastFrame = performance.now();
+  private frameId = 0;
+  private steerInput = 0;
+  private lastProgress = START_PROGRESS;
+  private currentProgress = START_PROGRESS;
+  private nextCheckpoint = 1;
+  private lapTime = 0;
+  private resultHold = 0;
+  private result?: QualifyingSessionResult;
+  private resolved = false;
+
+  constructor(
+    container: HTMLElement,
+    hud: HTMLElement,
+    setup: RaceSetup,
+    resolve: (result: QualifyingSessionResult) => void,
+  ) {
+    this.container = container;
+    this.hud = hud;
+    this.setup = setup;
+    this.resolve = resolve;
+
+    const start = sampleTrack(START_PROGRESS);
+    this.vehicle = createVehicle(start.x, start.y, start.heading);
+    this.physics = new RapierRacePhysics(this.vehicle, []);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    container.appendChild(this.renderer.domElement);
+
+    this.setupWorld();
+    this.scene.add(this.car.root);
+    this.bindInput();
+    this.resize();
+    window.addEventListener('resize', this.resize);
+    this.audio.unlock();
+    this.syncVisuals(true);
+    this.frameId = requestAnimationFrame(this.frame);
+  }
+
+  private setupWorld(): void {
+    this.scene.background = new THREE.Color(0x8baab2);
+    this.scene.fog = new THREE.Fog(0x8baab2, 165, 450);
+    this.scene.add(new THREE.HemisphereLight(0xdceef3, 0x29402d, 1.45));
+
+    const sun = new THREE.DirectionalLight(0xfff1d5, 3.2);
+    sun.position.set(-58, 88, 38);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.left = -120;
+    sun.shadow.camera.right = 120;
+    sun.shadow.camera.top = 100;
+    sun.shadow.camera.bottom = -100;
+    sun.shadow.camera.near = 1;
+    sun.shadow.camera.far = 260;
+    this.scene.add(sun);
+    this.scene.add(createTrack3D());
+    this.scene.add(createPitLane3D());
+  }
+
+  private bindInput(): void {
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', this.onBlur);
+    this.container.addEventListener('pointerdown', this.onPointerDown, { passive: true });
+  }
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    this.audio.unlock();
+    this.keys.add(event.code);
+    if (this.phase === 'RESULTS' && event.code === 'Enter') this.finish();
+    if (event.code === 'KeyC' && (this.phase === 'APPROACH' || this.phase === 'FLYING')) this.recover();
+  };
+
+  private readonly onKeyUp = (event: KeyboardEvent): void => {
+    this.keys.delete(event.code);
+  };
+
+  private readonly onBlur = (): void => {
+    this.keys.clear();
+  };
+
+  private readonly onPointerDown = (): void => {
+    this.audio.unlock();
+  };
+
+  private readonly resize = (): void => {
+    const width = Math.max(1, this.container.clientWidth);
+    const height = Math.max(1, this.container.clientHeight);
+    const aspect = width / height;
+    this.renderer.setSize(width, height, false);
+    this.camera.left = -CAMERA_HALF_HEIGHT * aspect;
+    this.camera.right = CAMERA_HALF_HEIGHT * aspect;
+    this.camera.top = CAMERA_HALF_HEIGHT;
+    this.camera.bottom = -CAMERA_HALF_HEIGHT;
+    this.camera.updateProjectionMatrix();
+  };
+
+  private readonly frame = (now: number): void => {
+    const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
+    this.lastFrame = now;
+
+    if (this.phase !== 'RESULTS') {
+      this.fixedAccumulator += dt;
+      while (this.fixedAccumulator >= FIXED_DT) {
+        this.step(FIXED_DT);
+        this.fixedAccumulator -= FIXED_DT;
+      }
+    } else {
+      this.resultHold += dt;
+      if (this.resultHold >= RESULT_HOLD_SECONDS) {
+        this.finish();
+        return;
+      }
+    }
+
+    this.syncVisuals(false);
+    this.updateCamera(dt);
+    this.updateAudio(dt);
+    this.renderHud();
+    this.renderer.render(this.scene, this.camera);
+    this.frameId = requestAnimationFrame(this.frame);
+  };
+
+  private step(dt: number): void {
+    if (this.phase === 'COUNTDOWN') {
+      this.countdown = Math.max(0, this.countdown - dt);
+      this.physics.stopPlayer();
+      if (this.countdown === 0) {
+        const start = sampleTrack(START_PROGRESS);
+        this.vehicle = { ...createVehicle(start.x, start.y, start.heading), speed: FLYING_START_SPEED };
+        this.physics.setPlayerState(this.vehicle);
+        this.phase = 'APPROACH';
+      }
+      return;
+    }
+
+    const throttle = this.keys.has('KeyW') ? 1 : 0;
+    const brake = this.keys.has('KeyS') ? 1 : 0;
+    const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
+    this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
+
+    const before = projectTrack(this.vehicle.x, this.vehicle.y);
+    const surface = surfaceEffect(before.distance);
+    const speedLoad = Math.min(1, this.vehicle.speed / 112);
+    const load = Math.min(1.34,
+      Math.abs(this.steerInput) * speedLoad * 0.92
+      + brake * speedLoad * 0.82
+      + throttle * 0.13
+      + surface.severity * 0.7,
+    );
+    this.tire = stepTire(this.tire, 'PUSH', load, dt);
+
+    this.physics.drivePlayer({
+      throttle,
+      brake,
+      steer: this.steerInput,
+      tireGrip: this.tire.grip,
+      tireWear: this.tire.wear,
+      surfaceGrip: surface.gripMultiplier,
+      powerBoost: CORE_POWER_BOOST,
+      powerMultiplier: surface.powerMultiplier,
+      rollingResistance: surface.rollingResistance,
+    }, dt);
+    this.physics.step(dt);
+    this.vehicle = this.physics.playerState();
+
+    const after = projectTrack(this.vehicle.x, this.vehicle.y);
+    this.lastProgress = this.currentProgress;
+    this.currentProgress = after.progress;
+    const crossedStart = this.lastProgress > 0.88 && this.currentProgress < 0.12;
+
+    if (this.phase === 'APPROACH') {
+      if (crossedStart) {
+        this.phase = 'FLYING';
+        this.lapTime = 0;
+        this.nextCheckpoint = 1;
+      }
+      return;
+    }
+
+    this.lapTime += dt;
+    const thresholds = [0, 0.24, 0.49, 0.74];
+    if (this.nextCheckpoint <= 3 && this.currentProgress >= thresholds[this.nextCheckpoint]) {
+      this.nextCheckpoint += 1;
+    }
+
+    if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 20) {
+      this.completeLap();
+    }
+  }
+
+  private completeLap(): void {
+    this.physics.stopPlayer();
+    this.vehicle = this.physics.playerState();
+    const ai = createAiField();
+    const classification = qualifyingClassification(
+      this.lapTime,
+      ai,
+      this.setup.trackId,
+      TRACK_LENGTH,
+    );
+    const playerPosition = classification.find((entry) => entry.id === 'player')?.position ?? 8;
+    this.result = {
+      playerTime: this.lapTime,
+      playerPosition,
+      gridOrder: qualifyingGridOrder(classification),
+      classification,
+    };
+    this.phase = 'RESULTS';
+    this.resultHold = 0;
+  }
+
+  private recover(): void {
+    const projection = projectTrack(this.vehicle.x, this.vehicle.y);
+    const p = sampleTrack(projection.progress);
+    this.vehicle = createVehicle(p.x, p.y, p.heading);
+    this.physics.setPlayerState(this.vehicle);
+    this.steerInput = 0;
+  }
+
+  private syncVisuals(initial: boolean): void {
+    const position = toWorld(this.vehicle.x, this.vehicle.y, 0.08);
+    this.car.root.position.copy(position);
+    this.car.root.rotation.y = headingToYaw(this.vehicle.heading);
+    this.car.root.rotation.z = -this.steerInput * Math.min(0.045, this.vehicle.speed / 2300);
+    if (initial) {
+      this.cameraTarget.copy(position);
+      this.camera.position.copy(position).add(CAMERA_OFFSET);
+      this.camera.lookAt(this.cameraTarget);
+    }
+  }
+
+  private updateCamera(dt: number): void {
+    const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
+    const desired = position.clone().add(CAMERA_OFFSET);
+    this.cameraTarget.lerp(position, 1 - Math.exp(-dt * 4.4));
+    this.camera.position.lerp(desired, 1 - Math.exp(-dt * 4.0));
+    this.camera.lookAt(this.cameraTarget);
+  }
+
+  private updateAudio(dt: number): void {
+    const surface = surfaceEffect(projectTrack(this.vehicle.x, this.vehicle.y).distance);
+    this.audio.update({
+      speed: this.vehicle.speed,
+      throttle: this.phase === 'APPROACH' || this.phase === 'FLYING' ? (this.keys.has('KeyW') ? 1 : 0) : 0,
+      brake: this.keys.has('KeyS') ? 1 : 0,
+      steer: this.steerInput,
+      tireGrip: this.tire.grip,
+      slideSeverity: this.physics.playerSlideSeverity(),
+      surfaceSeverity: surface.severity,
+      trafficPressure: 0,
+      pitService: false,
+      banner: this.phase === 'COUNTDOWN' ? String(Math.max(1, Math.ceil(this.countdown))) : undefined,
+    }, dt);
+  }
+
+  private renderHud(): void {
+    if (this.phase === 'RESULTS' && this.result) {
+      const pole = this.result.classification[0]?.time ?? this.result.playerTime;
+      const rows = this.result.classification.map((entry) => {
+        const delta = entry.position === 1 ? 'POLE' : `+${(entry.time - pole).toFixed(3)}`;
+        return `<div class="qualifying-result-row ${entry.isPlayer ? 'you' : ''}"><i>P${entry.position}</i><b>${entry.name}</b><strong>${formatLapTime(entry.time)}</strong><span>${delta}</span></div>`;
+      }).join('');
+      this.hud.innerHTML = `<div class="qualifying-results">
+        <header><small>QUALIFYING COMPLETE</small><h2>P${this.result.playerPosition} · ${formatLapTime(this.result.playerTime)}</h2><p>Grid set for the race.</p></header>
+        <div class="qualifying-result-list">${rows}</div>
+        <footer>RACE STARTING · PRESS ENTER TO CONTINUE</footer>
+      </div>`;
+      return;
+    }
+
+    const countdownBanner = this.phase === 'COUNTDOWN'
+      ? `<div class="race-banner">${Math.max(1, Math.ceil(this.countdown))}</div>`
+      : this.phase === 'APPROACH'
+        ? '<div class="qualifying-banner">BUILD SPEED · TIMER STARTS AT LINE</div>'
+        : '';
+    const timer = this.phase === 'FLYING' ? formatLapTime(this.lapTime) : '--:--.---';
+    const speed = Math.round(this.vehicle.speed * 3.6);
+    const state = this.phase === 'FLYING' ? 'FLYING LAP' : this.phase === 'APPROACH' ? 'APPROACH' : 'GET READY';
+
+    this.hud.innerHTML = `${countdownBanner}
+      <div class="qualifying-hud-top">
+        <div><small>PITWALL RACER · QUALIFYING</small><b>${getActiveTrack().name}</b></div>
+        <strong>${timer}</strong>
+      </div>
+      <div class="qualifying-hud-bottom">
+        <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
+        <div><small>${state}</small><b>ONE SHOT · SOFT</b><span>WASD DRIVE · C RECOVER</span></div>
+      </div>`;
+  }
+
+  private finish(): void {
+    if (this.resolved || !this.result) return;
+    this.resolved = true;
+    cancelAnimationFrame(this.frameId);
+    window.removeEventListener('resize', this.resize);
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('blur', this.onBlur);
+    this.container.removeEventListener('pointerdown', this.onPointerDown);
+    this.audio.reset();
+    this.renderer.dispose();
+    this.container.innerHTML = '';
+    this.hud.innerHTML = '';
+    this.resolve(this.result);
+  }
+}
