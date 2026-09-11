@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { aiGridSlot, gridLongitudinalGap, PLAYER_GRID } from './GridModel';
+import {
+  aiGridSlot,
+  gridLongitudinalGap,
+  gridPositionFor,
+  gridSlotForPosition,
+  PLAYER_GRID,
+} from './GridModel';
 
 describe('GridModel', () => {
   it('places every starter behind the start line', () => {
@@ -18,10 +24,18 @@ describe('GridModel', () => {
     expect(gridLongitudinalGap(front, secondRow)).toBeGreaterThan(20);
   });
 
-  it('starts the player in P8 just behind and beside P7', () => {
+  it('starts the legacy player fallback in P8 just behind and beside P7', () => {
     const p7 = aiGridSlot(6);
     expect(p7.progress).toBeGreaterThan(PLAYER_GRID.progress);
     expect(gridLongitudinalGap(p7, PLAYER_GRID)).toBeLessThan(5);
     expect(Math.abs(p7.laneOffset - PLAYER_GRID.laneOffset)).toBeGreaterThan(12);
+  });
+
+  it('maps a qualifying order to the matching physical grid slot', () => {
+    const order = ['ai-2', 'player', 'ai-0', 'ai-1'];
+    expect(gridPositionFor('player', order)).toBe(2);
+    expect(gridPositionFor('ai-2', order)).toBe(1);
+    expect(gridPositionFor('missing', order)).toBeUndefined();
+    expect(gridSlotForPosition(2)).toEqual(aiGridSlot(1));
   });
 });
