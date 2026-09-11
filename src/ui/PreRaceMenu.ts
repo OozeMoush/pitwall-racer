@@ -10,8 +10,8 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
   root.innerHTML = `<div class="pre-race-shell">
     <div class="pre-race-panel">
       <header class="pre-race-header">
-        <div><small>PITWALL RACER</small><h1>RACE SETUP</h1></div>
-        <p>Tyres, braking and racecraft first. Energy management is parked until the core race is fun.</p>
+        <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
+        <p>One-shot qualifying sets the grid. Then manage the start, tyres and race pace over the full distance.</p>
       </header>
 
       <section class="setup-section">
@@ -23,7 +23,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
 
       <section class="setup-split">
         <div class="setup-section">
-          <div class="setup-title"><b>02 · START TYRE</b><span>You still must use two dry compounds.</span></div>
+          <div class="setup-title"><b>02 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
           <div class="tyre-choice-row">
             ${tyreButton('SOFT', 'FAST / SHORT', selectedCompound === 'SOFT')}
             ${tyreButton('MEDIUM', 'BALANCED', selectedCompound === 'MEDIUM')}
@@ -39,8 +39,8 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       </section>
 
       <footer class="pre-race-footer">
-        <div><b>CORE RACE BUILD</b><span>WASD DRIVE · Q/E/R NEXT TYRE · F BOX · C RECOVER</span></div>
-        <button class="start-race-button" data-start-race>START RACE</button>
+        <div><b>QUALIFYING → RACE</b><span>1 FLYING LAP · GRID START · TWO-COMPOUND RACE</span></div>
+        <button class="start-race-button" data-start-race>START WEEKEND</button>
       </footer>
     </div>
   </div>`;
