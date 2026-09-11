@@ -5,7 +5,7 @@ import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
-import { PLAYER_GRID } from '../simulation/GridModel';
+import { gridPositionFor, gridSlotForPosition, PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
@@ -25,11 +25,13 @@ import {
   type PitStopState,
 } from '../simulation/PitLaneModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
+import { evaluateLaunch, launchTone, stepLaunchCharge } from '../simulation/RaceStartModel';
 import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
+import { formatTyreRaceStatus, tyreRaceStatus } from '../simulation/TyreRaceStatus';
 import { minimumPositive, timingTone, type TimingTone } from '../simulation/TimingToneModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
@@ -47,9 +49,6 @@ import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simu
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
-// Actual top speed was already high. Pull the fixed camera in modestly instead
-// of inflating vehicle speed further; combined with the narrower circuit this
-// makes reference objects cross the view faster and raises perceived urgency.
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const CORE_POWER_BOOST = 0.22;
@@ -98,8 +97,8 @@ export class CoreRaceGame {
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
-  private ai: DriverState[] = createAiField();
-  private vehicle: VehicleState = this.startVehicle();
+  private ai: DriverState[];
+  private vehicle: VehicleState;
   private tire: TireState;
   private timing: TimingState = createTiming();
   private flow: RaceFlowState = createRaceFlow();
@@ -107,8 +106,8 @@ export class CoreRaceGame {
   private selectedCompound: Compound;
   private usedCompounds: Set<Compound>;
   private lap = 0;
-  private trackProgress = PLAYER_GRID.progress;
-  private lastTrackProgress = PLAYER_GRID.progress;
+  private trackProgress: number;
+  private lastTrackProgress: number;
   private nextCheckpoint = 1;
   private pitRequested = false;
   private finishMessage = '';
@@ -125,6 +124,11 @@ export class CoreRaceGame {
   private aiLapClocks = new Map<string, AiLapClock>();
   private sessionFastestLap?: number;
   private sessionFastestSectors: Array<number | undefined> = [undefined, undefined, undefined];
+  private launchCharge = 0;
+  private launchBoost = 0;
+  private launchEffectRemaining = 0;
+  private launchFeedback = '';
+  private launchFeedbackTone: 'good' | 'bad' | 'neutral' = 'neutral';
 
   constructor(container: HTMLElement, hud: HTMLElement, setup: RaceSetup) {
     this.container = container;
@@ -132,6 +136,12 @@ export class CoreRaceGame {
     this.setup = setup;
     this.totalLaps = Math.max(6, Math.min(30, Math.round(setup.totalLaps)));
     this.startCompound = setup.startCompound;
+    this.ai = createAiField(setup.gridOrder);
+    const playerGrid = this.playerGridSlot();
+    this.trackProgress = playerGrid.progress;
+    this.lastTrackProgress = playerGrid.progress;
+    this.vehicle = this.startVehicle();
+
     const selection = selectStartingTyre(this.startCompound);
     this.tire = createTire(selection.startCompound);
     this.selectedCompound = selection.suggestedNextCompound;
@@ -237,12 +247,29 @@ export class CoreRaceGame {
   };
 
   private stepSimulation(dt: number): void {
+    const previousPhase = this.flow.phase;
+    if (previousPhase === 'COUNTDOWN') {
+      this.launchCharge = stepLaunchCharge(this.launchCharge, this.keys.has('KeyW'), dt);
+    }
+
     this.flow = stepRaceFlow(this.flow, dt);
+    if (previousPhase === 'COUNTDOWN' && this.flow.phase === 'RACING') {
+      const launch = evaluateLaunch(this.launchCharge);
+      this.launchBoost = launch.powerBoost;
+      this.launchEffectRemaining = 1.8;
+      this.launchFeedback = launch.label;
+      this.launchFeedbackTone = launchTone(launch.quality);
+    }
+
     if (this.flow.phase !== 'RACING') {
       this.physics.stopPlayer();
       this.vehicle = this.physics.playerState();
       this.steerInput = 0;
       return;
+    }
+
+    if (this.launchEffectRemaining > 0) {
+      this.launchEffectRemaining = Math.max(0, this.launchEffectRemaining - dt);
     }
 
     this.timing = stepTiming(this.timing, dt);
@@ -286,6 +313,7 @@ export class CoreRaceGame {
 
     this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.5, dt);
 
+    const launchPower = this.launchEffectRemaining > 0 ? this.launchBoost : 0;
     this.physics.drivePlayer({
       throttle,
       brake,
@@ -293,7 +321,7 @@ export class CoreRaceGame {
       tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST + aero.tow * 0.22,
+      powerBoost: CORE_POWER_BOOST + aero.tow * 0.22 + launchPower,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
@@ -591,7 +619,7 @@ export class CoreRaceGame {
   }
 
   private resetRace(): void {
-    this.ai = createAiField();
+    this.ai = createAiField(this.setup.gridOrder);
     this.vehicle = this.startVehicle();
     const selection = selectStartingTyre(this.startCompound);
     this.tire = createTire(selection.startCompound);
@@ -601,8 +629,9 @@ export class CoreRaceGame {
     this.selectedCompound = selection.suggestedNextCompound;
     this.usedCompounds = new Set([selection.startCompound]);
     this.lap = 0;
-    this.trackProgress = PLAYER_GRID.progress;
-    this.lastTrackProgress = PLAYER_GRID.progress;
+    const playerGrid = this.playerGridSlot();
+    this.trackProgress = playerGrid.progress;
+    this.lastTrackProgress = playerGrid.progress;
     this.nextCheckpoint = 1;
     this.pitRequested = false;
     this.finishMessage = '';
@@ -619,6 +648,11 @@ export class CoreRaceGame {
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
+    this.launchCharge = 0;
+    this.launchBoost = 0;
+    this.launchEffectRemaining = 0;
+    this.launchFeedback = '';
+    this.launchFeedbackTone = 'neutral';
     this.raceIntervals.reset();
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
@@ -627,8 +661,14 @@ export class CoreRaceGame {
     this.syncVisuals(true);
   }
 
+  private playerGridSlot() {
+    const position = gridPositionFor('player', this.setup.gridOrder);
+    return position === undefined ? PLAYER_GRID : gridSlotForPosition(position);
+  }
+
   private startVehicle(): VehicleState {
-    const start = sampleTrack(PLAYER_GRID.progress, PLAYER_GRID.laneOffset);
+    const grid = this.playerGridSlot();
+    const start = sampleTrack(grid.progress, grid.laneOffset);
     return createVehicle(start.x, start.y, start.heading);
   }
 
@@ -760,10 +800,14 @@ export class CoreRaceGame {
     const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
     const speed = Math.round(this.vehicle.speed * 3.6);
     const wearPct = Math.round(this.tire.wear * 100);
+    const tyreStatus = tyreRaceStatus(this.tire);
+    const tyreStatusText = formatTyreRaceStatus(tyreStatus);
+    const tyreStatusClass = tyreStatus.condition === 'CLIFF RISK' ? 'cliff' : tyreStatus.condition === 'USED' ? 'used' : 'optimal';
     const compoundHistory = [...this.usedCompounds].join(' → ');
     const delta = this.timing.deltaToBest === undefined ? '—' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
+    const gridPosition = gridPositionFor('player', this.setup.gridOrder) ?? 8;
     const pitLabel = this.flow.phase === 'COUNTDOWN'
-      ? `START ${this.tire.compound} · ${getActiveTrack().name}`
+      ? `START ${this.tire.compound} · GRID P${gridPosition}`
       : this.pitStop.phase === 'SERVICE'
         ? `PIT BOX · ${this.pitStop.serviceRemaining.toFixed(1)}s`
         : isPitActive(this.pitStop)
@@ -806,6 +850,11 @@ export class CoreRaceGame {
     const bestTone = playerBest === undefined ? 'neutral' : timingTone(playerBest, playerBest, this.sessionFastestLap);
     const fastestText = this.sessionFastestLap === undefined ? '--:--.---' : formatLapTime(this.sessionFastestLap);
     const bannerHtml = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
+    const launchHtml = this.flow.phase === 'COUNTDOWN'
+      ? `<div class="launch-panel"><header><b>RACE START</b><span>PRESS W NEAR LIGHTS OUT</span></header><div class="launch-track"><div class="launch-target"></div><div class="launch-fill" style="width:${Math.round(this.launchCharge * 100)}%"></div></div></div>`
+      : this.launchEffectRemaining > 0 && this.launchFeedback
+        ? `<div class="launch-feedback ${this.launchFeedbackTone}">${this.launchFeedback}</div>`
+        : '';
     const finishHtml = this.flow.phase === 'FINISHED'
       ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
@@ -823,7 +872,7 @@ export class CoreRaceGame {
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${finishHtml}${warningHtml}${recoveryHtml}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
@@ -836,9 +885,9 @@ export class CoreRaceGame {
       <div class="hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div class="race-data core-race-data">
-          <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span>${wearPct}% USED · GRIP ${(this.tire.grip * 100).toFixed(0)}%</span></div>
+          <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span class="tyre-strategy-line ${tyreStatusClass}">${wearPct}% USED · ${tyreStatusText}</span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
-          <div><small>RACE</small><b>${raceState}</b><span>CORE RACE · AUDIO ON</span></div>
+          <div><small>RACE</small><b>${raceState}</b><span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
         </div>
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER</div>`;

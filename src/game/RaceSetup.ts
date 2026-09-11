@@ -5,6 +5,9 @@ export interface RaceSetup {
   trackId: TrackId;
   startCompound: Compound;
   totalLaps: number;
+  /** P1..P8 driver ids produced by the one-shot qualifying session. */
+  gridOrder?: readonly string[];
+  qualifyingTime?: number;
 }
 
 export const DEFAULT_RACE_SETUP: RaceSetup = {

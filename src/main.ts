@@ -1,11 +1,13 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
+import { runQualifyingSession } from './game/QualifyingGame';
 import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { showPreRaceMenu } from './ui/PreRaceMenu';
 import './style.css';
 import './battle-timing.css';
 import './timing-highlight-fix.css';
+import './weekend.css';
 
 async function bootstrap(): Promise<void> {
   const game = document.querySelector<HTMLElement>('#game');
@@ -17,9 +19,17 @@ async function bootstrap(): Promise<void> {
 
   const setup = await showPreRaceMenu(hud);
   setActiveTrack(setup.trackId);
+
+  const qualifying = await runQualifyingSession(game, hud, setup);
+  const raceSetup = {
+    ...setup,
+    qualifyingTime: qualifying.playerTime,
+    gridOrder: qualifying.gridOrder,
+  };
+
   hud.innerHTML = '';
   installHudEnhancer(hud);
-  new CoreRaceGame(game, hud, setup);
+  new CoreRaceGame(game, hud, raceSetup);
 }
 
 bootstrap().catch((error) => {

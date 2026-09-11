@@ -1,5 +1,5 @@
 import { aerodynamicEffect } from './AeroModel';
-import { aiGridSlot } from './GridModel';
+import { aiGridSlot, gridPositionFor, gridSlotForPosition } from './GridModel';
 import { AI_SAFE_LANE_LIMIT } from './TrackLimitsModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
@@ -59,7 +59,7 @@ const EMPTY_TRAFFIC: TrafficContext = {
   gapBehindMetres: Number.POSITIVE_INFINITY,
 };
 
-export function createAiField(): DriverState[] {
+export function createAiField(gridOrder?: readonly string[]): DriverState[] {
   // Keep the entire field close enough in execution that clear air is not the
   // only thing separating P1 from the pack. Compound and traffic differences
   // should decide tenths; a back-row AI should not be several seconds per lap
@@ -75,9 +75,11 @@ export function createAiField(): DriverState[] {
   ];
 
   return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => {
-    const grid = aiGridSlot(index);
+    const id = `ai-${index}`;
+    const qualifiedPosition = gridPositionFor(id, gridOrder);
+    const grid = qualifiedPosition === undefined ? aiGridSlot(index) : gridSlotForPosition(qualifiedPosition);
     return {
-      id: `ai-${index}`,
+      id,
       name,
       progress: grid.progress,
       lap: 0,
