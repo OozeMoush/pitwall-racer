@@ -120,10 +120,10 @@ export function controlArcadeCar(
   const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.34 + Math.pow(steeringGrip, 1.70) * 1.52 + superGrip * 0.55;
   const slideLateralRetention = 1 - slideSeverity * 0.68;
-  const lateralGripRate = 9.35
+  const lateralGripRate = 10.15
     * tyreLateralAuthority
     * surfaceGrip
-    * (1 - highSpeedSlip * 0.22)
+    * (1 - highSpeedSlip * 0.20)
     * slideLateralRetention;
   const lateralRetention = Math.exp(-lateralGripRate * Math.max(0, dt));
   const rearStepAcceleration = slideDirection
@@ -132,10 +132,12 @@ export function controlArcadeCar(
     * (10.5 + speed * 0.095);
   const nextLateral = lateralSpeed * lateralRetention + rearStepAcceleration * Math.max(0, dt);
 
-  // The whole car is now a little more willing to rotate, especially at high
-  // speed. This is an overhead racing game; readable, responsive direction
-  // changes matter more than reproducing a real F1 steering envelope.
-  const speedAuthority = 2.72 / (1 + Math.pow(speed / 51, 1.60)) + 0.070;
+  // The miniature circuit has substantially tighter physical radii than the
+  // old kilometre-scale layout. Preserve the same arcade intent by increasing
+  // rotation authority rather than forcing the whole field to crawl through
+  // corners. The result should feel like a fast toy-scale racer, not a sim car
+  // squeezed onto a tiny map.
+  const speedAuthority = (2.72 / (1 + Math.pow(speed / 51, 1.60)) + 0.070) * 1.42;
   const lowSpeedBuild = clamp01(speed / 12);
   const fastCorner = clamp01((speed - 38) / 66);
   const freshHighSpeedAuthority = 0.18
@@ -156,7 +158,7 @@ export function controlArcadeCar(
     * liftRotation
     * brakingRotation
     * slideRotation;
-  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (4.8 + (1 - highSpeedSlip) * 2.0 + slideSeverity * 1.8));
+  const angularResponse = 1 - Math.exp(-Math.max(0, dt) * (5.35 + (1 - highSpeedSlip) * 2.0 + slideSeverity * 1.8));
   const nextAngularVelocity = motion.angularVelocity
     + (targetAngularVelocity - motion.angularVelocity) * angularResponse;
 
