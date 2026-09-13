@@ -9,6 +9,7 @@ import {
   shouldEnterPit,
   stepPitStop,
 } from './PitLaneModel';
+import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
 
 describe('PitLaneModel', () => {
   it('only captures a requested car that actually reaches pit entry near the track', () => {
@@ -34,7 +35,7 @@ describe('PitLaneModel', () => {
     expect(state.t).toBe(1);
   });
 
-  it('moves away from the racing surface and rejoins at the same lap path', () => {
+  it('moves clearly outside the miniature racing surface and rejoins at the same lap path', () => {
     expect(pitLaneOffset(0)).toBeLessThan(pitLaneOffset(0.5));
     expect(pitLaneOffset(1)).toBeLessThan(pitLaneOffset(0.5));
 
@@ -42,7 +43,7 @@ describe('PitLaneModel', () => {
     const middle = pitLanePose(0.5);
     const exit = pitLanePose(1);
     expect(entry.raceProgress).toBeGreaterThan(0.9);
-    expect(middle.laneOffset).toBeGreaterThan(80);
+    expect(middle.laneOffset).toBeGreaterThan(TRACK_ROAD_HALF_WIDTH * 2);
     expect(exit.raceProgress).toBeLessThan(0.1);
   });
 });
