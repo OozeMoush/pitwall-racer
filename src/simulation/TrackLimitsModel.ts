@@ -1,8 +1,8 @@
 // Shared physical/visual circuit dimensions. The centreline is miniature, but
 // the road deliberately remains generous enough for two-car racing and for the
 // faster arcade steering line to breathe through the tighter-radius corners.
-export const TRACK_ROAD_HALF_WIDTH = 15;
-export const TRACK_RUNOFF_HALF_WIDTH = 23;
+export const TRACK_ROAD_HALF_WIDTH = 16;
+export const TRACK_RUNOFF_HALF_WIDTH = 25;
 
 // The kerb starts just outside the white line. A car may place the outside
 // wheels on it without an immediate penalty, but a deeper cut still costs time.
