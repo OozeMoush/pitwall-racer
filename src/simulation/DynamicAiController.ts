@@ -17,24 +17,14 @@ const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 7.0;
 const TRAFFIC_LANE_WIDTH = 8.0;
 
-// Traffic gaps are physical-world distances. Cars are about 9.3 units long,
-// so these must not be miniature-scaled or the AI starts reacting after contact.
-const ALONGSIDE_LONGITUDINAL = 12.5;
-const LANE_BLOCKED_RANGE = 36;
-const ATTACK_RANGE = 29;
-const FOLLOW_RANGE = 38;
-const FOLLOW_TARGET_GAP = 15.5;
-const FOLLOW_BUFFER = 8.0;
-const EMERGENCY_GAP = 11.5;
-
 export function dynamicAiControl(
   driver: DriverState,
   vehicle: VehicleState,
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
-  // The miniature layouts place unrelated track sections physically close to
-  // one another. Anchor projection to the driver's last known progress so a
-  // small excursion cannot make the controller suddenly steer at another road.
+  // Miniature layouts can put unrelated pieces of asphalt close together.
+  // Anchor projection to the driver's previous race progress so a small
+  // excursion never makes the controller suddenly chase another road.
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
   const profile = trackProfile(projection.progress, driver.skill, driver.tire.grip);
   const battlePreview = trackProfile(
@@ -43,10 +33,7 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  // Lateral racecraft is a straight / very mild-bend feature. The previous
-  // threshold allowed late passing moves into technical corners, which looked
-  // like random weaving and frequently ended in the runoff.
-  const battleSafe = battleSeverity < 0.34 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
+  const battleSafe = battleSeverity < 0.48 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
 
   let ahead: RaceTrafficCar | undefined;
@@ -65,13 +52,12 @@ export function dynamicAiControl(
       aheadGap = gap;
     }
 
-    // AI-AI side-by-side arbitration was the main source of visible snakes:
-    // both cars kept reacting to one another's tiny lateral corrections. Let
-    // the smooth racing line separate AI cars naturally; reserve explicit
-    // SIDE_BY_SIDE holding for the player, where the interaction is readable.
+    // Only the player needs hard side-by-side avoidance. AI-to-AI contact is
+    // already resolved by the racecraft line, and making every AI react to the
+    // lateral motion of every neighbour caused the whole pack to snake.
     if (other.isPlayer === true
       && battleSafe
-      && Math.abs(gap) < ALONGSIDE_LONGITUDINAL
+      && Math.abs(gap) < 12.5
       && lateral < 13.5
       && Math.abs(gap) < alongsideGap) {
       alongside = other;
@@ -79,37 +65,45 @@ export function dynamicAiControl(
     }
   }
 
-  const laneBlocked = ahead !== undefined && aheadGap < LANE_BLOCKED_RANGE;
+  // Traffic distances use miniature race scaling, as they did in the stable
+  // pack tuning. The cars themselves are still full collision size, so retain
+  // a physical emergency floor rather than allowing a zero-gap train.
+  const laneBlockedRange = Math.max(28, raceScaleDistance(80));
+  const attackRange = Math.max(24, raceScaleDistance(70));
+  const followRange = Math.max(30, raceScaleDistance(86));
+  const laneBlocked = ahead !== undefined && aheadGap < laneBlockedRange;
   const canAttack = laneBlocked
     && battleSafe
     && ahead !== undefined
-    && aheadGap < ATTACK_RANGE
+    && aheadGap < attackRange
     && driver.tire.wear < 0.94;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
   else if (canAttack) battleState = 'ATTACK';
-  else if (laneBlocked && aheadGap < FOLLOW_RANGE) battleState = 'FOLLOW';
+  else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
   const speed = vehicle.speed;
-  const lookAheadMetres = raceScaleDistance(clamp(44 + speed * 0.46, 54, 104));
+  const lookAheadMetres = raceScaleDistance(clamp(38 + speed * 0.44, 48, 96));
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const baseLane = clamp(
-    // A small stable driver bias prevents the entire field from collapsing onto
-    // an identical centreline without requiring reactive left-right weaving.
-    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.35,
+    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.06,
     -AI_SAFE_LANE_LIMIT,
     AI_SAFE_LANE_LIMIT,
   );
 
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.4);
+  // Normal line changes are deliberately gradual. Passing moves are larger,
+  // but only on geometry classified as safe; AI-vs-AI moves are a little
+  // calmer than moves around the player to avoid repeated left/right feints.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const firstChoice = clamp(ahead.laneOffset + side * 4.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * 4.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const desired = Math.abs(firstChoice - ahead.laneOffset) >= 4.2 ? firstChoice : alternate;
-    targetLane = approachLane(projection.laneOffset, desired, 3.5);
+    const passOffset = ahead.isPlayer === true ? 5.8 : 4.4;
+    const firstChoice = clamp(ahead.laneOffset + side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const alternate = clamp(ahead.laneOffset - side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const desired = Math.abs(firstChoice - ahead.laneOffset) >= passOffset * 0.82 ? firstChoice : alternate;
+    targetLane = approachLane(projection.laneOffset, desired, ahead.isPlayer === true ? 4.8 : 3.8);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
     if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
@@ -121,13 +115,12 @@ export function dynamicAiControl(
         -BATTLE_LANE_LIMIT,
         BATTLE_LANE_LIMIT,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 2.6);
+      targetLane = approachLane(projection.laneOffset, desired, 3.4);
     }
-  } else if (battleState === 'FOLLOW' && ahead) {
-    const desired = battleSeverity > 0.26
-      ? baseLane
-      : clamp(ahead.laneOffset + stableSide(driver.id) * 0.55, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 1.8);
+  } else if (battleState === 'FOLLOW') {
+    // Follow the circuit, not the leading car's lateral corrections. This is
+    // the key anti-snake rule: a small wobble must not propagate down the train.
+    targetLane = approachLane(projection.laneOffset, baseLane, 2.4);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
@@ -139,56 +132,54 @@ export function dynamicAiControl(
   const target = sampleTrack(targetProgress, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
-  const lateralError = clamp((targetLane - projection.laneOffset) / 10.5, -1, 1);
-  const recoveryGain = offRoad ? 1.10 : 0.27;
-  const headingGain = offRoad ? 2.65 : 2.20;
-  const yawDamping = offRoad ? 0.30 : 0.50;
+  const lateralError = clamp((targetLane - projection.laneOffset) / 10.0, -1, 1);
+  const recoveryGain = offRoad ? 1.10 : 0.36;
+  const headingGain = offRoad ? 2.85 : 2.72;
+  const yawDamping = offRoad ? 0.28 : 0.46;
   const steerCommand = headingError * headingGain
     + lateralError * recoveryGain
     - vehicle.yawRate * yawDamping;
-  const steerLimit = offRoad ? 1 : 0.88;
+  const steerLimit = offRoad ? 1 : 0.92;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
   const nextProfile = trackProfile(
-    projection.progress + raceScaleDistance(clamp(48 + speed * 0.40, 60, 104)) / TRACK_LENGTH,
+    projection.progress + raceScaleDistance(clamp(42 + speed * 0.38, 52, 94)) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
 
   const usableGrip = clamp((driver.tire.grip - 0.55) / 0.79, 0, 1);
-  const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.90;
+  const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.92;
   const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.84);
-  const cornerPaceFactor = 1.035 + profile.severity * usableGrip * 0.060;
-  const predictionAllowance = 13 + cornerDemand * (6 + usableGrip * 15);
-  const cornerExecution = 1 + cornerDemand * 0.025;
+  const cornerPaceFactor = 1.04 + profile.severity * usableGrip * 0.075;
+  const predictionAllowance = 15 + cornerDemand * (8 + usableGrip * 20);
+  const cornerExecution = 1 + cornerDemand * 0.045;
   let targetSpeed = Math.min(
     profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
-  // A clean corner is quicker than an optimistic entry followed by grass.
-  if (cornerDemand > 0.82) targetSpeed *= 0.92;
-  else if (cornerDemand > 0.68) targetSpeed *= 0.97;
-
-  if (battleState === 'ATTACK' && profile.severity < 0.26) targetSpeed += 6;
+  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 9;
 
   if (laneBlocked && ahead) {
-    if (aheadGap < FOLLOW_TARGET_GAP + FOLLOW_BUFFER) {
-      const closingAllowance = clamp((aheadGap - FOLLOW_TARGET_GAP) * 0.68, -10, 9);
+    const desiredGap = Math.max(9.5, raceScaleDistance(24));
+    const buffer = Math.max(4.0, raceScaleDistance(13));
+    if (aheadGap < desiredGap + buffer) {
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.72, -8, 9);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < EMERGENCY_GAP) {
-      targetSpeed = Math.min(targetSpeed, Math.max(26, ahead.speed - 5));
+    if (aheadGap < 8.8) {
+      targetSpeed = Math.min(targetSpeed, Math.max(30, ahead.speed - 4));
     }
   }
 
-  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 52);
-  if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 38);
-  targetSpeed = clamp(targetSpeed, 26, 132);
+  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 56);
+  if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 40);
+  targetSpeed = clamp(targetSpeed, 28, 132);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -2.2
-    ? clamp((-speedError - 0.5) / 11.5, 0.18, 1)
+  const brake = speedError < -2.7
+    ? clamp((-speedError - 0.8) / 12.5, 0.16, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
