@@ -129,4 +129,21 @@ describe('ArcadeCarController', () => {
     expect(next.vx).toBeLessThan(70);
     expect(next.vx).toBeGreaterThanOrEqual(0);
   });
+
+  it('allows a stopped car to steer away from a wall on grass without pivoting on asphalt', () => {
+    const asphalt = controlArcadeCar(
+      { vx: 0, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 1, tireGrip: 1, surfaceGrip: 1 },
+      0.1,
+    );
+    const grass = controlArcadeCar(
+      { vx: 0, vy: 0, heading: 0, angularVelocity: 0 },
+      { throttle: 1, brake: 0, steer: 1, tireGrip: 1, surfaceGrip: 0.45, powerMultiplier: 0.62, rollingResistance: 4.2 },
+      0.1,
+    );
+
+    expect(Math.abs(asphalt.angularVelocity)).toBeLessThan(0.001);
+    expect(Math.abs(grass.angularVelocity)).toBeGreaterThan(0.1);
+    expect(grass.vx).toBeGreaterThan(0);
+  });
 });
