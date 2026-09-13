@@ -20,10 +20,11 @@ import {
   TRACK_BARRIER_OFFSET,
   TRACK_BARRIER_SEGMENT_LENGTH,
   TRACK_ROAD_HALF_WIDTH,
-  hasSafetyBarrier,
+  shouldPlaceSafetyBarrier,
 } from './TrackLimitsModel';
 import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
 import { projectTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
 
 // Match the collision footprint to the rendered car. The old 8.5 x 4.1 half-
@@ -387,8 +388,13 @@ export class RapierRacePhysics {
 
     for (let i = 0; i < perSide; i++) {
       const progress = (i + 0.5) / perSide;
+      const profile = trackProfile(progress);
       for (const side of [-1, 1] as const) {
-        if (!hasSafetyBarrier(progress, side)) continue;
+        // On tight miniature corners a constant inside offset can fold back
+        // across the asphalt. Use the same geometry policy as rendering so the
+        // safety wall remains outside the usable circuit instead of becoming a
+        // hidden chicane around the middle of the lap.
+        if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) continue;
         const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
 
         // Miniaturising the circuit brings unrelated track sections close to
