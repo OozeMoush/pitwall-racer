@@ -14,6 +14,7 @@ export interface DynamicAiControl {
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
+const SAFE_SIDE_BY_SIDE_GAP = 6.2;
 
 export function dynamicAiControl(
   driver: DriverState,
@@ -96,14 +97,20 @@ export function dynamicAiControl(
     const desired = Math.abs(firstChoice - ahead.laneOffset) >= 5.0 ? firstChoice : alternate;
     targetLane = approachLane(projection.laneOffset, desired, 5.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
-    if (battleSeverity > 0.58) {
-      // If two cars reach a real corner together, stop asking either car to
-      // weave across the road. Hold its side and finish the corner first.
+    const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
+    if (battleSeverity > 0.58 || currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
+      // Cars that already have a safe lane must not be pulled back toward one
+      // another just because the controller calls them SIDE_BY_SIDE. Holding
+      // the existing lane also keeps staggered grid rows stable off the start.
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else {
       const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-      const desired = clamp(alongside.laneOffset + side * 5.9, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-      targetLane = approachLane(projection.laneOffset, desired, 4.8);
+      const desired = clamp(
+        alongside.laneOffset + side * SAFE_SIDE_BY_SIDE_GAP,
+        -BATTLE_LANE_LIMIT,
+        BATTLE_LANE_LIMIT,
+      );
+      targetLane = approachLane(projection.laneOffset, desired, 3.0);
     }
   } else if (battleState === 'FOLLOW' && ahead) {
     // Through corners, follow the track rather than copying a rival's lateral
