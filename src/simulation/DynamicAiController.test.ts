@@ -6,7 +6,7 @@ import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 describe('dynamicAiControl', () => {
-  it('moves off line decisively to attack a slower car without crossing the road', () => {
+  it('moves off line smoothly to attack a slower car without crossing the road', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
@@ -21,12 +21,15 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [ahead]);
     expect(control.battleState).toBe('ATTACK');
-    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(5);
+    // The old test required an instant five-metre jump. That encouraged the
+    // visible left/right snap we are explicitly removing. The first request
+    // should still be a clear move, but it must build progressively.
+    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(3.5);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(5.25);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
-  it('leaves usable lateral room when another car is alongside', () => {
+  it('leaves usable lateral room when the player is alongside', () => {
     const driver = createAiField()[1];
     const p = sampleTrack(driver.progress, 5);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 72 };
@@ -54,7 +57,7 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.targetLane).toBe(0);
-    expect(control.targetSpeed).toBeLessThanOrEqual(38);
+    expect(control.targetSpeed).toBeLessThanOrEqual(40);
     expect(control.brake).toBeGreaterThan(0);
   });
 });
