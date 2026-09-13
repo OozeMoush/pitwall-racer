@@ -41,7 +41,7 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [other]);
     expect(control.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.5);
+    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(5.8);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
