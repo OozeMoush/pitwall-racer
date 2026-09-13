@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  MINIATURE_TRACK_SCALE,
   RACING_LINE,
   TRACK_CONTROLS,
   TRACK_LENGTH,
@@ -13,16 +14,20 @@ import {
 afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('TrackModel', () => {
-  it('densifies a full race-scale circuit into a smooth racing line', () => {
+  it('densifies a miniature circuit into a smooth racing line', () => {
+    expect(MINIATURE_TRACK_SCALE).toBeGreaterThanOrEqual(0.35);
+    expect(MINIATURE_TRACK_SCALE).toBeLessThanOrEqual(0.5);
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
-    expect(TRACK_LENGTH).toBeGreaterThan(4500);
+    expect(TRACK_LENGTH).toBeGreaterThan(1800);
+    expect(TRACK_LENGTH).toBeLessThan(2400);
   });
 
-  it('ships multiple genuinely different circuits', () => {
+  it('ships multiple genuinely different miniature circuits', () => {
     const lengths = TRACKS.map((track) => {
       setActiveTrack(track.id);
       expect(RACING_LINE.length).toBeGreaterThan(track.controls.length * 10);
-      expect(TRACK_LENGTH).toBeGreaterThan(2500);
+      expect(TRACK_LENGTH).toBeGreaterThan(1400);
+      expect(TRACK_LENGTH).toBeLessThan(2600);
       return Math.round(TRACK_LENGTH);
     });
     expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
@@ -54,12 +59,12 @@ describe('TrackModel', () => {
 
   it('preserves the signed lateral side of a car on the circuit', () => {
     for (const progress of [0.12, 0.44, 0.78]) {
-      const left = sampleTrack(progress, 24);
-      const right = sampleTrack(progress, -24);
+      const left = sampleTrack(progress, 18);
+      const right = sampleTrack(progress, -18);
       const leftProjection = projectTrack(left.x, left.y);
       const rightProjection = projectTrack(right.x, right.y);
-      expect(leftProjection.laneOffset).toBeGreaterThan(18);
-      expect(rightProjection.laneOffset).toBeLessThan(-18);
+      expect(leftProjection.laneOffset).toBeGreaterThan(13);
+      expect(rightProjection.laneOffset).toBeLessThan(-13);
     }
   });
 });
