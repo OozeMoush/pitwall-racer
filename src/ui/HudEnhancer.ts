@@ -21,6 +21,36 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
       }
     }
 
+    // The old NEXT STOP card mixed the selected tyre, request state and key
+    // binding into one terse sentence. Turn it into an explicit pit command so
+    // the player can understand it at a glance while racing.
+    const pitPanel = hud.querySelector<HTMLElement>('.core-race-data > div:nth-child(2)');
+    const pitHeading = pitPanel?.querySelector<HTMLElement>('small');
+    const pitValue = pitPanel?.querySelector<HTMLElement>('b');
+    const pitDetail = pitPanel?.querySelector<HTMLElement>('span');
+    if (pitPanel && pitHeading && pitValue && pitDetail) {
+      const raw = pitDetail.textContent ?? '';
+      pitHeading.textContent = 'PIT PLAN';
+
+      if (raw.startsWith('BOX THIS LAP')) {
+        pitDetail.textContent = 'PIT REQUESTED · F: CANCEL';
+        pitPanel.title = `Pit this lap for ${pitValue.textContent ?? 'selected tyre'}`;
+      } else if (raw.startsWith('PIT BOX')) {
+        pitDetail.textContent = raw.replace('PIT BOX', 'STOPPED IN BOX');
+        pitPanel.title = 'Pit service in progress';
+      } else if (raw.startsWith('PIT LANE')) {
+        pitDetail.textContent = raw.replace('PIT LANE', 'IN PIT LANE');
+        pitPanel.title = 'Pit stop in progress';
+      } else if (raw.startsWith('START')) {
+        pitHeading.textContent = 'START TYRE';
+        pitDetail.textContent = raw;
+        pitPanel.title = 'Race start tyre and grid position';
+      } else {
+        pitDetail.textContent = 'F: PIT THIS LAP · Q/E/R: CHANGE TYRE';
+        pitPanel.title = `Next pit tyre: ${pitValue.textContent ?? 'selected tyre'}`;
+      }
+    }
+
     // Legacy energy HUD support remains for the older renderer path.
     const energyValue = hud.querySelector<HTMLElement>('.race-data > div:nth-child(3) b');
     if (!energyValue || energyValue.querySelector('.energy-meter')) return;
