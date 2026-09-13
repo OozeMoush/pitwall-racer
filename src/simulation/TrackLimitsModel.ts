@@ -10,7 +10,26 @@ export const TRACK_KERB_INNER_OFFSET = TRACK_ROAD_HALF_WIDTH + 0.12;
 export const TRACK_KERB_OUTER_OFFSET = TRACK_ROAD_HALF_WIDTH + 2.35;
 export const FREE_KERB_DISTANCE = TRACK_ROAD_HALF_WIDTH + 0.95;
 export const DEEP_CUT_DISTANCE = TRACK_ROAD_HALF_WIDTH + 1.90;
-export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH + 7;
+export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 
 // AI target centres need room for the ~2.15 m half-width physical collider.
 export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
+
+// The visual barrier used to be scenery only, which made crossing the grass a
+// viable shortcut. Miniature racing needs a real circuit boundary: grass costs
+// speed first, then a physical barrier catches a car that keeps going.
+export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 3;
+export const TRACK_BARRIER_SEGMENT_LENGTH = 10;
+export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
+
+// The pit lane lives on the positive-offset side and runs from roughly 91% of
+// the lap through the start line to 7.5%. Leave that side open through the pit
+// corridor; the opposite-side wall remains continuous.
+const PIT_BARRIER_GAP_START = 0.875;
+const PIT_BARRIER_GAP_END = 0.115;
+
+export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
+  const p = ((progress % 1) + 1) % 1;
+  if (side < 0) return true;
+  return !(p >= PIT_BARRIER_GAP_START || p <= PIT_BARRIER_GAP_END);
+}
