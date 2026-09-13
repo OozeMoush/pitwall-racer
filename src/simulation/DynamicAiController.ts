@@ -23,14 +23,15 @@ const TRAFFIC_LANE_WIDTH = 8.0;
 // touching. Keep car-to-car spacing tied to the physical collider scale while
 // geometry/braking lookahead continues to use raceScaleDistance().
 const ALONGSIDE_LONGITUDINAL = 12.5;
+const CORNER_PARALLEL_LONGITUDINAL = 26;
 const LANE_BLOCKED_RANGE = 36;
 const ATTACK_RANGE = 29;
 const FOLLOW_RANGE = 38;
 const FOLLOW_TARGET_GAP = 15.5;
 const FOLLOW_BUFFER = 8.0;
 const EMERGENCY_GAP = 11.5;
-const CORNER_PAIR_TARGET_GAP = 17.5;
-const CORNER_PAIR_BUFFER = 8.5;
+const CORNER_PAIR_TARGET_GAP = 18.0;
+const CORNER_PAIR_BUFFER = 9.0;
 const PAIR_TIE_EPSILON = 0.75;
 
 export function dynamicAiControl(
@@ -54,11 +55,15 @@ export function dynamicAiControl(
   let alongside: RaceTrafficCar | undefined;
   let alongsideGap = Number.POSITIVE_INFINITY;
   let alongsideDelta = 0;
+  let parallel: RaceTrafficCar | undefined;
+  let parallelGap = Number.POSITIVE_INFINITY;
+  let parallelDelta = 0;
 
   for (const other of traffic) {
     if (other.id === driver.id) continue;
     const otherDistance = raceDistance(other.lap, other.progress) * TRACK_LENGTH;
     const gap = otherDistance - driverDistance;
+    const absGap = Math.abs(gap);
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
 
     // Only same-lane traffic is a longitudinal blocker. On the staggered grid
@@ -69,12 +74,24 @@ export function dynamicAiControl(
       aheadGap = gap;
     }
 
-    if (Math.abs(gap) < ALONGSIDE_LONGITUDINAL
+    if (absGap < ALONGSIDE_LONGITUDINAL
       && lateral < 13.5
-      && Math.abs(gap) < alongsideGap) {
+      && absGap < alongsideGap) {
       alongside = other;
-      alongsideGap = Math.abs(gap);
+      alongsideGap = absGap;
       alongsideDelta = gap;
+    }
+
+    // Cars can stop being strictly "alongside" a few metres before a corner
+    // while still occupying the other grid lane. Remember that parallel rival
+    // farther ahead/behind so both cars do not merge onto the same apex line.
+    if (absGap < CORNER_PARALLEL_LONGITUDINAL
+      && lateral >= TRAFFIC_LANE_WIDTH
+      && lateral < 14.5
+      && absGap < parallelGap) {
+      parallel = other;
+      parallelGap = absGap;
+      parallelDelta = gap;
     }
   }
 
@@ -86,16 +103,17 @@ export function dynamicAiControl(
     && driver.tire.wear < 0.94;
 
   // Equal-progress row-mates used to both declare themselves the leader and
-  // converge on the same apex. Break ties deterministically so exactly one car
-  // yields before a technical corner while the other is free to take the line.
-  const tiedPair = alongside !== undefined && Math.abs(alongsideDelta) <= PAIR_TIE_EPSILON;
-  const yieldsTie = tiedPair && alongside !== undefined && driver.id.localeCompare(alongside.id) > 0;
-  const cornerPairAhead = alongside !== undefined
-    && !battleSafe
-    && (alongsideDelta > PAIR_TIE_EPSILON || yieldsTie);
-  const cornerPairLeading = alongside !== undefined
-    && !battleSafe
-    && !cornerPairAhead;
+  // converge on the same apex. Before a technical corner resolve any nearby
+  // parallel pair deterministically: the car truly behind yields; an exact tie
+  // uses id ordering so exactly one of the two yields.
+  const cornerPartner = !battleSafe ? (parallel ?? alongside) : undefined;
+  const cornerDelta = parallel ? parallelDelta : alongsideDelta;
+  const cornerGap = parallel ? parallelGap : alongsideGap;
+  const tiedPair = cornerPartner !== undefined && Math.abs(cornerDelta) <= PAIR_TIE_EPSILON;
+  const yieldsTie = tiedPair && cornerPartner !== undefined && driver.id.localeCompare(cornerPartner.id) > 0;
+  const cornerPairAhead = cornerPartner !== undefined
+    && (cornerDelta > PAIR_TIE_EPSILON || yieldsTie);
+  const cornerPairLeading = cornerPartner !== undefined && !cornerPairAhead;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside && battleSafe) battleState = 'SIDE_BY_SIDE';
@@ -113,8 +131,6 @@ export function dynamicAiControl(
     AI_SAFE_LANE_LIMIT,
   );
 
-  // Keep normal corner placement gradual. A deliberate pass is allowed one
-  // clean move only when the geometry ahead is mild enough to support it.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -137,16 +153,13 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.0);
     }
   } else if (battleState === 'FOLLOW') {
-    // If a row-mate is still alongside approaching a real corner, keep the
-    // current lane for a moment and create longitudinal separation first. Both
-    // cars converging on the same apex at the same instant caused contact chains.
-    const reference = cornerPairAhead ? alongside : ahead;
+    const reference = cornerPairAhead ? cornerPartner : ahead;
     const desired = cornerPairAhead
       ? clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT)
       : battleSeverity > 0.38 || reference === undefined
         ? baseLane
         : clamp(reference.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, cornerPairAhead ? 1.0 : 2.0);
+    targetLane = approachLane(projection.laneOffset, desired, cornerPairAhead ? 0.8 : 2.0);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
@@ -190,18 +203,18 @@ export function dynamicAiControl(
 
   if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
 
-  const followReference = cornerPairAhead ? alongside : ahead;
+  const followReference = cornerPairAhead ? cornerPartner : ahead;
   if (battleState === 'FOLLOW' && followReference) {
-    const followGap = cornerPairAhead ? alongsideGap : aheadGap;
+    const followGap = cornerPairAhead ? cornerGap : aheadGap;
     const desiredGap = cornerPairAhead ? CORNER_PAIR_TARGET_GAP : FOLLOW_TARGET_GAP;
     const buffer = cornerPairAhead ? CORNER_PAIR_BUFFER : FOLLOW_BUFFER;
     if (followGap < desiredGap + buffer) {
       const closingAllowance = clamp((followGap - desiredGap) * 0.68, -12, 9);
       targetSpeed = Math.min(targetSpeed, followReference.speed + closingAllowance);
     }
-    const emergencyGap = cornerPairAhead ? 13.0 : EMERGENCY_GAP;
+    const emergencyGap = cornerPairAhead ? 14.0 : EMERGENCY_GAP;
     if (followGap < emergencyGap) {
-      targetSpeed = Math.min(targetSpeed, Math.max(26, followReference.speed - (cornerPairAhead ? 8 : 5)));
+      targetSpeed = Math.min(targetSpeed, Math.max(26, followReference.speed - (cornerPairAhead ? 9 : 5)));
     }
   } else if (laneBlocked && ahead && aheadGap < FOLLOW_TARGET_GAP + FOLLOW_BUFFER) {
     const closingAllowance = clamp((aheadGap - FOLLOW_TARGET_GAP) * 0.68, -10, 9);
