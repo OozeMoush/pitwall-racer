@@ -8,14 +8,14 @@ export interface GridSlot {
 // The miniature lap is much shorter, so progress gaps must be larger to keep
 // physical grid rows separated by roughly two car lengths.
 const GRID_SLOTS: readonly GridSlot[] = [
-  { progress: 0.994, laneOffset: -6 },
-  { progress: 0.994, laneOffset: 6 },
-  { progress: 0.984, laneOffset: -6 },
-  { progress: 0.984, laneOffset: 6 },
-  { progress: 0.974, laneOffset: -6 },
-  { progress: 0.974, laneOffset: 6 },
-  { progress: 0.964, laneOffset: -6 },
-  { progress: 0.9625, laneOffset: 6 },
+  { progress: 0.994, laneOffset: -6.2 },
+  { progress: 0.994, laneOffset: 6.2 },
+  { progress: 0.984, laneOffset: -6.2 },
+  { progress: 0.984, laneOffset: 6.2 },
+  { progress: 0.974, laneOffset: -6.2 },
+  { progress: 0.974, laneOffset: 6.2 },
+  { progress: 0.964, laneOffset: -6.2 },
+  { progress: 0.9625, laneOffset: 6.2 },
 ];
 
 export const PLAYER_GRID: GridSlot = GRID_SLOTS[7];
@@ -34,7 +34,7 @@ export function gridPositionFor(id: string, order?: readonly string[]): number |
 export function aiGridSlot(index: number): GridSlot {
   return GRID_SLOTS[index] ?? {
     progress: Math.max(0.91, PLAYER_GRID.progress - 0.010 * Math.max(0, index - 6)),
-    laneOffset: index % 2 === 0 ? -6 : 6,
+    laneOffset: index % 2 === 0 ? -6.2 : 6.2,
   };
 }
 
