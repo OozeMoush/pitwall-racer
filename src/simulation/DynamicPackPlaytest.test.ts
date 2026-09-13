@@ -7,7 +7,7 @@ import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
 import { createTire } from './TireModel';
-import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
@@ -56,7 +56,7 @@ describe('dynamic field playtest telemetry', () => {
 
     for (let tick = 0; tick < 30 / DT; tick++) {
       const player = physics.playerState();
-      const playerProjection = projectTrack(player.x, player.y);
+      const playerProjection = projectTrackNear(player.x, player.y, lastPlayerProgress);
       if (lastPlayerProgress > 0.88 && playerProjection.progress < 0.12) playerLap += 1;
       lastPlayerProgress = playerProjection.progress;
       playerDriver.progress = playerProjection.progress;
@@ -75,7 +75,7 @@ describe('dynamic field playtest telemetry', () => {
           isPlayer: true,
         },
         ...aiStates.map((state, index) => {
-          const p = projectTrack(state.x, state.y);
+          const p = projectTrackNear(state.x, state.y, ai[index].progress);
           return {
             id: ai[index].id,
             lap: ai[index].lap,
@@ -120,7 +120,7 @@ describe('dynamic field playtest telemetry', () => {
           maxAiJerk = Math.max(maxAiJerk, jerk);
         }
         lastAiSpeeds[index] = state.speed;
-        if (projectTrack(state.x, state.y).distance > DEEP_CUT_DISTANCE) {
+        if (projectTrackNear(state.x, state.y, ai[index].progress).distance > DEEP_CUT_DISTANCE) {
           deepCutSamples += 1;
           perAiDeepCut[index] += 1;
         }
