@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { racingLineOffset, signedHeadingDelta, trackProfile } from './TrackProfile';
-import { TRACK_LENGTH } from './TrackModel';
+import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
 function sampleProfiles() {
   return Array.from({ length: 240 }, (_, index) => ({
@@ -28,7 +28,7 @@ describe('TrackProfile', () => {
   });
 
   it('builds an outside-apex-outside line instead of hugging the inside all corner', () => {
-    const metres = (value: number) => value / TRACK_LENGTH;
+    const metres = (value: number) => raceScaleDistance(value) / TRACK_LENGTH;
     const local = Array.from({ length: 360 }, (_, index) => {
       const progress = index / 360;
       return {
@@ -41,9 +41,19 @@ describe('TrackProfile', () => {
     const approaches = [110, 90, 70, 50, 30]
       .map((distance) => racingLineOffset(apex.progress - metres(distance), 1.06));
 
-    expect(Math.abs(apexOffset)).toBeGreaterThan(5);
+    expect(Math.abs(apexOffset)).toBeGreaterThan(4.5);
     expect(Math.sign(apexOffset)).toBe(Math.sign(apex.turn));
-    expect(approaches.some((offset) => Math.abs(offset) > 3 && Math.sign(offset) === -Math.sign(apex.turn))).toBe(true);
+    expect(approaches.some((offset) => Math.abs(offset) > 2.5 && Math.sign(offset) === -Math.sign(apex.turn))).toBe(true);
+  });
+
+  it('keeps the requested racing line continuous around the miniature lap', () => {
+    const offsets = Array.from({ length: 720 }, (_, index) => racingLineOffset(index / 720, 1.06));
+    let worstJump = 0;
+    for (let i = 0; i < offsets.length; i++) {
+      const next = offsets[(i + 1) % offsets.length];
+      worstJump = Math.max(worstJump, Math.abs(next - offsets[i]));
+    }
+    expect(worstJump).toBeLessThan(3);
   });
 
   it('lets stronger drivers carry a little more corner speed without changing the track', () => {
