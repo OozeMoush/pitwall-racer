@@ -62,9 +62,10 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
 }
 
 /**
- * A real racing line needs more than "aim at the inside". This helper gives the
- * physical AI three readable phases: move to the outside before a corner, clip
- * the inside near the local curvature peak, then use the outside again on exit.
+ * Build a continuous outside-apex-outside line. The old miniature conversion
+ * chose one phase with hard if/else boundaries, so the requested lane could
+ * jump several metres from one physics tick to the next. Blending all three
+ * phases keeps the same racing-line idea without the visible left-right snake.
  */
 export function racingLineOffset(progress: number, grip = 1): number {
   const localTurn = signedHeadingDelta(progress - metresToProgress(18), progress + metresToProgress(18));
@@ -76,16 +77,30 @@ export function racingLineOffset(progress: number, grip = 1): number {
   const exitStrength = clamp01(Math.abs(exitingTurn) / 0.42);
   const gripReach = 0.82 + clamp01((grip - 0.76) / 0.46) * 0.18;
 
-  let offset = 0;
-  if (localStrength > 0.24 && Math.abs(localTurn) > 0.025) {
-    offset = Math.sign(localTurn) * (3.5 + localStrength * 4.8) * gripReach;
-  } else if (approachStrength > 0.22 && Math.abs(approachingTurn) > 0.028) {
-    offset = -Math.sign(approachingTurn) * (2.9 + approachStrength * 4.1);
-  } else if (exitStrength > 0.24 && Math.abs(exitingTurn) > 0.028) {
-    offset = -Math.sign(exitingTurn) * (2.6 + exitStrength * 3.7);
-  }
+  const apexWeight = smoothstep01((localStrength - 0.12) / 0.70);
+  const approachWeight = smoothstep01((approachStrength - 0.14) / 0.66) * (1 - apexWeight * 0.78);
+  const exitWeight = smoothstep01((exitStrength - 0.16) / 0.64) * (1 - apexWeight * 0.84);
 
-  return clamp(offset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  const apexTarget = Math.abs(localTurn) < 0.018
+    ? 0
+    : Math.sign(localTurn) * (3.4 + localStrength * 5.0) * gripReach;
+  const approachTarget = Math.abs(approachingTurn) < 0.022
+    ? 0
+    : -Math.sign(approachingTurn) * (2.8 + approachStrength * 4.0);
+  const exitTarget = Math.abs(exitingTurn) < 0.022
+    ? 0
+    : -Math.sign(exitingTurn) * (2.5 + exitStrength * 3.6);
+
+  const weightSum = apexWeight + approachWeight + exitWeight;
+  if (weightSum < 0.02) return 0;
+
+  const blended = (
+    apexTarget * apexWeight
+    + approachTarget * approachWeight
+    + exitTarget * exitWeight
+  ) / Math.max(1, weightSum);
+
+  return clamp(blended, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 }
 
 export function signedHeadingDelta(fromProgress: number, toProgress: number): number {
@@ -99,6 +114,11 @@ export function signedHeadingDelta(fromProgress: number, toProgress: number): nu
 
 export function distanceForProgress(deltaProgress: number): number {
   return Math.abs(deltaProgress) * TRACK_LENGTH;
+}
+
+function smoothstep01(value: number): number {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
 }
 
 function clamp01(value: number): number {
