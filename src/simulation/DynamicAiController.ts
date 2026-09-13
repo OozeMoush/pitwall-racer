@@ -1,6 +1,6 @@
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
-import { projectTrack, raceScaleDistance, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { projectTrackNear, raceScaleDistance, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { racingLineOffset, trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
 
@@ -32,7 +32,10 @@ export function dynamicAiControl(
   vehicle: VehicleState,
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
-  const projection = projectTrack(vehicle.x, vehicle.y);
+  // The miniature layouts place unrelated track sections physically close to
+  // one another. Anchor projection to the driver's last known progress so a
+  // small excursion cannot make the controller suddenly steer at another road.
+  const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
   const profile = trackProfile(projection.progress, driver.skill, driver.tire.grip);
   const battlePreview = trackProfile(
     projection.progress + raceScaleDistance(105) / TRACK_LENGTH,
