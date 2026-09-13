@@ -15,12 +15,14 @@ describe('physical safety barriers', () => {
     await RAPIER.init();
   });
 
-  it('keeps the pit-side wall open only through the pit corridor', () => {
+  it('leaves only narrow physical doors at pit entry and exit', () => {
     expect(hasSafetyBarrier(0.50, 1)).toBe(true);
     expect(hasSafetyBarrier(0.50, -1)).toBe(true);
-    expect(hasSafetyBarrier(0.95, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.04, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.95, -1)).toBe(true);
+    expect(hasSafetyBarrier(0.91, 1)).toBe(false);
+    expect(hasSafetyBarrier(0.07, 1)).toBe(false);
+    expect(hasSafetyBarrier(0.95, 1)).toBe(true);
+    expect(hasSafetyBarrier(0.02, 1)).toBe(true);
+    expect(hasSafetyBarrier(0.91, -1)).toBe(true);
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {
