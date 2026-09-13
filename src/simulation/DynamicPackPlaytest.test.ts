@@ -4,7 +4,7 @@ import { WORLD_SCALE } from '../rendering3d/WorldTransform';
 import { dynamicAiControl } from './DynamicAiController';
 import { PLAYER_GRID } from './GridModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
-import { createAiField, type DriverState, type RaceTrafficCar } from './RaceModel';
+import { createAiField, type DriverState } from './RaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
 import { createTire } from './TireModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
@@ -19,10 +19,20 @@ describe('dynamic field playtest telemetry', () => {
     await RAPIER.init();
   });
 
-  it('runs a fast miniature physical pack without relying on energy deployment', () => {
+  it('keeps player baseline pace and the physical AI pack fast without energy deployment', () => {
     const ai = createAiField();
+
+    // Pace comparison and collision stress are different questions. Driving an
+    // autonomous proxy player through the same Rapier world turned this test
+    // into a repeated crash test and made one impact dominate every AI metric.
+    // Keep the AI pack physical in one world, while an identical isolated car
+    // supplies the stable player pace baseline. Dedicated contact tests cover
+    // player/AI collisions separately.
+    const remote = sampleTrack(0.5, 260);
+    const aiPhysics = new RapierRacePhysics(createVehicle(remote.x, remote.y, remote.heading), ai);
+
     const start = sampleTrack(PLAYER_GRID.progress, PLAYER_GRID.laneOffset);
-    const physics = new RapierRacePhysics(createVehicle(start.x, start.y, start.heading), ai);
+    const playerPhysics = new RapierRacePhysics(createVehicle(start.x, start.y, start.heading), []);
     const playerDriver: DriverState = {
       ...createAiField()[1],
       id: 'player',
@@ -55,7 +65,7 @@ describe('dynamic field playtest telemetry', () => {
     const perAiDeepCut = ai.map(() => 0);
 
     for (let tick = 0; tick < 30 / DT; tick++) {
-      const player = physics.playerState();
+      const player = playerPhysics.playerState();
       const playerProjection = projectTrackNear(player.x, player.y, lastPlayerProgress);
       if (lastPlayerProgress > 0.88 && playerProjection.progress < 0.12) playerLap += 1;
       lastPlayerProgress = playerProjection.progress;
@@ -63,32 +73,8 @@ describe('dynamic field playtest telemetry', () => {
       playerDriver.lap = playerLap;
       playerDriver.speed = player.speed;
 
-      const aiStates = physics.aiStates();
-      const traffic: RaceTrafficCar[] = [
-        {
-          id: 'player',
-          lap: playerLap,
-          progress: playerProjection.progress,
-          speed: player.speed,
-          laneOffset: playerProjection.laneOffset,
-          performance: 1,
-          isPlayer: true,
-        },
-        ...aiStates.map((state, index) => {
-          const p = projectTrackNear(state.x, state.y, ai[index].progress);
-          return {
-            id: ai[index].id,
-            lap: ai[index].lap,
-            progress: p.progress,
-            speed: state.speed,
-            laneOffset: p.laneOffset,
-            performance: ai[index].skill * ai[index].tire.grip,
-          };
-        }),
-      ];
-
-      const playerControl = dynamicAiControl(playerDriver, player, traffic);
-      physics.drivePlayer({
+      const playerControl = dynamicAiControl(playerDriver, player, []);
+      playerPhysics.drivePlayer({
         throttle: playerControl.throttle,
         brake: playerControl.brake,
         steer: playerControl.steer,
@@ -98,12 +84,13 @@ describe('dynamic field playtest telemetry', () => {
         powerMultiplier: 1,
         rollingResistance: 0,
       }, DT);
+      playerPhysics.step(DT);
 
-      physics.syncAiKinematics(ai, DT, playerLap);
-      physics.step(DT);
+      aiPhysics.syncAiKinematics(ai, DT, -10);
+      aiPhysics.step(DT);
 
-      const nextPlayer = physics.playerState();
-      const nextAi = physics.aiStates();
+      const nextPlayer = playerPhysics.playerState();
+      const nextAi = aiPhysics.aiStates();
       maxPlayerSpeed = Math.max(maxPlayerSpeed, nextPlayer.speed);
       playerSpeedSum += nextPlayer.speed;
 
@@ -126,10 +113,12 @@ describe('dynamic field playtest telemetry', () => {
         }
       });
 
-      const all = [nextPlayer, ...nextAi];
-      for (let i = 0; i < all.length; i++) {
-        for (let j = i + 1; j < all.length; j++) {
-          minPairDistance = Math.min(minPairDistance, Math.hypot(all[i].x - all[j].x, all[i].y - all[j].y));
+      for (let i = 0; i < nextAi.length; i++) {
+        for (let j = i + 1; j < nextAi.length; j++) {
+          minPairDistance = Math.min(
+            minPairDistance,
+            Math.hypot(nextAi[i].x - nextAi[j].x, nextAi[i].y - nextAi[j].y),
+          );
         }
       }
       samples += 1;
