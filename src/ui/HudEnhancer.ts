@@ -31,15 +31,31 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
     if (pitPanel && pitHeading && pitValue && pitDetail) {
       const raw = pitDetail.textContent ?? '';
       pitHeading.textContent = 'PIT PLAN';
+      pitHeading.style.color = '#d8e0dd';
+      pitHeading.style.fontSize = '13px';
+      pitDetail.style.fontSize = '13px';
+      pitDetail.style.fontWeight = '850';
+      pitDetail.style.lineHeight = '1.3';
+      pitDetail.style.color = '#e4ece8';
+      pitPanel.style.background = '';
 
       if (raw.startsWith('BOX THIS LAP')) {
         pitDetail.textContent = 'PIT REQUESTED · F: CANCEL';
+        pitHeading.style.color = '#ffd166';
+        pitDetail.style.color = '#ffd166';
+        pitPanel.style.background = 'rgba(255,209,102,.08)';
         pitPanel.title = `Pit this lap for ${pitValue.textContent ?? 'selected tyre'}`;
       } else if (raw.startsWith('PIT BOX')) {
         pitDetail.textContent = raw.replace('PIT BOX', 'STOPPED IN BOX');
+        pitHeading.style.color = '#68d7ff';
+        pitDetail.style.color = '#d5f4ff';
+        pitPanel.style.background = 'rgba(104,215,255,.08)';
         pitPanel.title = 'Pit service in progress';
       } else if (raw.startsWith('PIT LANE')) {
         pitDetail.textContent = raw.replace('PIT LANE', 'IN PIT LANE');
+        pitHeading.style.color = '#68d7ff';
+        pitDetail.style.color = '#d5f4ff';
+        pitPanel.style.background = 'rgba(104,215,255,.08)';
         pitPanel.title = 'Pit stop in progress';
       } else if (raw.startsWith('START')) {
         pitHeading.textContent = 'START TYRE';
