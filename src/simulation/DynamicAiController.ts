@@ -43,27 +43,27 @@ export function dynamicAiControl(
       behind = other;
       behindGap = -gap;
     }
-    if (Math.abs(gap) < raceScaleDistance(18) && lateral < 8.5 && Math.abs(gap) < alongsideGap) {
+    if (Math.abs(gap) < raceScaleDistance(20) && lateral < 13.5 && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
     }
   }
 
   const laneBlocked = ahead !== undefined
-    && aheadGap < raceScaleDistance(70)
-    && Math.abs(ahead.laneOffset - projection.laneOffset) < 5.8;
+    && aheadGap < raceScaleDistance(80)
+    && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.5;
   const emergencyGap = laneBlocked && aheadGap < raceScaleDistance(20);
   const canAttack = laneBlocked
     && !emergencyGap
     && ahead !== undefined
-    && aheadGap < raceScaleDistance(58)
+    && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
-  const playerThreat = behind?.isPlayer === true && behindGap < raceScaleDistance(50);
+  const playerThreat = behind?.isPlayer === true && behindGap < raceScaleDistance(55);
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
   else if (canAttack) battleState = 'ATTACK';
-  else if (laneBlocked && aheadGap < raceScaleDistance(78)) battleState = 'FOLLOW';
+  else if (laneBlocked && aheadGap < raceScaleDistance(86)) battleState = 'FOLLOW';
   else if (playerThreat) battleState = 'DEFEND';
 
   const speed = vehicle.speed;
@@ -77,18 +77,18 @@ export function dynamicAiControl(
 
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const firstChoice = clamp(ahead.laneOffset + side * 6.1, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * 6.1, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    targetLane = Math.abs(firstChoice - ahead.laneOffset) >= 4.8 ? firstChoice : alternate;
+    const firstChoice = clamp(ahead.laneOffset + side * 6.4, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    const alternate = clamp(ahead.laneOffset - side * 6.4, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    targetLane = Math.abs(firstChoice - ahead.laneOffset) >= 5 ? firstChoice : alternate;
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-    targetLane = clamp(alongside.laneOffset + side * 5.7, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    targetLane = clamp(alongside.laneOffset + side * 6.2, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   } else if (battleState === 'FOLLOW' && ahead) {
     targetLane = clamp(ahead.laneOffset + stableSide(driver.id) * 1.6, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.035
-      ? Math.sign(profile.signedTurn) * 4.8
-      : stableSide(driver.id) * 3.4;
+      ? Math.sign(profile.signedTurn) * 5.2
+      : stableSide(driver.id) * 3.8;
     targetLane = clamp(inside, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   }
 
@@ -100,11 +100,9 @@ export function dynamicAiControl(
   const target = sampleTrack(targetProgress, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
-  const lateralError = clamp((targetLane - projection.laneOffset) / 8.5, -1, 1);
-  const recoveryGain = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.5 ? 0.78 : 0.42;
-  // Miniature corners arrive faster and have tighter radii. Increase heading
-  // authority rather than lowering the whole field's pace.
-  const steer = clamp(headingError * 2.82 + lateralError * recoveryGain, -1, 1);
+  const lateralError = clamp((targetLane - projection.laneOffset) / 9.5, -1, 1);
+  const recoveryGain = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.5 ? 0.82 : 0.44;
+  const steer = clamp(headingError * 3.02 + lateralError * recoveryGain, -1, 1);
 
   const nextProfile = trackProfile(
     projection.progress + raceScaleDistance(clamp(42 + speed * 0.38, 52, 94)) / TRACK_LENGTH,
