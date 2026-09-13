@@ -51,10 +51,8 @@ export function dynamicAiControl(
 
   const laneBlocked = ahead !== undefined
     && aheadGap < raceScaleDistance(80)
-    && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.5;
-  const emergencyGap = laneBlocked && aheadGap < raceScaleDistance(20);
+    && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.0;
   const canAttack = laneBlocked
-    && !emergencyGap
     && ahead !== undefined
     && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
@@ -67,43 +65,44 @@ export function dynamicAiControl(
   else if (playerThreat) battleState = 'DEFEND';
 
   const speed = vehicle.speed;
-  const lookAheadMetres = raceScaleDistance(clamp(42 + speed * 0.46, 52, 102));
+  const lookAheadMetres = raceScaleDistance(clamp(44 + speed * 0.46, 54, 104));
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const baseLane = clamp(
-    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.045,
+    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.04,
     -AI_SAFE_LANE_LIMIT,
     AI_SAFE_LANE_LIMIT,
   );
 
-  // Do not teleport the requested line from one side of the circuit to the
-  // other. The physical car can only move a few metres laterally at a time;
-  // bounding the lane request removes the visible steering snake while keeping
-  // real outside-apex-outside placement.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 3.4);
+  // Keep normal corner placement gradual. Deliberate overtakes are allowed a
+  // larger single move so the AI clears a car rather than sitting directly
+  // behind it and braking the whole pack into a queue.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const firstChoice = clamp(ahead.laneOffset + side * 5.6, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * 5.6, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    const desired = Math.abs(firstChoice - ahead.laneOffset) >= 4.8 ? firstChoice : alternate;
-    targetLane = approachLane(projection.laneOffset, desired, 4.0);
+    const firstChoice = clamp(ahead.laneOffset + side * 5.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    const alternate = clamp(ahead.laneOffset - side * 5.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    const desired = Math.abs(firstChoice - ahead.laneOffset) >= 5.0 ? firstChoice : alternate;
+    targetLane = approachLane(projection.laneOffset, desired, 5.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-    const desired = clamp(alongside.laneOffset + side * 5.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 4.4);
+    const desired = clamp(alongside.laneOffset + side * 5.9, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    targetLane = approachLane(projection.laneOffset, desired, 4.8);
   } else if (battleState === 'FOLLOW' && ahead) {
-    const desired = clamp(ahead.laneOffset + stableSide(driver.id) * 1.2, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 2.4);
+    const desired = clamp(ahead.laneOffset + stableSide(driver.id) * 0.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    targetLane = approachLane(projection.laneOffset, desired, 2.0);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.035
-      ? Math.sign(profile.signedTurn) * 4.4
-      : stableSide(driver.id) * 3.2;
-    targetLane = approachLane(projection.laneOffset, clamp(inside, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT), 3.2);
+      ? Math.sign(profile.signedTurn) * 4.0
+      : stableSide(driver.id) * 3.0;
+    targetLane = approachLane(projection.laneOffset, clamp(inside, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT), 2.8);
   }
 
-  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.2;
+  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
   if (offRoad) {
-    targetLane = approachLane(projection.laneOffset, 0, 7.0);
+    // Once the car has left the usable road there is no reason to preserve a
+    // pretty racing line. Aim decisively at the centre and get back quickly.
+    targetLane = 0;
     battleState = 'CLEAR';
   }
 
@@ -111,45 +110,50 @@ export function dynamicAiControl(
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
   const lateralError = clamp((targetLane - projection.laneOffset) / 10.5, -1, 1);
-  const recoveryGain = offRoad ? 0.95 : 0.30;
-  const steerCommand = headingError * 2.38
+  const recoveryGain = offRoad ? 1.10 : 0.27;
+  const headingGain = offRoad ? 2.65 : 2.20;
+  const yawDamping = offRoad ? 0.30 : 0.50;
+  const steerCommand = headingError * headingGain
     + lateralError * recoveryGain
-    - vehicle.yawRate * 0.42;
-  const steerLimit = offRoad ? 1 : 0.92;
+    - vehicle.yawRate * yawDamping;
+  const steerLimit = offRoad ? 1 : 0.88;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
   const nextProfile = trackProfile(
-    projection.progress + raceScaleDistance(clamp(46 + speed * 0.40, 58, 102)) / TRACK_LENGTH,
+    projection.progress + raceScaleDistance(clamp(48 + speed * 0.40, 60, 104)) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
 
   const usableGrip = clamp((driver.tire.grip - 0.55) / 0.79, 0, 1);
-  const skillPace = 1.07 + clamp(driver.skill - 1, -0.08, 0.24) * 0.90;
+  const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.90;
   const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.84);
   const cornerPaceFactor = 1.035 + profile.severity * usableGrip * 0.060;
-  const predictionAllowance = 12 + cornerDemand * (6 + usableGrip * 15);
+  const predictionAllowance = 13 + cornerDemand * (6 + usableGrip * 15);
   const cornerExecution = 1 + cornerDemand * 0.025;
   let targetSpeed = Math.min(
     profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
-  // The old miniature tune tried to recover pace by overdriving the tightest
-  // corners. A clean 95% corner is faster than a 105% corner followed by grass.
-  if (cornerDemand > 0.78) targetSpeed *= 0.96;
-  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 7;
+  // Tight miniature bends punish one extra km/h much more than the old giant
+  // layout. The AI should finish the corner on asphalt instead of gaining a
+  // theoretical apex speed and donating seconds in runoff afterwards.
+  if (cornerDemand > 0.82) targetSpeed *= 0.92;
+  else if (cornerDemand > 0.68) targetSpeed *= 0.97;
+
+  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
   if (laneBlocked && ahead) {
-    const desiredGap = raceScaleDistance(24);
-    const buffer = raceScaleDistance(13);
+    const desiredGap = raceScaleDistance(22);
+    const buffer = raceScaleDistance(11);
     if (aheadGap < desiredGap + buffer) {
-      const closingAllowance = clamp((aheadGap - desiredGap) * 0.72, -9, 8);
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.76, -8, 9);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < raceScaleDistance(17)) targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 7));
+    if (aheadGap < raceScaleDistance(13)) targetSpeed = Math.min(targetSpeed, Math.max(30, ahead.speed - 4));
   }
-  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.2) targetSpeed = Math.min(targetSpeed, 46);
-  if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 30);
+  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 52);
+  if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 38);
   targetSpeed = clamp(targetSpeed, 26, 132);
 
   const speedError = targetSpeed - speed;
@@ -161,8 +165,8 @@ export function dynamicAiControl(
     : speedError > 4
       ? 1
       : speedError > 0.4
-        ? clamp(0.48 + speedError / 9, 0.48, 1)
-        : 0.20;
+        ? clamp(0.50 + speedError / 9, 0.50, 1)
+        : 0.22;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
