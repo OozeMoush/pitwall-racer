@@ -15,29 +15,42 @@ describe('physical safety barriers', () => {
     await RAPIER.init();
   });
 
-  it('keeps the pit-side wall open only through the pit corridor', () => {
+  it('leaves only narrow physical doors at pit entry and exit', () => {
     expect(hasSafetyBarrier(0.50, 1)).toBe(true);
     expect(hasSafetyBarrier(0.50, -1)).toBe(true);
-    expect(hasSafetyBarrier(0.95, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.04, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.95, -1)).toBe(true);
+    expect(hasSafetyBarrier(0.91, 1)).toBe(false);
+    expect(hasSafetyBarrier(0.07, 1)).toBe(false);
+    expect(hasSafetyBarrier(0.95, 1)).toBe(true);
+    expect(hasSafetyBarrier(0.02, 1)).toBe(true);
+    expect(hasSafetyBarrier(0.91, -1)).toBe(true);
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {
-    const progress = 0.50;
-    const startLane = TRACK_BARRIER_OFFSET - CAR_COLLIDER_HALF_LENGTH - 2;
-    const track = sampleTrack(progress, startLane);
-    const outwardHeading = track.heading + Math.PI / 2;
-    const physics = new RapierRacePhysics(
-      { ...createVehicle(track.x, track.y, outwardHeading), speed: 70 },
-      [],
-    );
+    expectWallStopsOutwardCar(0.50);
+  });
 
-    for (let tick = 0; tick < 1.2 / DT; tick++) physics.step(DT);
-
-    const state = physics.playerState();
-    const projection = projectTrack(state.x, state.y);
-    expect(projection.distance).toBeLessThan(TRACK_BARRIER_OFFSET + 3);
-    expect(state.speed).toBeLessThan(45);
+  it('physically closes the old pit-side shortcut after pit entry', () => {
+    // This section used to sit inside the huge pit opening, so a player could
+    // simply stay flat and drive into the infield. It must now be a real wall,
+    // not merely a hasSafetyBarrier() bookkeeping result.
+    expect(hasSafetyBarrier(0.95, 1)).toBe(true);
+    expectWallStopsOutwardCar(0.95);
   });
 });
+
+function expectWallStopsOutwardCar(progress: number): void {
+  const startLane = TRACK_BARRIER_OFFSET - CAR_COLLIDER_HALF_LENGTH - 2;
+  const track = sampleTrack(progress, startLane);
+  const outwardHeading = track.heading + Math.PI / 2;
+  const physics = new RapierRacePhysics(
+    { ...createVehicle(track.x, track.y, outwardHeading), speed: 70 },
+    [],
+  );
+
+  for (let tick = 0; tick < 1.2 / DT; tick++) physics.step(DT);
+
+  const state = physics.playerState();
+  const projection = projectTrack(state.x, state.y);
+  expect(projection.distance).toBeLessThan(TRACK_BARRIER_OFFSET + 3);
+  expect(state.speed).toBeLessThan(45);
+}

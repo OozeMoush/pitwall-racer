@@ -13,7 +13,7 @@ describe('dynamicAiControl', () => {
     const ahead: RaceTrafficCar = {
       id: 'leader',
       lap: driver.lap,
-      progress: driver.progress + 28 / TRACK_LENGTH,
+      progress: driver.progress + 26 / TRACK_LENGTH,
       speed: 68,
       laneOffset: 0,
       performance: 1,
@@ -21,10 +21,10 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [ahead]);
     expect(control.battleState).toBe('ATTACK');
-    // The old test required an instant five-metre jump. That encouraged the
-    // visible left/right snap we are explicitly removing. The first request
-    // should still be a clear move, but it must build progressively.
-    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(3.5);
+    // A pass should be a deliberate lane move, not a five-metre snap. The
+    // stable side choice then persists instead of propagating a snake through
+    // the whole train.
+    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(2.5);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(5.25);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });

@@ -14,10 +14,16 @@ interface QualifyingTrackProfile {
   spreadSeconds: number;
 }
 
+// Qualifying is calibrated to what the physical AI can actually drive on a
+// clean lap. The old 278/292/260 km/h synthetic targets made the timing screen
+// promise laps that the same drivers could never reproduce once they entered
+// the Rapier race. These are still fixed track targets (no rubber-banding), but
+// now they represent a genuinely quick flying lap rather than an impossible
+// spreadsheet lap.
 const TRACK_PROFILE: Record<TrackId, QualifyingTrackProfile> = {
-  'pitwall-gp': { averageKmh: 278, spreadSeconds: 0.42 },
-  'velocity-park': { averageKmh: 292, spreadSeconds: 0.38 },
-  'switchback-ring': { averageKmh: 260, spreadSeconds: 0.46 },
+  'pitwall-gp': { averageKmh: 248, spreadSeconds: 0.42 },
+  'velocity-park': { averageKmh: 258, spreadSeconds: 0.38 },
+  'switchback-ring': { averageKmh: 210, spreadSeconds: 0.46 },
 };
 
 /**

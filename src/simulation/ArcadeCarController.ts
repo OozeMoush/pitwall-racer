@@ -89,12 +89,12 @@ export function controlArcadeCar(
 
   const aeroDrag = 0.000235 * speed * speed;
   const rollingDrag = 0.55 + rollingResistance;
-  // Runoff/grass must not be a shortcut at race speed, but it still has to let
-  // a nearly stopped car drive back to the circuit. Most of the penalty is
-  // therefore speed-dependent.
+  // Grass must be categorically slower than staying on the circuit at race
+  // speed, while a nearly stopped car still needs enough engine to recover.
+  // Put the extra cost in the speed-squared term rather than constant drag.
   const roughSurface = clamp01((1 - surfaceGrip) / 0.50);
   const roughSurfaceDrag = roughSurface
-    * (0.80 + speed * 0.045 + speed * speed * 0.00070);
+    * (0.82 + speed * 0.055 + speed * speed * 0.00165);
 
   // A triggered rear slide is intentionally decisive and short. It costs a
   // handful of km/h and creates visible lateral motion instead of silently
