@@ -42,8 +42,16 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
   // Straight speed intentionally has no compound term. Driver skill can still
   // create a small pace spread, but S/M/H should not behave like engine modes.
   const straightSpeed = 112 + (safeSkill - 0.94) * 39;
-  const baseCornerFloor = 46 + (safeSkill - 0.94) * 58;
-  const cornerGripFactor = clamp(Math.pow(safeGrip, 1.58), 0.52, 1.50);
+
+  // The 42% miniature layouts contain genuine ~25 m-radius direction changes.
+  // The old corner floor was inherited from the larger circuit and then
+  // multiplied aggressively by both skill and tyre grip, so a quick Soft-shod
+  // AI could be asked to take a hairpin at 260+ km/h. Real barriers exposed the
+  // result immediately: the car simply arrived at the outside wall. Keep tyre
+  // advantage meaningful, but compress it around a sane arcade apex-speed band.
+  const baseCornerFloor = 42 + (safeSkill - 0.94) * 44;
+  const cornerGrip = clamp01((safeGrip - 0.55) / 0.79);
+  const cornerGripFactor = 0.86 + cornerGrip * 0.25;
   const cornerFloor = baseCornerFloor * cornerGripFactor;
   const targetSpeed = clamp(
     straightSpeed - severity * (straightSpeed - cornerFloor),
