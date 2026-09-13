@@ -15,24 +15,28 @@ export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 // AI target centres need room for the ~2.15 m half-width physical collider.
 export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 
-// Grass starts at the runoff edge and kills speed first. The wall is a second
-// line of defence, not the track-limit rule itself. On a miniature hairpin the
-// inside offset curve can have a radius smaller than the barrier offset; a
-// literal continuous inside wall would then fold through the racing surface.
-// Keep walls on both sides of straights/gentle turns, but omit the inside wall
-// of tight turns. The outside wall remains physical and the inside grass still
-// carries the full shortcut penalty.
+// Track limits are primarily physical. The wall sits beyond runoff so normal
+// mistakes remain recoverable, but the segments are short enough that a car
+// cannot thread through visible gaps at racing speed.
 export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 7;
-export const TRACK_BARRIER_SEGMENT_LENGTH = 10;
+export const TRACK_BARRIER_SEGMENT_LENGTH = 8;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
-const PIT_BARRIER_GAP_START = 0.875;
-const PIT_BARRIER_GAP_END = 0.115;
+// The old pit opening removed the outside barrier for almost a quarter of the
+// lap. That effectively created an infield shortcut. Keep only two door-sized
+// openings around the real pit entry and exit; everywhere else the same wall is
+// both visible and physical, which naturally forms a pit wall along the straight.
+const PIT_ENTRY_GAP_START = 0.898;
+const PIT_ENTRY_GAP_END = 0.924;
+const PIT_EXIT_GAP_START = 0.056;
+const PIT_EXIT_GAP_END = 0.087;
 
 export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
   const p = ((progress % 1) + 1) % 1;
   if (side < 0) return true;
-  return !(p >= PIT_BARRIER_GAP_START || p <= PIT_BARRIER_GAP_END);
+  const pitEntryOpening = p >= PIT_ENTRY_GAP_START && p <= PIT_ENTRY_GAP_END;
+  const pitExitOpening = p >= PIT_EXIT_GAP_START && p <= PIT_EXIT_GAP_END;
+  return !(pitEntryOpening || pitExitOpening);
 }
 
 export function shouldPlaceSafetyBarrier(
@@ -43,6 +47,11 @@ export function shouldPlaceSafetyBarrier(
 ): boolean {
   if (!hasSafetyBarrier(progress, side)) return false;
   const inside = Math.abs(signedTurn) > 0.025 && side === Math.sign(signedTurn);
-  if (inside && severity > 0.42) return false;
+
+  // A literal constant-offset wall can fold over itself in only the very
+  // sharpest miniature hairpins. Keep the inner wall through medium corners so
+  // obvious straight-line cuts are physically closed, and omit it only where
+  // the geometry would genuinely intrude onto the asphalt.
+  if (inside && severity > 0.72) return false;
   return true;
 }
