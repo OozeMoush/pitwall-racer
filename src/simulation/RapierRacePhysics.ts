@@ -15,8 +15,14 @@ import {
 import type { DriverState, RaceTrafficCar } from './RaceModel';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
+import {
+  TRACK_BARRIER_HALF_THICKNESS,
+  TRACK_BARRIER_OFFSET,
+  TRACK_BARRIER_SEGMENT_LENGTH,
+  hasSafetyBarrier,
+} from './TrackLimitsModel';
 import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
-import { projectTrack, sampleTrack } from './TrackModel';
+import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
 // Match the collision footprint to the rendered car. The old 8.5 x 4.1 half-
@@ -45,6 +51,12 @@ export class RapierRacePhysics {
     this.world = new RAPIER.World({ x: 0, y: 0 });
     this.world.timestep = 1 / 120;
     this.world.integrationParameters.maxCcdSubsteps = 4;
+
+    // Barriers are part of simulation now, not decorative scenery. This makes
+    // driving straight across the infield slower first (grass) and physically
+    // impossible once the car reaches the outside wall. The positive side is
+    // intentionally open only around the pit-lane corridor.
+    this.createSafetyBarriers();
 
     this.playerBody = this.createDynamicCar(playerStart.x, playerStart.y, playerStart.heading);
     this.aiBodies = ai.map((driver) => {
@@ -333,6 +345,30 @@ export class RapierRacePhysics {
     }, true);
     body.setAngvel(body.angvel() + (controlled.angularVelocity - body.angvel()) * response, true);
     return { state: slide.state, severity: slide.severity };
+  }
+
+  private createSafetyBarriers(): void {
+    const perSide = Math.max(96, Math.ceil(TRACK_LENGTH / TRACK_BARRIER_SEGMENT_LENGTH));
+    const actualSegmentLength = TRACK_LENGTH / perSide;
+
+    for (let i = 0; i < perSide; i++) {
+      const progress = (i + 0.5) / perSide;
+      for (const side of [-1, 1] as const) {
+        if (!hasSafetyBarrier(progress, side)) continue;
+        const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
+        const body = this.world.createRigidBody(
+          RAPIER.RigidBodyDesc.fixed()
+            .setTranslation(pose.x, pose.y)
+            .setRotation(pose.heading),
+        );
+        this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(actualSegmentLength * 0.54, TRACK_BARRIER_HALF_THICKNESS)
+            .setFriction(0.06)
+            .setRestitution(0.015),
+          body,
+        );
+      }
+    }
   }
 
   private createDynamicCar(x: number, y: number, heading: number): RAPIER.RigidBody {
