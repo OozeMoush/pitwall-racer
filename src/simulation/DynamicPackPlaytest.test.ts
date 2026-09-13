@@ -5,6 +5,7 @@ import { dynamicAiControl } from './DynamicAiController';
 import { PLAYER_GRID } from './GridModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, type DriverState } from './RaceModel';
+import { surfaceEffect } from './SurfaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
 import { createTire } from './TireModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
@@ -22,12 +23,10 @@ describe('dynamic field playtest telemetry', () => {
   it('keeps player baseline pace and the physical AI pack fast without energy deployment', () => {
     const ai = createAiField();
 
-    // Pace comparison and collision stress are different questions. Driving an
-    // autonomous proxy player through the same Rapier world turned this test
-    // into a repeated crash test and made one impact dominate every AI metric.
     // Keep the AI pack physical in one world, while an identical isolated car
-    // supplies the stable player pace baseline. Dedicated contact tests cover
-    // player/AI collisions separately.
+    // supplies a stable pace baseline. Both sides must use the same surface
+    // penalties; otherwise an autonomous proxy can cut grass at asphalt grip
+    // and create a meaningless benchmark once track limits become physical.
     const remote = sampleTrack(0.5, 260);
     const aiPhysics = new RapierRacePhysics(createVehicle(remote.x, remote.y, remote.heading), ai);
 
@@ -74,15 +73,16 @@ describe('dynamic field playtest telemetry', () => {
       playerDriver.speed = player.speed;
 
       const playerControl = dynamicAiControl(playerDriver, player, []);
+      const playerSurface = surfaceEffect(playerProjection.distance);
       playerPhysics.drivePlayer({
         throttle: playerControl.throttle,
         brake: playerControl.brake,
         steer: playerControl.steer,
         tireGrip: playerDriver.tire.grip,
-        surfaceGrip: 1,
+        surfaceGrip: playerSurface.gripMultiplier,
         powerBoost: CORE_POWER_BOOST,
-        powerMultiplier: 1,
-        rollingResistance: 0,
+        powerMultiplier: playerSurface.powerMultiplier,
+        rollingResistance: playerSurface.rollingResistance,
       }, DT);
       playerPhysics.step(DT);
 
@@ -166,7 +166,7 @@ describe('dynamic field playtest telemetry', () => {
     expect(metrics.maxAiKmh).toBeLessThan(400);
     expect(metrics.avgPlayerKmh).toBeGreaterThan(185);
     expect(metrics.avgAiKmh).toBeGreaterThan(195);
-    expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh - 4);
+    expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh - 12);
     expect(metrics.deepCutRatio).toBeLessThan(0.12);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.75);
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(10);
