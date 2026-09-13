@@ -28,7 +28,10 @@ describe('compound race behaviour', () => {
 
     expect(soft.targetSpeed).toBeGreaterThan(medium.targetSpeed + 4);
     expect(medium.targetSpeed).toBeGreaterThan(hard.targetSpeed + 2.5);
-    expect(Math.abs(soft.apexOffset)).toBeGreaterThan(Math.abs(hard.apexOffset) + 0.8);
+    // The miniature road needs slightly less lateral excursion than the old
+    // kilometre-scale layout; keep a visible advantage without forcing Soft to
+    // the road edge every corner.
+    expect(Math.abs(soft.apexOffset)).toBeGreaterThan(Math.abs(hard.apexOffset) + 0.6);
   });
 
   it('does not turn lower-grip tyres into weak engines on a straight', () => {

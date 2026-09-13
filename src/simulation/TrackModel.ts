@@ -18,7 +18,19 @@ export interface TrackProjection {
   y: number;
 }
 
-const PITWALL_GP: readonly TrackPoint[] = [
+// Pitwall Racer is intentionally a miniature racing game rather than a
+// kilometre-for-kilometre circuit simulator. Shortening the physical circuit
+// keeps 40-60 lap races in a compact play session and makes trackside objects
+// sweep past quickly without inflating the speedometer into nonsense.
+export const MINIATURE_TRACK_SCALE = 0.42;
+export const TRACK_CENTRE_X = 1110;
+export const TRACK_CENTRE_Y = 600;
+
+export function raceScaleDistance(metres: number): number {
+  return metres * MINIATURE_TRACK_SCALE;
+}
+
+const PITWALL_GP_SOURCE: readonly TrackPoint[] = [
   { x: 560, y: 930 }, { x: 1080, y: 930 }, { x: 1580, y: 930 }, { x: 1940, y: 920 },
   { x: 2110, y: 865 }, { x: 2180, y: 750 }, { x: 2150, y: 625 }, { x: 2040, y: 550 },
   { x: 1840, y: 520 }, { x: 1640, y: 520 }, { x: 1480, y: 470 }, { x: 1370, y: 375 },
@@ -30,7 +42,7 @@ const PITWALL_GP: readonly TrackPoint[] = [
 ];
 
 // High-speed circuit: long straights, broad sweepers and one heavy braking complex.
-const VELOCITY_PARK: readonly TrackPoint[] = [
+const VELOCITY_PARK_SOURCE: readonly TrackPoint[] = [
   { x: 520, y: 900 }, { x: 1020, y: 930 }, { x: 1580, y: 925 }, { x: 2040, y: 880 },
   { x: 2220, y: 780 }, { x: 2240, y: 650 }, { x: 2160, y: 545 }, { x: 1980, y: 485 },
   { x: 1680, y: 470 }, { x: 1430, y: 500 }, { x: 1260, y: 455 }, { x: 1160, y: 365 },
@@ -39,7 +51,7 @@ const VELOCITY_PARK: readonly TrackPoint[] = [
 ];
 
 // Technical circuit: repeated direction changes and short straights reward braking and tyre grip.
-const SWITCHBACK_RING: readonly TrackPoint[] = [
+const SWITCHBACK_RING_SOURCE: readonly TrackPoint[] = [
   { x: 560, y: 910 }, { x: 870, y: 930 }, { x: 1160, y: 895 }, { x: 1370, y: 805 },
   { x: 1450, y: 690 }, { x: 1375, y: 590 }, { x: 1190, y: 555 }, { x: 1040, y: 620 },
   { x: 1000, y: 745 }, { x: 855, y: 800 }, { x: 700, y: 740 }, { x: 680, y: 610 },
@@ -48,10 +60,21 @@ const SWITCHBACK_RING: readonly TrackPoint[] = [
   { x: 285, y: 500 }, { x: 295, y: 650 }, { x: 385, y: 780 }, { x: 470, y: 865 },
 ];
 
+function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
+  return points.map((point) => ({
+    x: TRACK_CENTRE_X + (point.x - TRACK_CENTRE_X) * MINIATURE_TRACK_SCALE,
+    y: TRACK_CENTRE_Y + (point.y - TRACK_CENTRE_Y) * MINIATURE_TRACK_SCALE,
+  }));
+}
+
+const PITWALL_GP = miniature(PITWALL_GP_SOURCE);
+const VELOCITY_PARK = miniature(VELOCITY_PARK_SOURCE);
+const SWITCHBACK_RING = miniature(SWITCHBACK_RING_SOURCE);
+
 export const TRACKS: readonly TrackDefinition[] = [
-  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'BALANCED · CHICANE · LONG STRAIGHT', controls: PITWALL_GP },
-  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'HIGH SPEED · SWEEPERS · HEAVY BRAKING', controls: VELOCITY_PARK },
-  { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'TECHNICAL · DIRECTION CHANGES · TYRE TEST', controls: SWITCHBACK_RING },
+  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP },
+  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK },
+  { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;

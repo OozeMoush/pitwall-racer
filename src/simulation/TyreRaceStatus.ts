@@ -10,10 +10,13 @@ export interface TyreRaceStatus {
   lapsToCliff?: number;
 }
 
+// Miniature laps are much shorter, so the physical time-based wear accumulated
+// per lap is lower. These values are strategy estimates only; TireModel remains
+// authoritative for actual grip and wear.
 const WEAR_PER_LAP: Record<Compound, number> = {
-  SOFT: 0.115,
-  MEDIUM: 0.058,
-  HARD: 0.031,
+  SOFT: 0.050,
+  MEDIUM: 0.026,
+  HARD: 0.014,
 };
 
 const CLIFF_WEAR = 0.56;
@@ -26,7 +29,7 @@ const CLIFF_WEAR = 0.56;
 export function tyreRaceStatus(tire: TireState): TyreRaceStatus {
   const wear = Math.max(0, Math.min(1, tire.wear));
   const lateWear = Math.max(0, wear - 0.42);
-  const estimatedPaceLoss = wear * 0.24 + Math.pow(lateWear, 1.18) * 3.7;
+  const estimatedPaceLoss = wear * 0.12 + Math.pow(lateWear, 1.18) * 1.8;
 
   const condition: TyreCondition = wear < 0.34
     ? 'OPTIMAL'
@@ -56,7 +59,7 @@ export function tyreRaceStatus(tire: TireState): TyreRaceStatus {
 }
 
 export function formatTyreRaceStatus(status: TyreRaceStatus): string {
-  const pace = status.estimatedPaceLoss < 0.05
+  const pace = status.estimatedPaceLoss < 0.03
     ? 'PACE ±0.0s'
     : `PACE -${status.estimatedPaceLoss.toFixed(1)}s/LAP`;
   const cliff = status.lapsToCliff === undefined

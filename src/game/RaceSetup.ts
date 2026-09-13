@@ -13,7 +13,7 @@ export interface RaceSetup {
 export const DEFAULT_RACE_SETUP: RaceSetup = {
   trackId: 'pitwall-gp',
   startCompound: 'MEDIUM',
-  totalLaps: 12,
+  totalLaps: 50,
 };
 
-export const LAP_OPTIONS = [10, 12, 16] as const;
+export const LAP_OPTIONS = [40, 50, 60] as const;

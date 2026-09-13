@@ -15,15 +15,16 @@ interface QualifyingTrackProfile {
 }
 
 const TRACK_PROFILE: Record<TrackId, QualifyingTrackProfile> = {
-  'pitwall-gp': { averageKmh: 278, spreadSeconds: 0.86 },
-  'velocity-park': { averageKmh: 292, spreadSeconds: 0.78 },
-  'switchback-ring': { averageKmh: 260, spreadSeconds: 0.94 },
+  'pitwall-gp': { averageKmh: 278, spreadSeconds: 0.42 },
+  'velocity-park': { averageKmh: 292, spreadSeconds: 0.38 },
+  'switchback-ring': { averageKmh: 260, spreadSeconds: 0.46 },
 };
 
 /**
  * A qualifying benchmark is intentionally tougher than an average race lap.
  * It is a flying-lap target, not a hidden rubber-band: the same target is used
- * whether the player is fast or slow.
+ * whether the player is fast or slow. Miniature circuits naturally produce
+ * much shorter lap times, so no artificial 30-second floor is imposed.
  */
 export function qualifyingBenchmarkSeconds(trackId: TrackId, trackLengthMetres: number): number {
   const profile = TRACK_PROFILE[trackId];
@@ -38,9 +39,9 @@ export function aiQualifyingTime(
   const profile = TRACK_PROFILE[trackId];
   const benchmark = qualifyingBenchmarkSeconds(trackId, trackLengthMetres);
   const skillReference = 1.127;
-  const skillGain = (driver.skill - skillReference) * 18;
+  const skillGain = (driver.skill - skillReference) * 9;
   const identityOffset = stableOffset(driver.id) * profile.spreadSeconds;
-  return Math.max(30, benchmark - skillGain + identityOffset);
+  return Math.max(10, benchmark - skillGain + identityOffset);
 }
 
 export function qualifyingClassification(

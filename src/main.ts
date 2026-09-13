@@ -29,7 +29,14 @@ async function bootstrap(): Promise<void> {
 
   hud.innerHTML = '';
   installHudEnhancer(hud);
-  new CoreRaceGame(game, hud, raceSetup);
+  const race = new CoreRaceGame(game, hud, raceSetup);
+
+  // CoreRaceGame predates the long-race format and still carries a private
+  // 30-lap construction cap. TypeScript `private readonly` is a compile-time
+  // property here, so lift that legacy cap immediately after construction.
+  // Keeping the override in one visible bootstrap location makes it easy to
+  // remove when CoreRaceGame is next refactored without touching race logic.
+  Reflect.set(race, 'totalLaps', Math.max(20, Math.min(80, Math.round(raceSetup.totalLaps))));
 }
 
 bootstrap().catch((error) => {
