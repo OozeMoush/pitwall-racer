@@ -3,7 +3,7 @@ import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 export const PIT_ENTRY_PROGRESS = 0.91;
 export const PIT_EXIT_PROGRESS = 0.075;
 export const PIT_BOX_T = 0.47;
-export const PIT_SERVICE_SECONDS = 2.6;
+export const PIT_SERVICE_SECONDS = 2.0;
 export const PIT_SPEED = 55;
 
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
@@ -43,7 +43,7 @@ export function shouldEnterPit(
   distanceFromLine: number,
   requested: boolean,
 ): boolean {
-  if (!requested || distanceFromLine > 82) return false;
+  if (!requested || distanceFromLine > 48) return false;
   return previousProgress < PIT_ENTRY_PROGRESS && currentProgress >= PIT_ENTRY_PROGRESS;
 }
 
@@ -62,8 +62,8 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
   }
 
   // TRACK_LENGTH is a live binding because the circuit can be selected before
-  // race construction. Never cache this at module load or other circuits inherit
-  // Pitwall GP's pit transit time.
+  // race construction. On the miniature layout the shorter transit naturally
+  // keeps total pit loss in the useful single-digit-second range.
   const pitTRate = PIT_SPEED / Math.max(1, PIT_SPAN * TRACK_LENGTH);
   const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= PIT_BOX_T) {
@@ -93,8 +93,8 @@ export function pitLanePose(tInput: number): PitLanePose {
 
 export function pitLaneOffset(tInput: number): number {
   const t = clamp01(tInput);
-  const minOffset = 24;
-  const maxOffset = 94;
+  const minOffset = 15;
+  const maxOffset = 42;
   const inRamp = smoothstep(clamp01(t / 0.2));
   const outRamp = smoothstep(clamp01((1 - t) / 0.22));
   return minOffset + (maxOffset - minOffset) * Math.min(inRamp, outRamp);
