@@ -5,19 +5,17 @@ export interface GridSlot {
   laneOffset: number;
 }
 
-// Start/finish is progress 0. P1 starts closest to the line and rows are
-// staggered by side. PLAYER_GRID remains the legacy P8 fallback so older tests
-// and direct race launches keep their previous behaviour when no qualifying
-// order is supplied.
+// The miniature lap is much shorter, so progress gaps must be larger to keep
+// physical grid rows separated by roughly two car lengths.
 const GRID_SLOTS: readonly GridSlot[] = [
-  { progress: 0.996, laneOffset: -8 },
-  { progress: 0.996, laneOffset: 8 },
-  { progress: 0.990, laneOffset: -8 },
-  { progress: 0.990, laneOffset: 8 },
-  { progress: 0.984, laneOffset: -8 },
-  { progress: 0.984, laneOffset: 8 },
-  { progress: 0.978, laneOffset: -8 },
-  { progress: 0.9774, laneOffset: 8 },
+  { progress: 0.994, laneOffset: -6 },
+  { progress: 0.994, laneOffset: 6 },
+  { progress: 0.984, laneOffset: -6 },
+  { progress: 0.984, laneOffset: 6 },
+  { progress: 0.974, laneOffset: -6 },
+  { progress: 0.974, laneOffset: 6 },
+  { progress: 0.964, laneOffset: -6 },
+  { progress: 0.9625, laneOffset: 6 },
 ];
 
 export const PLAYER_GRID: GridSlot = GRID_SLOTS[7];
@@ -35,8 +33,8 @@ export function gridPositionFor(id: string, order?: readonly string[]): number |
 
 export function aiGridSlot(index: number): GridSlot {
   return GRID_SLOTS[index] ?? {
-    progress: Math.max(0.94, PLAYER_GRID.progress - 0.006 * Math.max(0, index - 6)),
-    laneOffset: index % 2 === 0 ? -8 : 8,
+    progress: Math.max(0.91, PLAYER_GRID.progress - 0.010 * Math.max(0, index - 6)),
+    laneOffset: index % 2 === 0 ? -6 : 6,
   };
 }
 
