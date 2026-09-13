@@ -19,6 +19,7 @@ import {
   TRACK_BARRIER_HALF_THICKNESS,
   TRACK_BARRIER_OFFSET,
   TRACK_BARRIER_SEGMENT_LENGTH,
+  TRACK_ROAD_HALF_WIDTH,
   hasSafetyBarrier,
 } from './TrackLimitsModel';
 import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
@@ -382,12 +383,22 @@ export class RapierRacePhysics {
   private createSafetyBarriers(): void {
     const perSide = Math.max(96, Math.ceil(TRACK_LENGTH / TRACK_BARRIER_SEGMENT_LENGTH));
     const actualSegmentLength = TRACK_LENGTH / perSide;
+    const roadClearance = TRACK_ROAD_HALF_WIDTH + CAR_COLLIDER_HALF_WIDTH + 3;
 
     for (let i = 0; i < perSide; i++) {
       const progress = (i + 0.5) / perSide;
       for (const side of [-1, 1] as const) {
         if (!hasSafetyBarrier(progress, side)) continue;
         const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
+
+        // Miniaturising the circuit brings unrelated track sections close to
+        // one another. A constant-offset wall can therefore land on top of a
+        // neighbouring piece of asphalt even though it is correctly outside
+        // its own section. Never create a physical wall inside another road's
+        // car-clear envelope. Grass still supplies the shortcut penalty there.
+        const nearestTrack = projectTrack(pose.x, pose.y);
+        if (nearestTrack.distance < roadClearance) continue;
+
         const body = this.world.createRigidBody(
           RAPIER.RigidBodyDesc.fixed()
             .setTranslation(pose.x, pose.y)
