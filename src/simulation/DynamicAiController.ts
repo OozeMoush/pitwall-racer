@@ -13,6 +13,8 @@ export interface DynamicAiControl {
   battleState: BattleState;
 }
 
+const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
+
 export function dynamicAiControl(
   driver: DriverState,
   vehicle: VehicleState,
@@ -20,6 +22,13 @@ export function dynamicAiControl(
 ): DynamicAiControl {
   const projection = projectTrack(vehicle.x, vehicle.y);
   const profile = trackProfile(projection.progress, driver.skill, driver.tire.grip);
+  const battlePreview = trackProfile(
+    projection.progress + raceScaleDistance(105) / TRACK_LENGTH,
+    driver.skill,
+    driver.tire.grip,
+  );
+  const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
+  const battleSafe = battleSeverity < 0.48 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
 
   let ahead: RaceTrafficCar | undefined;
@@ -53,10 +62,13 @@ export function dynamicAiControl(
     && aheadGap < raceScaleDistance(80)
     && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.0;
   const canAttack = laneBlocked
+    && battleSafe
     && ahead !== undefined
     && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
-  const playerThreat = behind?.isPlayer === true && behindGap < raceScaleDistance(55);
+  const playerThreat = battleSafe
+    && behind?.isPlayer === true
+    && behindGap < raceScaleDistance(55);
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
@@ -73,29 +85,42 @@ export function dynamicAiControl(
     AI_SAFE_LANE_LIMIT,
   );
 
-  // Keep normal corner placement gradual. Deliberate overtakes are allowed a
-  // larger single move so the AI clears a car rather than sitting directly
-  // behind it and braking the whole pack into a queue.
+  // Keep normal corner placement gradual. A deliberate pass is allowed one
+  // clean move only when the geometry ahead is mild enough to support it.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const firstChoice = clamp(ahead.laneOffset + side * 5.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * 5.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    const firstChoice = clamp(ahead.laneOffset + side * 5.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const alternate = clamp(ahead.laneOffset - side * 5.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     const desired = Math.abs(firstChoice - ahead.laneOffset) >= 5.0 ? firstChoice : alternate;
     targetLane = approachLane(projection.laneOffset, desired, 5.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
-    const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-    const desired = clamp(alongside.laneOffset + side * 5.9, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 4.8);
+    if (battleSeverity > 0.58) {
+      // If two cars reach a real corner together, stop asking either car to
+      // weave across the road. Hold its side and finish the corner first.
+      targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    } else {
+      const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
+      const desired = clamp(alongside.laneOffset + side * 5.9, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+      targetLane = approachLane(projection.laneOffset, desired, 4.8);
+    }
   } else if (battleState === 'FOLLOW' && ahead) {
-    const desired = clamp(ahead.laneOffset + stableSide(driver.id) * 0.8, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    // Through corners, follow the track rather than copying a rival's lateral
+    // error. On straights a tiny offset keeps the tow/racecraft readable.
+    const desired = battleSeverity > 0.38
+      ? baseLane
+      : clamp(ahead.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     targetLane = approachLane(projection.laneOffset, desired, 2.0);
   } else if (battleState === 'DEFEND') {
     const inside = Math.abs(profile.signedTurn) > 0.035
       ? Math.sign(profile.signedTurn) * 4.0
       : stableSide(driver.id) * 3.0;
-    targetLane = approachLane(projection.laneOffset, clamp(inside, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT), 2.8);
+    targetLane = approachLane(
+      projection.laneOffset,
+      clamp(inside, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT),
+      2.8,
+    );
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
