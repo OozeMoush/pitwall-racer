@@ -1,7 +1,6 @@
 import {
   DEEP_CUT_DISTANCE,
   FREE_KERB_DISTANCE,
-  FULL_GRASS_DISTANCE,
   TRACK_RUNOFF_HALF_WIDTH,
 } from './TrackLimitsModel';
 
@@ -14,13 +13,13 @@ export interface SurfaceEffect {
 }
 
 const DEEP_KERB_SEVERITY = 0.50;
+const RUNOFF_EDGE_SEVERITY = 0.78;
 
 /**
- * The visible road is deliberately much narrower than the original arcade
- * prototype. One-side kerb use remains free, but once the car centre moves far
- * enough out that the whole car is effectively beyond the white line, the
- * penalty rises quickly. Runoff and grass then make a shortcut slower than
- * staying on the circuit while still allowing a low-speed recovery.
+ * One-side kerb use is free, a four-wheel cut costs time, and grass is now a
+ * decisive high-speed penalty. The grass values are still deliberately speed
+ * dependent through ArcadeCarController, so a nearly stopped car can drive
+ * back to the road instead of getting soft-locked.
  */
 export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
   const distance = Math.max(0, distanceFromLine);
@@ -29,10 +28,12 @@ export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
   if (distance > FREE_KERB_DISTANCE && distance <= DEEP_CUT_DISTANCE) {
     severity = DEEP_KERB_SEVERITY
       * clamp01((distance - FREE_KERB_DISTANCE) / (DEEP_CUT_DISTANCE - FREE_KERB_DISTANCE));
-  } else if (distance > DEEP_CUT_DISTANCE) {
+  } else if (distance > DEEP_CUT_DISTANCE && distance < TRACK_RUNOFF_HALF_WIDTH) {
     severity = DEEP_KERB_SEVERITY
-      + (1 - DEEP_KERB_SEVERITY)
-        * clamp01((distance - DEEP_CUT_DISTANCE) / (FULL_GRASS_DISTANCE - DEEP_CUT_DISTANCE));
+      + (RUNOFF_EDGE_SEVERITY - DEEP_KERB_SEVERITY)
+        * clamp01((distance - DEEP_CUT_DISTANCE) / (TRACK_RUNOFF_HALF_WIDTH - DEEP_CUT_DISTANCE));
+  } else if (distance >= TRACK_RUNOFF_HALF_WIDTH) {
+    severity = 1;
   }
 
   const label: SurfaceEffect['label'] = severity <= 0
@@ -43,9 +44,9 @@ export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
 
   return {
     severity,
-    gripMultiplier: 1 - severity * 0.50,
-    powerMultiplier: 1 - severity * 0.28,
-    rollingResistance: severity * 2.6,
+    gripMultiplier: 1 - severity * 0.55,
+    powerMultiplier: 1 - severity * 0.38,
+    rollingResistance: severity * 4.2,
     label,
   };
 }

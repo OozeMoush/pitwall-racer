@@ -123,6 +123,42 @@ export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { he
 }
 
 export function projectTrack(x: number, y: number): TrackProjection {
+  return projectTrackInternal(x, y);
+}
+
+// On a miniature circuit, two unrelated pieces of track can be only a few car
+// widths apart. Pure nearest-point projection can then snap an off-line AI from
+// its current corner onto the neighbouring section, after which its steering
+// target points at the wrong road and it never recovers. Do not continuously
+// bias every projection, though: that can make a perfectly healthy car cling to
+// an old hairpin segment. First accept the geometric nearest point when its
+// progress is a plausible 120 Hz continuation; invoke the continuity tie-break
+// only when nearest-point projection makes an implausible jump around the lap.
+export function projectTrackNear(
+  x: number,
+  y: number,
+  referenceProgress: number,
+  continuityWeight = 0.85,
+): TrackProjection {
+  const nearest = projectTrackInternal(x, y);
+  const jumpMetres = circularProgressDistance(nearest.progress, referenceProgress) * TRACK_LENGTH;
+  const plausibleStepMetres = Math.max(5.5, raceScaleDistance(13));
+  if (jumpMetres <= plausibleStepMetres) return nearest;
+  return projectTrackInternal(x, y, referenceProgress, continuityWeight);
+}
+
+export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {
+  const projection = projectTrack(x, y);
+  return { progress: projection.progress, distance: projection.distance };
+}
+
+function projectTrackInternal(
+  x: number,
+  y: number,
+  referenceProgress?: number,
+  continuityWeight = 0,
+): TrackProjection {
+  let bestScore = Number.POSITIVE_INFINITY;
   let bestDistance = Number.POSITIVE_INFINITY;
   let bestAlong = 0;
   let bestX = 0;
@@ -138,12 +174,20 @@ export function projectTrack(x: number, y: number): TrackProjection {
     const px = s.a.x + dx * t;
     const py = s.a.y + dy * t;
     const distance = Math.hypot(x - px, y - py);
-    if (distance < bestDistance) {
+    const along = s.start + s.length * t;
+    const progress = along / TRACK_LENGTH;
+    const progressPenalty = referenceProgress === undefined
+      ? 0
+      : circularProgressDistance(progress, referenceProgress) * TRACK_LENGTH * continuityWeight;
+    const score = distance + progressPenalty;
+
+    if (score < bestScore) {
       const heading = Math.atan2(dy, dx);
       const nx = -Math.sin(heading);
       const ny = Math.cos(heading);
+      bestScore = score;
       bestDistance = distance;
-      bestAlong = s.start + s.length * t;
+      bestAlong = along;
       bestX = px;
       bestY = py;
       bestHeading = heading;
@@ -161,9 +205,9 @@ export function projectTrack(x: number, y: number): TrackProjection {
   };
 }
 
-export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {
-  const projection = projectTrack(x, y);
-  return { progress: projection.progress, distance: projection.distance };
+function circularProgressDistance(a: number, b: number): number {
+  const delta = Math.abs((((a - b) % 1) + 1) % 1);
+  return Math.min(delta, 1 - delta);
 }
 
 function rebuildTrack(controls: readonly TrackPoint[]): void {

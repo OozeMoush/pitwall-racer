@@ -21,7 +21,7 @@ describe('surfaceEffect', () => {
     const deepKerb = surfaceEffect(DEEP_CUT_DISTANCE - 0.15);
     expect(deepKerb.label).toBe('RUNOFF');
     expect(deepKerb.severity).toBeGreaterThan(0.35);
-    expect(deepKerb.powerMultiplier).toBeLessThan(0.90);
+    expect(deepKerb.powerMultiplier).toBeLessThan(0.86);
   });
 
   it('keeps the actual asphalt width far below the old 56 metre arcade road', () => {
@@ -29,15 +29,16 @@ describe('surfaceEffect', () => {
     expect(TRACK_ROAD_HALF_WIDTH * 2).toBeGreaterThanOrEqual(28);
   });
 
-  it('progressively slows a car that runs beyond the road edge', () => {
-    const runoff = surfaceEffect(DEEP_CUT_DISTANCE + 3);
-    const grass = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH + 5);
+  it('jumps to a full grass penalty once the car leaves the runoff', () => {
+    const runoff = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH - 0.2);
+    const grass = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH + 0.2);
 
-    expect(runoff.powerMultiplier).toBeLessThan(1);
-    expect(runoff.gripMultiplier).toBeLessThan(1);
-    expect(grass.powerMultiplier).toBeLessThan(runoff.powerMultiplier);
-    expect(grass.rollingResistance).toBeGreaterThan(runoff.rollingResistance);
+    expect(runoff.label).toBe('RUNOFF');
+    expect(runoff.severity).toBeLessThan(1);
     expect(grass.label).toBe('GRASS');
+    expect(grass.severity).toBe(1);
+    expect(grass.gripMultiplier).toBeLessThanOrEqual(0.45);
+    expect(grass.rollingResistance).toBeGreaterThan(4);
   });
 
   it('makes a deep kerb cut lose speed at race pace', () => {
@@ -70,11 +71,11 @@ describe('surfaceEffect', () => {
       1 / 60,
     );
 
-    expect(cut.acceleration).toBeLessThan(clean.acceleration - 2.5);
+    expect(cut.acceleration).toBeLessThan(clean.acceleration - 3.5);
   });
 
-  it('makes full grass lose speed at race pace even with full throttle', () => {
-    const grass = surfaceEffect(120);
+  it('makes full grass dump speed at race pace even with full throttle', () => {
+    const grass = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH + 5);
     const result = controlArcadeCar(
       { vx: 90, vy: 0, heading: 0, angularVelocity: 0 },
       {
@@ -89,11 +90,11 @@ describe('surfaceEffect', () => {
       1 / 60,
     );
 
-    expect(result.acceleration).toBeLessThan(-3);
+    expect(result.acceleration).toBeLessThan(-10);
   });
 
   it('still lets a slowed car accelerate through full grass and drive back', () => {
-    const grass = surfaceEffect(120);
+    const grass = surfaceEffect(TRACK_RUNOFF_HALF_WIDTH + 5);
     const result = controlArcadeCar(
       { vx: 5, vy: 0, heading: 0, angularVelocity: 0 },
       {
@@ -108,6 +109,6 @@ describe('surfaceEffect', () => {
       1 / 60,
     );
 
-    expect(result.acceleration).toBeGreaterThan(0);
+    expect(result.acceleration).toBeGreaterThan(1.5);
   });
 });

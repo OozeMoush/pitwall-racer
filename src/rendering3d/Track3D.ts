@@ -1,26 +1,32 @@
 import * as THREE from 'three';
 import { aiGridSlot, PLAYER_GRID } from '../simulation/GridModel';
 import {
+  TRACK_BARRIER_HALF_THICKNESS,
+  TRACK_BARRIER_OFFSET,
+  TRACK_BARRIER_SEGMENT_LENGTH,
   TRACK_KERB_INNER_OFFSET,
   TRACK_KERB_OUTER_OFFSET,
   TRACK_ROAD_HALF_WIDTH,
   TRACK_RUNOFF_HALF_WIDTH,
+  shouldPlaceSafetyBarrier,
 } from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
-import { sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import { projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
 export const EDGE_LINE_WIDTH_METRES = 0.75;
-export const KERB_SEGMENT_METRES = 12;
-export const BARRIER_SEGMENT_METRES = 24;
-export const SPEED_REFERENCE_SPACING_METRES = 24;
+export const KERB_SEGMENT_METRES = 6;
+export const BARRIER_SEGMENT_METRES = TRACK_BARRIER_SEGMENT_LENGTH;
+export const SPEED_REFERENCE_SPACING_METRES = 12;
 
 const RUNOFF_HALF_WIDTH = TRACK_RUNOFF_HALF_WIDTH;
 const RUBBERED_HALF_WIDTH = 10.5;
 const SAMPLE_COUNT = 460;
 const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
 const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
+// Match RapierRacePhysics: road edge + 2.15 m car half-width + 3 m safety margin.
+const PHYSICAL_BARRIER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
@@ -210,25 +216,38 @@ function addGridBoxes(root: THREE.Group): void {
 }
 
 function addSafetyBarriers(root: THREE.Group): void {
-  const perSide = Math.max(48, Math.ceil(TRACK_LENGTH / BARRIER_SEGMENT_METRES));
-  const worldLength = BARRIER_SEGMENT_METRES * WORLD_SCALE * 0.94;
-  const geometry = new THREE.BoxGeometry(worldLength, 0.50, 0.16);
+  const perSide = Math.max(96, Math.ceil(TRACK_LENGTH / BARRIER_SEGMENT_METRES));
+  const segments: Array<{ progress: number; side: -1 | 1 }> = [];
+  for (let i = 0; i < perSide; i++) {
+    const progress = (i + 0.5) / perSide;
+    const profile = trackProfile(progress);
+    for (const side of [-1, 1] as const) {
+      if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) continue;
+      const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
+      const nearestTrack = projectTrack(pose.x, pose.y);
+      if (nearestTrack.distance < PHYSICAL_BARRIER_ROAD_CLEARANCE) continue;
+      segments.push({ progress, side });
+    }
+  }
+
+  const actualSegmentLength = TRACK_LENGTH / perSide;
+  const worldLength = actualSegmentLength * WORLD_SCALE * 1.05;
+  const worldThickness = TRACK_BARRIER_HALF_THICKNESS * 2 * WORLD_SCALE;
+  const geometry = new THREE.BoxGeometry(worldLength, 0.54, worldThickness);
   const material = new THREE.MeshStandardMaterial({ color: 0xa9afb0, roughness: 0.78, metalness: 0.16 });
-  const barriers = new THREE.InstancedMesh(geometry, material, perSide * 2);
+  const barriers = new THREE.InstancedMesh(geometry, material, segments.length);
   const matrix = new THREE.Matrix4();
   const quaternion = new THREE.Quaternion();
   const yAxis = new THREE.Vector3(0, 1, 0);
-  let index = 0;
-  for (let i = 0; i < perSide; i++) {
-    const progress = (i + 0.5) / perSide;
-    for (const side of [-1, 1] as const) {
-      const p = sampleTrack(progress, side * (RUNOFF_HALF_WIDTH + 3));
-      const world = toWorld(p.x, p.y, 0.25);
-      quaternion.setFromAxisAngle(yAxis, headingToYaw(p.heading));
-      matrix.compose(world, quaternion, new THREE.Vector3(1, 1, 1));
-      barriers.setMatrixAt(index++, matrix);
-    }
-  }
+
+  segments.forEach((segment, index) => {
+    const p = sampleTrack(segment.progress, segment.side * TRACK_BARRIER_OFFSET);
+    const world = toWorld(p.x, p.y, 0.27);
+    quaternion.setFromAxisAngle(yAxis, headingToYaw(p.heading));
+    matrix.compose(world, quaternion, new THREE.Vector3(1, 1, 1));
+    barriers.setMatrixAt(index, matrix);
+  });
+
   barriers.instanceMatrix.needsUpdate = true;
   barriers.castShadow = true;
   barriers.receiveShadow = true;
@@ -240,16 +259,16 @@ function addPitBuildings(root: THREE.Group): void {
   const world = toWorld(start.x, start.y, 0);
   const buildingMat = new THREE.MeshStandardMaterial({ color: 0x252c31, roughness: 0.7, metalness: 0.08 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x78a9b8, roughness: 0.28, metalness: 0.16 });
-  const pit = new THREE.Mesh(new THREE.BoxGeometry(17, 3.4, 4.4), buildingMat);
-  pit.position.set(world.x, 1.7, world.z);
+  const pit = new THREE.Mesh(new THREE.BoxGeometry(13.5, 3.0, 3.7), buildingMat);
+  pit.position.set(world.x, 1.5, world.z);
   pit.rotation.y = headingToYaw(start.heading);
   pit.castShadow = true;
   root.add(pit);
 
-  const glass = new THREE.Mesh(new THREE.BoxGeometry(15.5, 1.0, 0.08), glassMat);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(12.4, 0.9, 0.08), glassMat);
   glass.position.copy(pit.position);
-  glass.position.y = 2.25;
-  glass.position.add(new THREE.Vector3(-Math.sin(start.heading), 0, Math.cos(start.heading)).multiplyScalar(2.22));
+  glass.position.y = 2.0;
+  glass.position.add(new THREE.Vector3(-Math.sin(start.heading), 0, Math.cos(start.heading)).multiplyScalar(1.87));
   glass.rotation.y = pit.rotation.y;
   root.add(glass);
 }
@@ -257,17 +276,17 @@ function addPitBuildings(root: THREE.Group): void {
 function addGrandstands(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0x6c7376, roughness: 0.9 });
   const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x1c2226, roughness: 0.72, metalness: 0.08 });
-  const grandstandOffset = RUNOFF_HALF_WIDTH + 18;
-  for (const [progress, side, length] of [[0.15, -1, 9], [0.47, 1, 11], [0.76, -1, 9]] as Array<[number, number, number]>) {
+  const grandstandOffset = RUNOFF_HALF_WIDTH + 16;
+  for (const [progress, side, length] of [[0.15, -1, 7.2], [0.47, 1, 8.8], [0.76, -1, 7.2]] as Array<[number, number, number]>) {
     const p = sampleTrack(progress, side * grandstandOffset);
     const world = toWorld(p.x, p.y, 0);
-    const stand = new THREE.Mesh(new THREE.BoxGeometry(length, 2.2, 3.4), material);
-    stand.position.set(world.x, 1.1, world.z);
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(length, 1.9, 2.9), material);
+    stand.position.set(world.x, 0.95, world.z);
     stand.rotation.y = headingToYaw(p.heading);
     stand.castShadow = true;
     root.add(stand);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(length + 0.8, 0.18, 4.1), roofMaterial);
-    roof.position.set(world.x, 2.45, world.z);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(length + 0.6, 0.16, 3.45), roofMaterial);
+    roof.position.set(world.x, 2.1, world.z);
     roof.rotation.y = stand.rotation.y;
     root.add(roof);
   }
@@ -279,27 +298,27 @@ function addBrakingBoards(root: THREE.Group): void {
   for (const progress of [0.13, 0.31, 0.49, 0.67, 0.85]) {
     const p = sampleTrack(progress, RUNOFF_HALF_WIDTH + 6);
     const world = toWorld(p.x, p.y, 0);
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.5, 0.14), postMat);
-    post.position.set(world.x, 1.25, world.z);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.0, 0.12), postMat);
+    post.position.set(world.x, 1.0, world.z);
     root.add(post);
-    const board = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.78, 0.12), boardMat);
-    board.position.set(world.x, 2.35, world.z);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.62, 0.10), boardMat);
+    board.position.set(world.x, 1.9, world.z);
     board.rotation.y = headingToYaw(p.heading);
     root.add(board);
   }
 }
 
 function addSpeedReferencePosts(root: THREE.Group): void {
-  const count = Math.max(80, Math.ceil(TRACK_LENGTH / SPEED_REFERENCE_SPACING_METRES));
-  const geometry = new THREE.BoxGeometry(0.18, 0.96, 0.18);
+  const count = Math.max(100, Math.ceil(TRACK_LENGTH / SPEED_REFERENCE_SPACING_METRES));
+  const geometry = new THREE.BoxGeometry(0.15, 0.78, 0.15);
   const material = new THREE.MeshStandardMaterial({ color: 0xd7dcd7, roughness: 0.92 });
   const posts = new THREE.InstancedMesh(geometry, material, count);
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    const p = sampleTrack((i + 0.5) / count, side * (RUNOFF_HALF_WIDTH + 3));
+    const p = sampleTrack((i + 0.5) / count, side * TRACK_BARRIER_OFFSET);
     const world = toWorld(p.x, p.y, 0);
-    matrix.compose(new THREE.Vector3(world.x, 0.48, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+    matrix.compose(new THREE.Vector3(world.x, 0.39, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
     posts.setMatrixAt(i, matrix);
   }
   posts.instanceMatrix.needsUpdate = true;
