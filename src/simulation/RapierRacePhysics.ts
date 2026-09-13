@@ -32,7 +32,34 @@ export const CAR_COLLIDER_HALF_LENGTH = 4.65;
 export const CAR_COLLIDER_HALF_WIDTH = 2.15;
 const CORE_POWER_BASELINE = 0.22;
 
+// Arcade contact policy: the player can still make physical contact with an AI
+// car, and every car collides with the real circuit barriers. AI cars avoid one
+// another through the racecraft controller instead of Rapier impulses. This
+// prevents one small first-lap touch from turning into a seven-car roadblock,
+// while preserving the contacts the player can actually feel and exploit.
+const COLLISION_PLAYER = 0x0001;
+const COLLISION_AI = 0x0002;
+const COLLISION_BARRIER = 0x0004;
+
+function collisionGroups(membership: number, filter: number): number {
+  return (membership << 16) | filter;
+}
+
+const PLAYER_COLLISION_GROUPS = collisionGroups(
+  COLLISION_PLAYER,
+  COLLISION_AI | COLLISION_BARRIER,
+);
+const AI_COLLISION_GROUPS = collisionGroups(
+  COLLISION_AI,
+  COLLISION_PLAYER | COLLISION_BARRIER,
+);
+const BARRIER_COLLISION_GROUPS = collisionGroups(
+  COLLISION_BARRIER,
+  COLLISION_PLAYER | COLLISION_AI,
+);
+
 type PhysicalCarInput = ArcadeCarInput & { tireWear?: number };
+type CarRole = 'PLAYER' | 'AI';
 
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
@@ -58,10 +85,15 @@ export class RapierRacePhysics {
     // intentionally open only around the pit-lane corridor.
     this.createSafetyBarriers();
 
-    this.playerBody = this.createDynamicCar(playerStart.x, playerStart.y, playerStart.heading);
+    this.playerBody = this.createDynamicCar(
+      playerStart.x,
+      playerStart.y,
+      playerStart.heading,
+      'PLAYER',
+    );
     this.aiBodies = ai.map((driver) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
-      return this.createDynamicCar(pose.x, pose.y, pose.heading);
+      return this.createDynamicCar(pose.x, pose.y, pose.heading, 'AI');
     });
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
@@ -364,14 +396,15 @@ export class RapierRacePhysics {
         this.world.createCollider(
           RAPIER.ColliderDesc.cuboid(actualSegmentLength * 0.54, TRACK_BARRIER_HALF_THICKNESS)
             .setFriction(0.06)
-            .setRestitution(0.015),
+            .setRestitution(0.015)
+            .setCollisionGroups(BARRIER_COLLISION_GROUPS),
           body,
         );
       }
     }
   }
 
-  private createDynamicCar(x: number, y: number, heading: number): RAPIER.RigidBody {
+  private createDynamicCar(x: number, y: number, heading: number, role: CarRole): RAPIER.RigidBody {
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(x, y)
       .setRotation(heading)
@@ -384,7 +417,8 @@ export class RapierRacePhysics {
     const collider = RAPIER.ColliderDesc.cuboid(CAR_COLLIDER_HALF_LENGTH, CAR_COLLIDER_HALF_WIDTH)
       .setDensity(0.025)
       .setFriction(0.018)
-      .setRestitution(0);
+      .setRestitution(0)
+      .setCollisionGroups(role === 'PLAYER' ? PLAYER_COLLISION_GROUPS : AI_COLLISION_GROUPS);
     this.world.createCollider(collider, body);
     return body;
   }
