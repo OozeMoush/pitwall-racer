@@ -129,16 +129,21 @@ export function projectTrack(x: number, y: number): TrackProjection {
 // On a miniature circuit, two unrelated pieces of track can be only a few car
 // widths apart. Pure nearest-point projection can then snap an off-line AI from
 // its current corner onto the neighbouring section, after which its steering
-// target points at the wrong road and it never recovers. For cars whose previous
-// progress is known, prefer spatially-near candidates that are also continuous
-// with that progress. The returned distance is still the real geometric track
-// distance, so grass/runoff physics remain honest.
+// target points at the wrong road and it never recovers. Do not continuously
+// bias every projection, though: that can make a perfectly healthy car cling to
+// an old hairpin segment. First accept the geometric nearest point when its
+// progress is a plausible 120 Hz continuation; invoke the continuity tie-break
+// only when nearest-point projection makes an implausible jump around the lap.
 export function projectTrackNear(
   x: number,
   y: number,
   referenceProgress: number,
   continuityWeight = 0.85,
 ): TrackProjection {
+  const nearest = projectTrackInternal(x, y);
+  const jumpMetres = circularProgressDistance(nearest.progress, referenceProgress) * TRACK_LENGTH;
+  const plausibleStepMetres = Math.max(5.5, raceScaleDistance(13));
+  if (jumpMetres <= plausibleStepMetres) return nearest;
   return projectTrackInternal(x, y, referenceProgress, continuityWeight);
 }
 
