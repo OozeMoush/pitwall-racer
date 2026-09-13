@@ -15,6 +15,7 @@ export interface DynamicAiControl {
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 6.2;
+const TRAFFIC_LANE_WIDTH = 8.0;
 
 export function dynamicAiControl(
   driver: DriverState,
@@ -34,8 +35,6 @@ export function dynamicAiControl(
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
-  let behind: RaceTrafficCar | undefined;
-  let behindGap = Number.POSITIVE_INFINITY;
   let alongside: RaceTrafficCar | undefined;
   let alongsideGap = Number.POSITIVE_INFINITY;
   let alongsideDelta = 0;
@@ -46,14 +45,16 @@ export function dynamicAiControl(
     const gap = otherDistance - driverDistance;
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
 
-    if (gap > 0 && gap < aheadGap) {
+    // The old controller picked the first car at the smallest longitudinal
+    // distance even if it was on the opposite grid lane. With two cars on each
+    // row that made every second AI ignore the car directly in front of it and
+    // accelerate into the back of the pack. Only same-lane traffic should be a
+    // longitudinal blocker; the opposite lane is handled by SIDE_BY_SIDE.
+    if (gap > 0 && lateral < TRAFFIC_LANE_WIDTH && gap < aheadGap) {
       ahead = other;
       aheadGap = gap;
     }
-    if (gap < 0 && -gap < behindGap) {
-      behind = other;
-      behindGap = -gap;
-    }
+
     if (Math.abs(gap) < raceScaleDistance(20) && lateral < 13.5 && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
@@ -62,14 +63,18 @@ export function dynamicAiControl(
   }
 
   const laneBlocked = ahead !== undefined
-    && aheadGap < raceScaleDistance(80)
-    && Math.abs(ahead.laneOffset - projection.laneOffset) < 7.0;
+    && aheadGap < raceScaleDistance(80);
   const canAttack = laneBlocked
     && battleSafe
     && ahead !== undefined
     && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
 
+  // Side-by-side is useful on a straight, but carrying an unresolved pair into
+  // a miniature technical corner made both cars miss the track. Before a real
+  // corner the car that is fractionally behind slots in; the leading car keeps
+  // the normal racing line. This creates one readable fight instead of two cars
+  // weaving into the runoff for several corners.
   const cornerPairAhead = alongside !== undefined && !battleSafe && alongsideDelta > 0;
   const cornerPairLeading = alongside !== undefined && !battleSafe && alongsideDelta <= 0;
 
@@ -89,6 +94,8 @@ export function dynamicAiControl(
     AI_SAFE_LANE_LIMIT,
   );
 
+  // Keep normal corner placement gradual. A deliberate pass is allowed one
+  // clean move only when the geometry ahead is mild enough to support it.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -111,15 +118,23 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.0);
     }
   } else if (battleState === 'FOLLOW') {
+    // If a row-mate is still alongside approaching a real corner, keep the
+    // current lane for a moment and create longitudinal separation first. Both
+    // cars converging on the same apex at the same instant was the main source
+    // of first-lap contact chains and grass excursions.
     const reference = cornerPairAhead ? alongside : ahead;
-    const desired = battleSeverity > 0.38 || reference === undefined
-      ? baseLane
-      : clamp(reference.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 2.0);
+    const desired = cornerPairAhead
+      ? clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT)
+      : battleSeverity > 0.38 || reference === undefined
+        ? baseLane
+        : clamp(reference.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    targetLane = approachLane(projection.laneOffset, desired, cornerPairAhead ? 1.0 : 2.0);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
   if (offRoad) {
+    // Once the car has left the usable road there is no reason to preserve a
+    // pretty racing line. Aim decisively at the centre and get back quickly.
     targetLane = 0;
     battleState = 'CLEAR';
   }
@@ -137,44 +152,42 @@ export function dynamicAiControl(
   const steerLimit = offRoad ? 1 : 0.88;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
-  // The lead cars were still arriving at the miniature hairpins with enough
-  // clean-air speed to miss the exit and then block the entire pack. Read the
-  // braking zone farther ahead and make the requested corner speed achievable,
-  // rather than asking Rapier to rescue an already-lost corner.
   const nextProfile = trackProfile(
-    projection.progress + raceScaleDistance(clamp(58 + speed * 0.46, 70, 120)) / TRACK_LENGTH,
+    projection.progress + raceScaleDistance(clamp(48 + speed * 0.40, 60, 104)) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
 
   const usableGrip = clamp((driver.tire.grip - 0.55) / 0.79, 0, 1);
   const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.90;
-  const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.88);
-  const cornerPaceFactor = 1.03 + profile.severity * usableGrip * 0.052;
-  const predictionAllowance = 10 + cornerDemand * (4 + usableGrip * 12);
-  const cornerExecution = 1 + cornerDemand * 0.018;
+  const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.84);
+  const cornerPaceFactor = 1.035 + profile.severity * usableGrip * 0.060;
+  const predictionAllowance = 13 + cornerDemand * (6 + usableGrip * 15);
+  const cornerExecution = 1 + cornerDemand * 0.025;
   let targetSpeed = Math.min(
     profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
-  if (cornerDemand > 0.82) targetSpeed *= 0.86;
-  else if (cornerDemand > 0.68) targetSpeed *= 0.93;
-  else if (cornerDemand > 0.52) targetSpeed *= 0.975;
+  // Tight miniature bends punish one extra km/h much more than the old giant
+  // layout. The AI should finish the corner on asphalt instead of gaining a
+  // theoretical apex speed and donating seconds in runoff afterwards.
+  if (cornerDemand > 0.82) targetSpeed *= 0.92;
+  else if (cornerDemand > 0.68) targetSpeed *= 0.97;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.30) targetSpeed += 6;
+  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
 
   const followReference = cornerPairAhead ? alongside : ahead;
   if (battleState === 'FOLLOW' && followReference) {
     const followGap = cornerPairAhead ? alongsideGap : aheadGap;
-    const desiredGap = raceScaleDistance(cornerPairAhead ? 15 : 22);
-    const buffer = raceScaleDistance(cornerPairAhead ? 8 : 11);
+    const desiredGap = raceScaleDistance(cornerPairAhead ? 18 : 22);
+    const buffer = raceScaleDistance(cornerPairAhead ? 10 : 11);
     if (followGap < desiredGap + buffer) {
-      const closingAllowance = clamp((followGap - desiredGap) * 0.76, -8, 9);
+      const closingAllowance = clamp((followGap - desiredGap) * 0.76, -10, 9);
       targetSpeed = Math.min(targetSpeed, followReference.speed + closingAllowance);
     }
-    if (followGap < raceScaleDistance(11)) {
-      targetSpeed = Math.min(targetSpeed, Math.max(30, followReference.speed - 3));
+    if (followGap < raceScaleDistance(cornerPairAhead ? 16 : 11)) {
+      targetSpeed = Math.min(targetSpeed, Math.max(30, followReference.speed - (cornerPairAhead ? 6 : 3)));
     }
   } else if (laneBlocked && ahead) {
     const desiredGap = raceScaleDistance(22);
@@ -190,8 +203,8 @@ export function dynamicAiControl(
   targetSpeed = clamp(targetSpeed, 26, 132);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.8
-    ? clamp((-speedError - 0.35) / 10.4, 0.20, 1)
+  const brake = speedError < -2.2
+    ? clamp((-speedError - 0.5) / 11.5, 0.18, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
