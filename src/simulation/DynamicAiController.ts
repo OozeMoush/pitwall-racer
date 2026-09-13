@@ -38,6 +38,7 @@ export function dynamicAiControl(
   let behindGap = Number.POSITIVE_INFINITY;
   let alongside: RaceTrafficCar | undefined;
   let alongsideGap = Number.POSITIVE_INFINITY;
+  let alongsideDelta = 0;
 
   for (const other of traffic) {
     if (other.id === driver.id) continue;
@@ -56,6 +57,7 @@ export function dynamicAiControl(
     if (Math.abs(gap) < raceScaleDistance(20) && lateral < 13.5 && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
+      alongsideDelta = gap;
     }
   }
 
@@ -67,15 +69,21 @@ export function dynamicAiControl(
     && ahead !== undefined
     && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
-  const playerThreat = battleSafe
-    && behind?.isPlayer === true
-    && behindGap < raceScaleDistance(55);
+
+  // Side-by-side is useful on a straight, but carrying an unresolved pair into
+  // a miniature technical corner made both cars miss the track. Before a real
+  // corner the car that is fractionally behind slots in; the leading car keeps
+  // the normal racing line. This creates one readable fight instead of two cars
+  // weaving into the runoff for several corners.
+  const cornerPairAhead = alongside !== undefined && !battleSafe && alongsideDelta > 0;
+  const cornerPairLeading = alongside !== undefined && !battleSafe && alongsideDelta <= 0;
 
   let battleState: BattleState = 'CLEAR';
-  if (alongside) battleState = 'SIDE_BY_SIDE';
+  if (alongside && battleSafe) battleState = 'SIDE_BY_SIDE';
+  else if (cornerPairAhead) battleState = 'FOLLOW';
+  else if (cornerPairLeading) battleState = 'CLEAR';
   else if (canAttack) battleState = 'ATTACK';
   else if (laneBlocked && aheadGap < raceScaleDistance(86)) battleState = 'FOLLOW';
-  else if (playerThreat) battleState = 'DEFEND';
 
   const speed = vehicle.speed;
   const lookAheadMetres = raceScaleDistance(clamp(44 + speed * 0.46, 54, 104));
@@ -98,10 +106,7 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, desired, 5.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
-    if (battleSeverity > 0.58 || currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
-      // Cars that already have a safe lane must not be pulled back toward one
-      // another just because the controller calls them SIDE_BY_SIDE. Holding
-      // the existing lane also keeps staggered grid rows stable off the start.
+    if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else {
       const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
@@ -112,22 +117,15 @@ export function dynamicAiControl(
       );
       targetLane = approachLane(projection.laneOffset, desired, 3.0);
     }
-  } else if (battleState === 'FOLLOW' && ahead) {
-    // Through corners, follow the track rather than copying a rival's lateral
-    // error. On straights a tiny offset keeps the tow/racecraft readable.
-    const desired = battleSeverity > 0.38
+  } else if (battleState === 'FOLLOW') {
+    // Through corners, follow the track rather than copying another car's
+    // lateral error. The slight straight-line offset only exists outside the
+    // technical sections where the car has room to breathe.
+    const reference = cornerPairAhead ? alongside : ahead;
+    const desired = battleSeverity > 0.38 || reference === undefined
       ? baseLane
-      : clamp(ahead.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+      : clamp(reference.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     targetLane = approachLane(projection.laneOffset, desired, 2.0);
-  } else if (battleState === 'DEFEND') {
-    const inside = Math.abs(profile.signedTurn) > 0.035
-      ? Math.sign(profile.signedTurn) * 4.0
-      : stableSide(driver.id) * 3.0;
-    targetLane = approachLane(
-      projection.laneOffset,
-      clamp(inside, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT),
-      2.8,
-    );
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
@@ -175,15 +173,28 @@ export function dynamicAiControl(
   else if (cornerDemand > 0.68) targetSpeed *= 0.97;
 
   if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
-  if (laneBlocked && ahead) {
+
+  const followReference = cornerPairAhead ? alongside : ahead;
+  if (battleState === 'FOLLOW' && followReference) {
+    const followGap = cornerPairAhead ? alongsideGap : aheadGap;
+    const desiredGap = raceScaleDistance(cornerPairAhead ? 15 : 22);
+    const buffer = raceScaleDistance(cornerPairAhead ? 8 : 11);
+    if (followGap < desiredGap + buffer) {
+      const closingAllowance = clamp((followGap - desiredGap) * 0.76, -8, 9);
+      targetSpeed = Math.min(targetSpeed, followReference.speed + closingAllowance);
+    }
+    if (followGap < raceScaleDistance(11)) {
+      targetSpeed = Math.min(targetSpeed, Math.max(30, followReference.speed - 3));
+    }
+  } else if (laneBlocked && ahead) {
     const desiredGap = raceScaleDistance(22);
     const buffer = raceScaleDistance(11);
     if (aheadGap < desiredGap + buffer) {
       const closingAllowance = clamp((aheadGap - desiredGap) * 0.76, -8, 9);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < raceScaleDistance(13)) targetSpeed = Math.min(targetSpeed, Math.max(30, ahead.speed - 4));
   }
+
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 52);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 38);
   targetSpeed = clamp(targetSpeed, 26, 132);
