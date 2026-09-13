@@ -9,49 +9,29 @@ export interface TrackProfileSample {
 }
 
 function metresToProgress(metres: number): number {
-  // Distances in the old tuning tables described the full-size source circuit.
-  // Scale them with the miniature geometry so braking/line lookahead still sees
-  // roughly the same part of each corner rather than half the new lap at once.
   return raceScaleDistance(metres) / TRACK_LENGTH;
 }
 
-/**
- * AI pace profile derived from the authoritative spline.
- *
- * Tyres change how aggressively a car can attack a corner, not how much engine
- * power it has on a straight. Fresh Soft rubber brakes later, carries more apex
- * speed and reaches further toward the apex. Hard rubber takes a calmer line
- * but should still arrive at the next braking zone with comparable speed.
- */
 export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfileSample {
   const here = signedHeadingDelta(progress - metresToProgress(22), progress + metresToProgress(22));
   const near = signedHeadingDelta(progress + metresToProgress(34), progress + metresToProgress(98));
   const far = signedHeadingDelta(progress + metresToProgress(98), progress + metresToProgress(190));
 
-  const severity = clamp01(
-    Math.max(
-      Math.abs(here) / 0.31,
-      Math.abs(near) / 0.40 * 0.98,
-      Math.abs(far) / 0.48 * 0.82,
-    ),
-  );
+  const severity = clamp01(Math.max(
+    Math.abs(here) / 0.31,
+    Math.abs(near) / 0.40 * 0.98,
+    Math.abs(far) / 0.48 * 0.82,
+  ));
 
   const safeSkill = clamp(skill, 0.94, 1.24);
   const safeGrip = clamp(grip, 0.38, 1.34);
-
-  // Straight speed intentionally has no compound term. Driver skill can still
-  // create a small pace spread, but S/M/H should not behave like engine modes.
   const straightSpeed = 112 + (safeSkill - 0.94) * 39;
 
-  // The 42% miniature layouts contain genuine ~25 m-radius direction changes.
-  // The old corner floor was inherited from the larger circuit and then
-  // multiplied aggressively by both skill and tyre grip, so a quick Soft-shod
-  // AI could be asked to take a hairpin at 260+ km/h. Real barriers exposed the
-  // result immediately: the car simply arrived at the outside wall. Keep tyre
-  // advantage meaningful, but compress it around a sane arcade apex-speed band.
+  // Keep Medium near the safe miniature-circuit baseline while preserving a
+  // clear S/M/H hierarchy in corners. Straight speed remains compound-neutral.
   const baseCornerFloor = 42 + (safeSkill - 0.94) * 44;
   const cornerGrip = clamp01((safeGrip - 0.55) / 0.79);
-  const cornerGripFactor = 0.86 + cornerGrip * 0.25;
+  const cornerGripFactor = 0.64 + cornerGrip * 0.59;
   const cornerFloor = baseCornerFloor * cornerGripFactor;
   const targetSpeed = clamp(
     straightSpeed - severity * (straightSpeed - cornerFloor),
@@ -69,13 +49,6 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
   return { signedTurn, severity, targetSpeed, apexOffset };
 }
 
-/**
- * Build a continuous outside-apex-outside line. Miniature circuits put corner
- * phases much closer together, so even a continuous local formula can flip its
- * preferred side too quickly when two bends overlap. We therefore calculate
- * the raw line and then apply a short spatial low-pass filter. This is a line
- * shape filter, not live rubber-banding: every driver sees the same geometry.
- */
 export function racingLineOffset(progress: number, grip = 1): number {
   const step = metresToProgress(12);
   const weights = [1, 2, 3, 4, 3, 2, 1] as const;
