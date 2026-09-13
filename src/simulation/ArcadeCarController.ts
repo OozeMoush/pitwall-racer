@@ -138,7 +138,13 @@ export function controlArcadeCar(
   // corners. The result should feel like a fast toy-scale racer, not a sim car
   // squeezed onto a tiny map.
   const speedAuthority = (2.72 / (1 + Math.pow(speed / 51, 1.60)) + 0.070) * 1.42;
-  const lowSpeedBuild = clamp01(speed / 12);
+  const normalLowSpeedBuild = clamp01(speed / 12);
+  // A car stopped against a wall on grass used to have exactly zero steering
+  // authority, so throttle could only push it harder into the barrier. Rough
+  // surfaces now provide a modest arcade recovery floor. Asphalt behavior is
+  // unchanged: a stationary car still cannot pivot in place on the circuit.
+  const roughRecoveryFloor = roughSurface * 0.34;
+  const lowSpeedBuild = Math.max(normalLowSpeedBuild, roughRecoveryFloor);
   const fastCorner = clamp01((speed - 38) / 66);
   const freshHighSpeedAuthority = 0.18
     + Math.pow(steeringGrip, 1.68) * 1.42
