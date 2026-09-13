@@ -23,17 +23,15 @@ const SIDE_BY_SIDE_LATERAL = 7;
 /**
  * Game-facing aero wake shared by player and AI.
  *
- * The effect is intentionally exaggerated enough to read during play:
- * - a car tucked in behind gets a strong straight-line tow;
- * - staying directly in the wake costs obvious cornering grip;
- * - moving laterally sheds dirty air before the tow disappears;
- * - once genuinely alongside, both effects collapse.
+ * Aero is a local physical effect, not a race-classification effect. A lapped
+ * car that is physically 25 m in front should still punch the same hole in the
+ * air as the leader. Therefore longitudinal wake distance is calculated from
+ * wrapped track progress, while lap count is deliberately ignored here.
  */
 export function aerodynamicEffect(
   subject: AeroCarPose,
   traffic: readonly AeroCarPose[],
 ): SharedAeroEffect {
-  const subjectDistance = raceMetres(subject);
   let tow = 0;
   let dirtyAir = 0;
   let sourceId: string | undefined;
@@ -41,7 +39,7 @@ export function aerodynamicEffect(
 
   for (const other of traffic) {
     if (other.id === subject.id) continue;
-    const longitudinal = raceMetres(other) - subjectDistance;
+    const longitudinal = forwardTrackDistance(subject.progress, other.progress);
     if (longitudinal <= MIN_WAKE_DISTANCE || longitudinal > MAX_WAKE_DISTANCE) continue;
 
     const lateral = Math.abs(other.laneOffset - subject.laneOffset);
@@ -65,8 +63,14 @@ export function aerodynamicEffect(
   return { tow, dirtyAir, sourceId };
 }
 
-function raceMetres(car: AeroCarPose): number {
-  return (Math.max(0, car.lap) + car.progress) * TRACK_LENGTH;
+function forwardTrackDistance(fromProgress: number, toProgress: number): number {
+  const from = wrap01(fromProgress);
+  const to = wrap01(toProgress);
+  return wrap01(to - from) * TRACK_LENGTH;
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 function clamp01(value: number): number {
