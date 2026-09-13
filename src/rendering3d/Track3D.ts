@@ -8,10 +8,10 @@ import {
   TRACK_KERB_OUTER_OFFSET,
   TRACK_ROAD_HALF_WIDTH,
   TRACK_RUNOFF_HALF_WIDTH,
-  hasSafetyBarrier,
+  shouldPlaceSafetyBarrier,
 } from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
-import { sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import { projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
@@ -25,6 +25,8 @@ const RUBBERED_HALF_WIDTH = 10.5;
 const SAMPLE_COUNT = 460;
 const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
 const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
+// Match RapierRacePhysics: road edge + 2.15 m car half-width + 3 m safety margin.
+const PHYSICAL_BARRIER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
@@ -218,8 +220,13 @@ function addSafetyBarriers(root: THREE.Group): void {
   const segments: Array<{ progress: number; side: -1 | 1 }> = [];
   for (let i = 0; i < perSide; i++) {
     const progress = (i + 0.5) / perSide;
+    const profile = trackProfile(progress);
     for (const side of [-1, 1] as const) {
-      if (hasSafetyBarrier(progress, side)) segments.push({ progress, side });
+      if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) continue;
+      const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
+      const nearestTrack = projectTrack(pose.x, pose.y);
+      if (nearestTrack.distance < PHYSICAL_BARRIER_ROAD_CLEARANCE) continue;
+      segments.push({ progress, side });
     }
   }
 
