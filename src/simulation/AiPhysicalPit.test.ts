@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { PIT_ENTRY_PROGRESS } from './PitLaneModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
+import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
 import { projectTrack, sampleTrack } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
@@ -49,7 +50,7 @@ describe('physical AI pit stops', () => {
     }
 
     expect(enteredPit).toBe(true);
-    expect(maximumPitOffset).toBeGreaterThan(55);
+    expect(maximumPitOffset).toBeGreaterThan(TRACK_ROAD_HALF_WIDTH * 2);
     expect(completedStop).toBe(true);
     expect(driver.tire.compound).toBe(driver.nextCompound);
     expect(driver.usedCompounds.has(driver.nextCompound)).toBe(true);
