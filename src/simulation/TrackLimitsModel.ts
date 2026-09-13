@@ -16,9 +16,10 @@ export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 
 // The visual barrier used to be scenery only, which made crossing the grass a
-// viable shortcut. Miniature racing needs a real circuit boundary: grass costs
-// speed first, then a physical barrier catches a car that keeps going.
-export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 3;
+// viable shortcut. Grass now starts at the runoff edge and kills speed first;
+// the wall sits a few metres farther out so tight miniature track sections do
+// not accidentally collide with a neighbouring section of circuit.
+export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 7;
 export const TRACK_BARRIER_SEGMENT_LENGTH = 10;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
