@@ -50,6 +50,9 @@ describe('dynamic field playtest telemetry', () => {
     let deepCutSamples = 0;
     const jerkSamples: number[] = [];
     const lastAiSpeeds = ai.map(() => 0);
+    const perAiSpeedSum = ai.map(() => 0);
+    const perAiMaxSpeed = ai.map(() => 0);
+    const perAiDeepCut = ai.map(() => 0);
 
     for (let tick = 0; tick < 30 / DT; tick++) {
       const player = physics.playerState();
@@ -107,6 +110,8 @@ describe('dynamic field playtest telemetry', () => {
       nextAi.forEach((state, index) => {
         maxAiSpeed = Math.max(maxAiSpeed, state.speed);
         aiSpeedSum += state.speed;
+        perAiSpeedSum[index] += state.speed;
+        perAiMaxSpeed[index] = Math.max(perAiMaxSpeed[index], state.speed);
         const jerk = Math.abs(state.speed - lastAiSpeeds[index]) / DT;
         if (tick > 60) {
           aiJerkSum += jerk;
@@ -115,7 +120,10 @@ describe('dynamic field playtest telemetry', () => {
           maxAiJerk = Math.max(maxAiJerk, jerk);
         }
         lastAiSpeeds[index] = state.speed;
-        if (projectTrack(state.x, state.y).distance > DEEP_CUT_DISTANCE) deepCutSamples += 1;
+        if (projectTrack(state.x, state.y).distance > DEEP_CUT_DISTANCE) {
+          deepCutSamples += 1;
+          perAiDeepCut[index] += 1;
+        }
       });
 
       const all = [nextPlayer, ...nextAi];
@@ -133,6 +141,14 @@ describe('dynamic field playtest telemetry', () => {
     const avgPlayerKmh = Math.round((playerSpeedSum / samples) * 3.6);
     const avgAiKmh = Math.round((aiSpeedSum / Math.max(1, samples * ai.length)) * 3.6);
     const estimatedLapSeconds = TRACK_LENGTH / Math.max(1, avgPlayerKmh / 3.6);
+    const perAi = ai.map((driver, index) => ({
+      name: driver.name,
+      avgKmh: Math.round((perAiSpeedSum[index] / Math.max(1, samples)) * 3.6),
+      maxKmh: Math.round(perAiMaxSpeed[index] * 3.6),
+      deepCutRatio: Number((perAiDeepCut[index] / Math.max(1, samples)).toFixed(3)),
+      lap: driver.lap,
+      progress: Number(driver.progress.toFixed(3)),
+    }));
     const metrics = {
       maxPlayerKmh: Math.round(maxPlayerSpeed * 3.6),
       avgPlayerKmh,
@@ -147,13 +163,11 @@ describe('dynamic field playtest telemetry', () => {
       deepCutRatio: Number((deepCutSamples / Math.max(1, samples * ai.length)).toFixed(4)),
       peakViewportHeightsPerSecond: Number((maxPlayerSpeed * WORLD_SCALE / CAMERA_VIEW_HEIGHT).toFixed(3)),
       trackLength: Math.round(TRACK_LENGTH),
+      perAi,
     };
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    // Miniature racing intentionally trades long straight-line Vmax for much
-    // faster lap turnover. Lock the actual product goal, not the obsolete
-    // full-size-track 335+ km/h benchmark.
     expect(metrics.trackLength).toBeGreaterThan(1800);
     expect(metrics.trackLength).toBeLessThan(2400);
     expect(metrics.estimatedLapSeconds).toBeLessThan(42);
@@ -163,8 +177,6 @@ describe('dynamic field playtest telemetry', () => {
     expect(metrics.maxAiKmh).toBeLessThan(400);
     expect(metrics.avgPlayerKmh).toBeGreaterThan(185);
     expect(metrics.avgAiKmh).toBeGreaterThan(195);
-    // The race field should remain competitive without requiring a large
-    // engine advantage over the player reference car.
     expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh - 4);
     expect(metrics.deepCutRatio).toBeLessThan(0.12);
     expect(metrics.peakViewportHeightsPerSecond).toBeGreaterThan(0.75);
