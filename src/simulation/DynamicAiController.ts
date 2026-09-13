@@ -43,7 +43,10 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  const battleSafe = battleSeverity < 0.48 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
+  // Lateral racecraft is a straight / very mild-bend feature. The previous
+  // threshold allowed late passing moves into technical corners, which looked
+  // like random weaving and frequently ended in the runoff.
+  const battleSafe = battleSeverity < 0.34 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
 
   let ahead: RaceTrafficCar | undefined;
@@ -62,12 +65,12 @@ export function dynamicAiControl(
       aheadGap = gap;
     }
 
-    // Cross-lane racecraft is deliberately a straight/mild-corner feature.
-    // Letting two AI cars negotiate lateral priority inside a technical corner
-    // created a feedback loop where they repeatedly yielded to one another and
-    // eventually parked the whole field. In real corners they simply finish
-    // their own smooth racing line; same-lane following still prevents overlap.
-    if (battleSafe
+    // AI-AI side-by-side arbitration was the main source of visible snakes:
+    // both cars kept reacting to one another's tiny lateral corrections. Let
+    // the smooth racing line separate AI cars naturally; reserve explicit
+    // SIDE_BY_SIDE holding for the player, where the interaction is readable.
+    if (other.isPlayer === true
+      && battleSafe
       && Math.abs(gap) < ALONGSIDE_LONGITUDINAL
       && lateral < 13.5
       && Math.abs(gap) < alongsideGap) {
@@ -92,21 +95,21 @@ export function dynamicAiControl(
   const lookAheadMetres = raceScaleDistance(clamp(44 + speed * 0.46, 54, 104));
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const baseLane = clamp(
-    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.04,
+    // A small stable driver bias prevents the entire field from collapsing onto
+    // an identical centreline without requiring reactive left-right weaving.
+    racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.35,
     -AI_SAFE_LANE_LIMIT,
     AI_SAFE_LANE_LIMIT,
   );
 
-  // The normal line changes gradually. Deliberate passing moves only happen in
-  // geometry that has already been classified as safe for wheel-to-wheel play.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.4);
 
   if (battleState === 'ATTACK' && ahead) {
     const side = stableSide(driver.id);
-    const firstChoice = clamp(ahead.laneOffset + side * 5.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * 5.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const desired = Math.abs(firstChoice - ahead.laneOffset) >= 5.0 ? firstChoice : alternate;
-    targetLane = approachLane(projection.laneOffset, desired, 5.2);
+    const firstChoice = clamp(ahead.laneOffset + side * 4.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const alternate = clamp(ahead.laneOffset - side * 4.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const desired = Math.abs(firstChoice - ahead.laneOffset) >= 4.2 ? firstChoice : alternate;
+    targetLane = approachLane(projection.laneOffset, desired, 3.5);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
     if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
@@ -118,13 +121,13 @@ export function dynamicAiControl(
         -BATTLE_LANE_LIMIT,
         BATTLE_LANE_LIMIT,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 3.0);
+      targetLane = approachLane(projection.laneOffset, desired, 2.6);
     }
   } else if (battleState === 'FOLLOW' && ahead) {
-    const desired = battleSeverity > 0.38
+    const desired = battleSeverity > 0.26
       ? baseLane
-      : clamp(ahead.laneOffset + stableSide(driver.id) * 0.8, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    targetLane = approachLane(projection.laneOffset, desired, 2.0);
+      : clamp(ahead.laneOffset + stableSide(driver.id) * 0.55, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    targetLane = approachLane(projection.laneOffset, desired, 1.8);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
@@ -167,7 +170,7 @@ export function dynamicAiControl(
   if (cornerDemand > 0.82) targetSpeed *= 0.92;
   else if (cornerDemand > 0.68) targetSpeed *= 0.97;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
+  if (battleState === 'ATTACK' && profile.severity < 0.26) targetSpeed += 6;
 
   if (laneBlocked && ahead) {
     if (aheadGap < FOLLOW_TARGET_GAP + FOLLOW_BUFFER) {
