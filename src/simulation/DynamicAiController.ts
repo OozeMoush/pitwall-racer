@@ -31,6 +31,7 @@ const FOLLOW_BUFFER = 8.0;
 const EMERGENCY_GAP = 11.5;
 const CORNER_PAIR_TARGET_GAP = 17.5;
 const CORNER_PAIR_BUFFER = 8.5;
+const PAIR_TIE_EPSILON = 0.75;
 
 export function dynamicAiControl(
   driver: DriverState,
@@ -84,12 +85,17 @@ export function dynamicAiControl(
     && aheadGap < ATTACK_RANGE
     && driver.tire.wear < 0.94;
 
-  // Side-by-side is useful on a straight, but carrying an unresolved pair into
-  // a miniature technical corner made both cars miss the track. Before a real
-  // corner the car that is fractionally behind slots in; the leading car keeps
-  // the normal racing line.
-  const cornerPairAhead = alongside !== undefined && !battleSafe && alongsideDelta > 0;
-  const cornerPairLeading = alongside !== undefined && !battleSafe && alongsideDelta <= 0;
+  // Equal-progress row-mates used to both declare themselves the leader and
+  // converge on the same apex. Break ties deterministically so exactly one car
+  // yields before a technical corner while the other is free to take the line.
+  const tiedPair = alongside !== undefined && Math.abs(alongsideDelta) <= PAIR_TIE_EPSILON;
+  const yieldsTie = tiedPair && alongside !== undefined && driver.id.localeCompare(alongside.id) > 0;
+  const cornerPairAhead = alongside !== undefined
+    && !battleSafe
+    && (alongsideDelta > PAIR_TIE_EPSILON || yieldsTie);
+  const cornerPairLeading = alongside !== undefined
+    && !battleSafe
+    && !cornerPairAhead;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside && battleSafe) battleState = 'SIDE_BY_SIDE';
