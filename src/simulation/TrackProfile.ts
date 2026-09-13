@@ -1,5 +1,5 @@
 import { AI_SAFE_LANE_LIMIT } from './TrackLimitsModel';
-import { sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { raceScaleDistance, sampleTrack, TRACK_LENGTH } from './TrackModel';
 
 export interface TrackProfileSample {
   signedTurn: number;
@@ -9,7 +9,10 @@ export interface TrackProfileSample {
 }
 
 function metresToProgress(metres: number): number {
-  return metres / TRACK_LENGTH;
+  // Distances in the old tuning tables described the full-size source circuit.
+  // Scale them with the miniature geometry so braking/line lookahead still sees
+  // roughly the same part of each corner rather than half the new lap at once.
+  return raceScaleDistance(metres) / TRACK_LENGTH;
 }
 
 /**
@@ -53,7 +56,7 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
   const apexReach = 0.74 + lineGrip * 0.34;
   const apexOffset = Math.abs(signedTurn) < 0.03
     ? 0
-    : Math.sign(signedTurn) * Math.min(12.2, (4.4 + severity * 7.0) * apexReach);
+    : Math.sign(signedTurn) * Math.min(AI_SAFE_LANE_LIMIT * 0.95, (3.4 + severity * 5.0) * apexReach);
 
   return { signedTurn, severity, targetSpeed, apexOffset };
 }
@@ -62,7 +65,6 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
  * A real racing line needs more than "aim at the inside". This helper gives the
  * physical AI three readable phases: move to the outside before a corner, clip
  * the inside near the local curvature peak, then use the outside again on exit.
- * The result is intentionally bounded by the car-centre safe lane limit.
  */
 export function racingLineOffset(progress: number, grip = 1): number {
   const localTurn = signedHeadingDelta(progress - metresToProgress(18), progress + metresToProgress(18));
@@ -76,11 +78,11 @@ export function racingLineOffset(progress: number, grip = 1): number {
 
   let offset = 0;
   if (localStrength > 0.24 && Math.abs(localTurn) > 0.025) {
-    offset = Math.sign(localTurn) * (4.6 + localStrength * 6.9) * gripReach;
+    offset = Math.sign(localTurn) * (3.5 + localStrength * 4.8) * gripReach;
   } else if (approachStrength > 0.22 && Math.abs(approachingTurn) > 0.028) {
-    offset = -Math.sign(approachingTurn) * (3.8 + approachStrength * 5.8);
+    offset = -Math.sign(approachingTurn) * (2.9 + approachStrength * 4.1);
   } else if (exitStrength > 0.24 && Math.abs(exitingTurn) > 0.028) {
-    offset = -Math.sign(exitingTurn) * (3.4 + exitStrength * 5.0);
+    offset = -Math.sign(exitingTurn) * (2.6 + exitStrength * 3.7);
   }
 
   return clamp(offset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
