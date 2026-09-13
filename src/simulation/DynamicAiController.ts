@@ -70,11 +70,6 @@ export function dynamicAiControl(
     && aheadGap < raceScaleDistance(70)
     && driver.tire.wear < 0.94;
 
-  // Side-by-side is useful on a straight, but carrying an unresolved pair into
-  // a miniature technical corner made both cars miss the track. Before a real
-  // corner the car that is fractionally behind slots in; the leading car keeps
-  // the normal racing line. This creates one readable fight instead of two cars
-  // weaving into the runoff for several corners.
   const cornerPairAhead = alongside !== undefined && !battleSafe && alongsideDelta > 0;
   const cornerPairLeading = alongside !== undefined && !battleSafe && alongsideDelta <= 0;
 
@@ -94,8 +89,6 @@ export function dynamicAiControl(
     AI_SAFE_LANE_LIMIT,
   );
 
-  // Keep normal corner placement gradual. A deliberate pass is allowed one
-  // clean move only when the geometry ahead is mild enough to support it.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -118,9 +111,6 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.0);
     }
   } else if (battleState === 'FOLLOW') {
-    // Through corners, follow the track rather than copying another car's
-    // lateral error. The slight straight-line offset only exists outside the
-    // technical sections where the car has room to breathe.
     const reference = cornerPairAhead ? alongside : ahead;
     const desired = battleSeverity > 0.38 || reference === undefined
       ? baseLane
@@ -130,8 +120,6 @@ export function dynamicAiControl(
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
   if (offRoad) {
-    // Once the car has left the usable road there is no reason to preserve a
-    // pretty racing line. Aim decisively at the centre and get back quickly.
     targetLane = 0;
     battleState = 'CLEAR';
   }
@@ -149,30 +137,32 @@ export function dynamicAiControl(
   const steerLimit = offRoad ? 1 : 0.88;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
+  // The lead cars were still arriving at the miniature hairpins with enough
+  // clean-air speed to miss the exit and then block the entire pack. Read the
+  // braking zone farther ahead and make the requested corner speed achievable,
+  // rather than asking Rapier to rescue an already-lost corner.
   const nextProfile = trackProfile(
-    projection.progress + raceScaleDistance(clamp(48 + speed * 0.40, 60, 104)) / TRACK_LENGTH,
+    projection.progress + raceScaleDistance(clamp(58 + speed * 0.46, 70, 120)) / TRACK_LENGTH,
     driver.skill,
     driver.tire.grip,
   );
 
   const usableGrip = clamp((driver.tire.grip - 0.55) / 0.79, 0, 1);
   const skillPace = 1.08 + clamp(driver.skill - 1, -0.08, 0.24) * 0.90;
-  const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.84);
-  const cornerPaceFactor = 1.035 + profile.severity * usableGrip * 0.060;
-  const predictionAllowance = 13 + cornerDemand * (6 + usableGrip * 15);
-  const cornerExecution = 1 + cornerDemand * 0.025;
+  const cornerDemand = Math.max(profile.severity, nextProfile.severity * 0.88);
+  const cornerPaceFactor = 1.03 + profile.severity * usableGrip * 0.052;
+  const predictionAllowance = 10 + cornerDemand * (4 + usableGrip * 12);
+  const cornerExecution = 1 + cornerDemand * 0.018;
   let targetSpeed = Math.min(
     profile.targetSpeed * cornerPaceFactor,
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
-  // Tight miniature bends punish one extra km/h much more than the old giant
-  // layout. The AI should finish the corner on asphalt instead of gaining a
-  // theoretical apex speed and donating seconds in runoff afterwards.
-  if (cornerDemand > 0.82) targetSpeed *= 0.92;
-  else if (cornerDemand > 0.68) targetSpeed *= 0.97;
+  if (cornerDemand > 0.82) targetSpeed *= 0.86;
+  else if (cornerDemand > 0.68) targetSpeed *= 0.93;
+  else if (cornerDemand > 0.52) targetSpeed *= 0.975;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 8;
+  if (battleState === 'ATTACK' && profile.severity < 0.30) targetSpeed += 6;
 
   const followReference = cornerPairAhead ? alongside : ahead;
   if (battleState === 'FOLLOW' && followReference) {
@@ -200,8 +190,8 @@ export function dynamicAiControl(
   targetSpeed = clamp(targetSpeed, 26, 132);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -2.2
-    ? clamp((-speedError - 0.5) / 11.5, 0.18, 1)
+  const brake = speedError < -1.8
+    ? clamp((-speedError - 0.35) / 10.4, 0.20, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
