@@ -8,9 +8,9 @@ import {
 } from './Track3D';
 
 describe('track visual scale', () => {
-  it('uses broad continuous-looking kerb blocks instead of tiny confetti pieces', () => {
-    expect(KERB_SEGMENT_METRES).toBeGreaterThanOrEqual(9);
-    expect(KERB_SEGMENT_METRES).toBeLessThanOrEqual(16);
+  it('uses kerb blocks sized for the miniature lap rather than the old full-size circuit', () => {
+    expect(KERB_SEGMENT_METRES).toBeGreaterThanOrEqual(4);
+    expect(KERB_SEGMENT_METRES).toBeLessThanOrEqual(8);
   });
 
   it('keeps edge lines readable at race speed', () => {
@@ -22,8 +22,10 @@ describe('track visual scale', () => {
     expect(ROAD_HALF_WIDTH).toBeLessThanOrEqual(17);
   });
 
-  it('spaces trackside detail far enough apart to avoid high-speed shimmer', () => {
-    expect(SPEED_REFERENCE_SPACING_METRES).toBeGreaterThanOrEqual(20);
-    expect(BARRIER_SEGMENT_METRES).toBeGreaterThanOrEqual(18);
+  it('uses short wall and reference segments that can follow the tighter miniature curves', () => {
+    expect(BARRIER_SEGMENT_METRES).toBeGreaterThanOrEqual(8);
+    expect(BARRIER_SEGMENT_METRES).toBeLessThanOrEqual(13);
+    expect(SPEED_REFERENCE_SPACING_METRES).toBeGreaterThanOrEqual(9);
+    expect(SPEED_REFERENCE_SPACING_METRES).toBeLessThanOrEqual(16);
   });
 });
