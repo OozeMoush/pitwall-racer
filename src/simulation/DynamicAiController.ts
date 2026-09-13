@@ -22,9 +22,6 @@ export function dynamicAiControl(
   vehicle: VehicleState,
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
-  // Miniature layouts can put unrelated pieces of asphalt close together.
-  // Anchor projection to the driver's previous race progress so a small
-  // excursion never makes the controller suddenly chase another road.
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
   const profile = trackProfile(projection.progress, driver.skill, driver.tire.grip);
   const battlePreview = trackProfile(
@@ -52,9 +49,6 @@ export function dynamicAiControl(
       aheadGap = gap;
     }
 
-    // Only the player needs hard side-by-side avoidance. AI-to-AI contact is
-    // already resolved by the racecraft line, and making every AI react to the
-    // lateral motion of every neighbour caused the whole pack to snake.
     if (other.isPlayer === true
       && battleSafe
       && Math.abs(gap) < 12.5
@@ -81,10 +75,6 @@ export function dynamicAiControl(
   else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
   const speed = vehicle.speed;
-  // On the sharpest miniature direction changes a long aim point can already
-  // be on the following corner, which makes the AI cut across the transition.
-  // Pull the aim point closer there while keeping the long, stable lookahead on
-  // straights and sweepers.
   const technicalLookahead = 1 - clamp((profile.severity - 0.66) / 0.34, 0, 1) * 0.24;
   const lookAheadMetres = raceScaleDistance(clamp(38 + speed * 0.44, 48, 96)) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
@@ -94,9 +84,6 @@ export function dynamicAiControl(
     AI_SAFE_LANE_LIMIT,
   );
 
-  // Normal line changes are deliberately gradual. Passing moves are larger,
-  // but only on geometry classified as safe; AI-vs-AI moves are a little
-  // calmer than moves around the player to avoid repeated left/right feints.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.8);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -120,20 +107,18 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.4);
     }
   } else if (battleState === 'FOLLOW') {
-    // Follow the circuit, not the leading car's lateral corrections. This is
-    // the key anti-snake rule: a small wobble must not propagate down the train.
     targetLane = approachLane(projection.laneOffset, baseLane, 2.4);
   }
 
-  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0;
+  // Start recovery as soon as the AI centre drifts just beyond the road edge,
+  // before the collider has become a deep cut. The speed penalty still waits
+  // for a larger excursion, so this is primarily an early steering correction.
+  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.35;
   if (offRoad) {
     targetLane = 0;
     battleState = 'CLEAR';
   }
 
-  // Once outside the road, aim almost directly at a nearby centre-line point.
-  // The previous far lookahead could leave a car running parallel to the grass
-  // or a barrier instead of actually rejoining.
   const steeringProgress = offRoad
     ? projection.progress + raceScaleDistance(24) / TRACK_LENGTH
     : targetProgress;
@@ -167,8 +152,6 @@ export function dynamicAiControl(
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
-  // A tiny lift in the most severe direction changes is faster over a whole
-  // lap than arriving a few km/h too hot, touching grass and needing recovery.
   if (cornerDemand > 0.90) targetSpeed *= 0.95;
   else if (cornerDemand > 0.78) targetSpeed *= 0.98;
 
