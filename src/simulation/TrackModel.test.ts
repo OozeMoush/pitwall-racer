@@ -7,6 +7,7 @@ import {
   TRACKS,
   nearestTrackProgress,
   projectTrack,
+  projectTrackNear,
   sampleTrack,
   setActiveTrack,
 } from './TrackModel';
@@ -55,6 +56,19 @@ describe('TrackModel', () => {
       expect(projected.distance).toBeLessThan(0.001);
       expect(Math.abs(projected.progress - progress)).toBeLessThan(0.002);
     }
+  });
+
+  it('keeps a displaced car on its current branch when nearby track sections overlap spatially', () => {
+    const sourceProgress = 0.56;
+    const point = sampleTrack(sourceProgress, -24);
+    const globalProjection = projectTrack(point.x, point.y);
+    const localProjection = projectTrackNear(point.x, point.y, sourceProgress);
+
+    // The miniature Pitwall GP folds another part of the circuit close enough
+    // that nearest-point projection legitimately finds the wrong branch here.
+    expect(Math.abs(globalProjection.progress - sourceProgress)).toBeGreaterThan(0.01);
+    expect(Math.abs(localProjection.progress - sourceProgress)).toBeLessThan(0.006);
+    expect(localProjection.laneOffset).toBeLessThan(-18);
   });
 
   it('preserves the signed lateral side of a car on the circuit', () => {
