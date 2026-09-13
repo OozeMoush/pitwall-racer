@@ -65,9 +65,6 @@ export function dynamicAiControl(
     }
   }
 
-  // Traffic distances use miniature race scaling, as they did in the stable
-  // pack tuning. The cars themselves are still full collision size, so retain
-  // a physical emergency floor rather than allowing a zero-gap train.
   const laneBlockedRange = Math.max(28, raceScaleDistance(80));
   const attackRange = Math.max(24, raceScaleDistance(70));
   const followRange = Math.max(30, raceScaleDistance(86));
@@ -84,7 +81,12 @@ export function dynamicAiControl(
   else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
   const speed = vehicle.speed;
-  const lookAheadMetres = raceScaleDistance(clamp(38 + speed * 0.44, 48, 96));
+  // On the sharpest miniature direction changes a long aim point can already
+  // be on the following corner, which makes the AI cut across the transition.
+  // Pull the aim point closer there while keeping the long, stable lookahead on
+  // straights and sweepers.
+  const technicalLookahead = 1 - clamp((profile.severity - 0.66) / 0.34, 0, 1) * 0.24;
+  const lookAheadMetres = raceScaleDistance(clamp(38 + speed * 0.44, 48, 96)) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const baseLane = clamp(
     racingLineOffset(targetProgress, driver.tire.grip) + driver.preferredLane * 0.06,
@@ -129,17 +131,23 @@ export function dynamicAiControl(
     battleState = 'CLEAR';
   }
 
-  const target = sampleTrack(targetProgress, targetLane);
+  // Once outside the road, aim almost directly at a nearby centre-line point.
+  // The previous far lookahead could leave a car running parallel to the grass
+  // or a barrier instead of actually rejoining.
+  const steeringProgress = offRoad
+    ? projection.progress + raceScaleDistance(24) / TRACK_LENGTH
+    : targetProgress;
+  const target = sampleTrack(steeringProgress, targetLane);
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
   const lateralError = clamp((targetLane - projection.laneOffset) / 10.0, -1, 1);
-  const recoveryGain = offRoad ? 1.10 : 0.36;
-  const headingGain = offRoad ? 2.85 : 2.72;
-  const yawDamping = offRoad ? 0.28 : 0.46;
+  const recoveryGain = offRoad ? 1.24 : 0.40;
+  const headingGain = offRoad ? 3.22 : 3.06;
+  const yawDamping = offRoad ? 0.24 : 0.38;
   const steerCommand = headingError * headingGain
     + lateralError * recoveryGain
     - vehicle.yawRate * yawDamping;
-  const steerLimit = offRoad ? 1 : 0.92;
+  const steerLimit = offRoad ? 1 : 0.96;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
   const nextProfile = trackProfile(
@@ -159,6 +167,11 @@ export function dynamicAiControl(
     nextProfile.targetSpeed + predictionAllowance,
   ) * skillPace * cornerExecution;
 
+  // A tiny lift in the most severe direction changes is faster over a whole
+  // lap than arriving a few km/h too hot, touching grass and needing recovery.
+  if (cornerDemand > 0.90) targetSpeed *= 0.95;
+  else if (cornerDemand > 0.78) targetSpeed *= 0.98;
+
   if (battleState === 'ATTACK' && profile.severity < 0.36) targetSpeed += 9;
 
   if (laneBlocked && ahead) {
@@ -173,7 +186,7 @@ export function dynamicAiControl(
     }
   }
 
-  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 56);
+  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 62);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 40);
   targetSpeed = clamp(targetSpeed, 28, 132);
 
