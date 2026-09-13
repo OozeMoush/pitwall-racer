@@ -23,7 +23,7 @@ import {
   hasSafetyBarrier,
 } from './TrackLimitsModel';
 import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
-import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { projectTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
 // Match the collision footprint to the rendered car. The old 8.5 x 4.1 half-
@@ -132,7 +132,7 @@ export class RapierRacePhysics {
 
       const control = dynamicAiControl(driver, state, traffic);
       driver.battleState = control.battleState;
-      const projection = projectTrack(state.x, state.y);
+      const projection = projectTrackNear(state.x, state.y, driver.progress);
       const surface = surfaceEffect(projection.distance);
       const aero = aerodynamicEffect(
         {
@@ -299,7 +299,7 @@ export class RapierRacePhysics {
     ai.forEach((driver, index) => {
       const state = states[index];
       if (!state || driver.finished) return;
-      const projection = projectTrack(state.x, state.y);
+      const projection = projectTrackNear(state.x, state.y, driver.progress);
       result.push({
         id: driver.id,
         lap: this.aiLaps[index] ?? driver.lap,
@@ -317,8 +317,8 @@ export class RapierRacePhysics {
       const body = this.aiBodies[index];
       if (!body || driver.finished) return;
       const state = this.bodyState(body);
-      const projection = projectTrack(state.x, state.y);
-      const previous = this.lastAiProgress[index] ?? projection.progress;
+      const previous = this.lastAiProgress[index] ?? driver.progress;
+      const projection = projectTrackNear(state.x, state.y, previous);
 
       if (previous > 0.88 && projection.progress < 0.12) {
         this.aiLaps[index] = (this.aiLaps[index] ?? driver.lap) + 1;
