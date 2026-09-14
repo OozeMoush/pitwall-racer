@@ -43,7 +43,11 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  const battleSafe = battleSeverity < 0.52 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
+  // A passing move belongs on the usable road. If a car reaches the outer edge
+  // of the battle envelope, stop asking it to continue the attack and let the
+  // clean-line controller collect it before grass/off-track recovery is needed.
+  const battleSafe = battleSeverity < 0.52
+    && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
   const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
     ? ALONGSIDE_EXIT_RANGE
@@ -81,7 +85,10 @@ export function dynamicAiControl(
   }
 
   const laneBlockedRange = 38;
-  const attackRange = 36;
+  // Stay in the tow until the cars are genuinely close. Pulling out from 30+
+  // metres made the quicker car drive a much longer route before the pass even
+  // began and erased its pace advantage.
+  const attackRange = 14;
   const followRange = 44;
   const laneBlocked = ahead !== undefined
     && aheadGap < laneBlockedRange
@@ -111,7 +118,10 @@ export function dynamicAiControl(
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
+  // 1.8 m was safe but visibly lagged behind the optimized line at the large
+  // cross-track transitions. A modest increase reduces that realization loss
+  // without the unstable 5.8 m jump tried in the rejected feed-forward pass.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.3);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -125,8 +135,6 @@ export function dynamicAiControl(
     if (positiveRoom < passOffset * 0.80) desired = negative;
     else if (negativeRoom < passOffset * 0.80) desired = positive;
     else if (Math.abs(relativeLane) > 2.0) {
-      // Once an attacker has pulled out, stay on that side until overlap. A
-      // moving reference line must not make the car reverse its passing move.
       desired = relativeLane > 0 ? positive : negative;
     } else {
       const positiveCost = Math.abs(positive - baseLane);
@@ -160,11 +168,6 @@ export function dynamicAiControl(
   }
 
   const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
-  // Passing cars need a shorter pursuit horizon than a car following the
-  // optimized line. Looking 50+ metres ahead while also moving laterally made
-  // the car cut diagonally across the miniature circuit and briefly reach 30 m
-  // lane offsets. Keep the battle target local without changing clean-lap line
-  // following.
   const steeringLookAheadMetres = battleActive
     ? Math.min(32, lookAheadMetres)
     : lookAheadMetres;
@@ -206,8 +209,8 @@ export function dynamicAiControl(
         + overflowCorrection
       : headingError * 2.15
         + bearingError * 0.82
-        + lateralError * 0.56
-        - vehicle.yawRate * 0.36;
+        + lateralError * 0.52
+        - vehicle.yawRate * 0.38;
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
@@ -227,26 +230,26 @@ export function dynamicAiControl(
     }
   }
 
-  if (laneBlocked && ahead) {
+  // FOLLOW cars pace-match in the same lane. An ATTACK car that has committed
+  // to pulling out must be allowed to use its own reference pace; otherwise the
+  // old pace matcher cancels the speed advantage exactly when the pass starts.
+  if (laneBlocked && ahead && battleState !== 'ATTACK') {
     const desiredGap = 8.8;
     const buffer = 4.8;
     if (aheadGap < desiredGap + buffer) {
       const closingAllowance = clamp((aheadGap - desiredGap) * 0.82, -7, 9);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < 6.8) {
-      targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
-    }
+  }
+  // Keep an emergency collision margin even during the first metres of ATTACK.
+  if (laneBlocked && ahead && aheadGap < 6.8) {
+    targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, 26, 136);
 
-  // Use the perfect driver's pedal trace as feed-forward, but gate it by real
-  // speed error. This keeps full acceleration on the optimized exits and starts
-  // braking before an error exists, while refusing to keep braking when the
-  // physical chassis has already fallen below the reference speed.
   const speedError = targetSpeed - speed;
   const overspeed = -speedError;
   const feedbackBrake = overspeed > 0.65
