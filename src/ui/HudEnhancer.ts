@@ -1,10 +1,30 @@
 import { gripPercent } from '../simulation/TireModel';
 
+interface DriverHudMemory {
+  bestLap?: number;
+  compounds: string[];
+}
+
 export function installHudEnhancer(hud: HTMLElement): () => void {
   let scheduled = false;
+  let lastRaceLap = 0;
+  let raceSignature = '';
+  const driverMemory = new Map<string, DriverHudMemory>();
 
   const enhance = () => {
     scheduled = false;
+
+    const raceLabel = hud.querySelector<HTMLElement>('.race-id span')?.textContent ?? '';
+    const raceMatch = raceLabel.match(/LAP\s+(\d+)\/(\d+)\s+·\s+(.+)$/);
+    if (raceMatch) {
+      const currentLap = Number(raceMatch[1]);
+      const signature = `${raceMatch[2]}:${raceMatch[3]}`;
+      if (signature !== raceSignature || (lastRaceLap > 0 && currentLap < lastRaceLap)) {
+        driverMemory.clear();
+        raceSignature = signature;
+      }
+      lastRaceLap = currentLap;
+    }
 
     // Core-race tyre grip is an internal physics coefficient. Present it as a
     // relative percentage where nominal Medium = 100%, so the number reads as
@@ -19,6 +39,78 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
         tyreDetail.dataset.gripNormalized = '1';
         tyreDetail.title = 'Grip relative to nominal Medium tyre = 100%';
       }
+    }
+
+    // Remember each driver's actual stint sequence from the live tyre column,
+    // and derive personal bests from the completed LAST laps already emitted by
+    // CoreRaceGame. This keeps the race UI useful without introducing a second
+    // timing source or fake strategy data.
+    const rows = Array.from(hud.querySelectorAll<HTMLElement>('.tower > span'));
+    for (const row of rows) {
+      const name = row.querySelector<HTMLElement>('strong')?.textContent?.trim();
+      const tyreNode = row.querySelector<HTMLElement>('em');
+      const lastNode = row.querySelector<HTMLElement>('small:not(.tower-best)');
+      if (!name || !tyreNode) continue;
+
+      const memory = driverMemory.get(name) ?? { compounds: [] };
+      const rawTyre = tyreNode.dataset.currentTyre ?? tyreNode.textContent?.trim().charAt(0) ?? '';
+      const currentTyre = /^[SMH]$/.test(rawTyre) ? rawTyre : '';
+      if (currentTyre) {
+        tyreNode.dataset.currentTyre = currentTyre;
+        if (memory.compounds[memory.compounds.length - 1] !== currentTyre) memory.compounds.push(currentTyre);
+        tyreNode.textContent = memory.compounds.join('›');
+        tyreNode.title = `Tyre history: ${memory.compounds.join(' → ')}`;
+      }
+
+      const lastLap = parseLapTime(lastNode?.textContent ?? '');
+      if (lastLap !== undefined && lastLap > 10) {
+        memory.bestLap = memory.bestLap === undefined ? lastLap : Math.min(memory.bestLap, lastLap);
+      }
+      driverMemory.set(name, memory);
+    }
+
+    const towerHead = hud.querySelector<HTMLElement>('.tower-head');
+    if (towerHead) {
+      const headings = Array.from(towerHead.querySelectorAll<HTMLElement>('i'));
+      if (headings[1]) headings[1].textContent = 'TYRES';
+      if (!towerHead.querySelector('.tower-best-head')) {
+        const best = document.createElement('i');
+        best.className = 'tower-best-head';
+        best.textContent = 'BEST';
+        towerHead.appendChild(best);
+      }
+    }
+
+    const bestTimes = [...driverMemory.values()]
+      .map((entry) => entry.bestLap)
+      .filter((value): value is number => value !== undefined && Number.isFinite(value));
+    const sessionBest = bestTimes.length > 0 ? Math.min(...bestTimes) : undefined;
+
+    for (const row of rows) {
+      const name = row.querySelector<HTMLElement>('strong')?.textContent?.trim();
+      if (!name) continue;
+      const memory = driverMemory.get(name);
+      let bestNode = row.querySelector<HTMLElement>('.tower-best');
+      if (!bestNode) {
+        bestNode = document.createElement('small');
+        bestNode.className = 'tower-best';
+        row.appendChild(bestNode);
+      }
+      bestNode.textContent = memory?.bestLap === undefined ? '—' : formatLapTime(memory.bestLap);
+      bestNode.classList.toggle(
+        'timing-purple',
+        memory?.bestLap !== undefined && sessionBest !== undefined && Math.abs(memory.bestLap - sessionBest) < 0.0005,
+      );
+    }
+
+    // Put the player's complete stint sequence next to the live wear status as
+    // well, so the strategy remains readable even when the timing tower is not
+    // the player's focus.
+    const playerHistory = driverMemory.get('YOU')?.compounds;
+    if (tyreDetail && playerHistory && playerHistory.length > 0) {
+      const raw = (tyreDetail.textContent ?? '').replace(/^TYRES\s+[^·]+·\s*/, '');
+      tyreDetail.textContent = `TYRES ${playerHistory.join('›')} · ${raw}`;
+      tyreDetail.title = `Tyre history: ${playerHistory.join(' → ')}`;
     }
 
     // The old NEXT STOP card mixed the selected tyre, request state and key
@@ -96,4 +188,20 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
   observer.observe(hud, { childList: true, subtree: true });
   schedule();
   return () => observer.disconnect();
+}
+
+function parseLapTime(text: string): number | undefined {
+  const value = text.trim();
+  if (!value || value === '—' || value.includes('--')) return undefined;
+  const parts = value.split(':');
+  const seconds = parts.length === 2
+    ? Number(parts[0]) * 60 + Number(parts[1])
+    : Number(parts[0]);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
+function formatLapTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds - minutes * 60;
+  return `${minutes}:${remainder.toFixed(3).padStart(6, '0')}`;
 }
