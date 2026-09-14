@@ -6,7 +6,7 @@ import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 describe('dynamicAiControl', () => {
-  it('moves off line smoothly to attack a slower car without crossing the road', () => {
+  it('uses the tow first, then moves off line smoothly to attack without crossing the road', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
@@ -19,11 +19,18 @@ describe('dynamicAiControl', () => {
       performance: 1,
     };
 
-    const control = dynamicAiControl(driver, vehicle, [ahead]);
-    expect(control.battleState).toBe('ATTACK');
-    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(2.8);
-    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(4.0);
-    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+    const follow = dynamicAiControl(driver, vehicle, [ahead]);
+    expect(follow.battleState).toBe('FOLLOW');
+
+    const closeAhead = {
+      ...ahead,
+      progress: driver.progress + 12 / TRACK_LENGTH,
+    };
+    const attack = dynamicAiControl(driver, vehicle, [closeAhead]);
+    expect(attack.battleState).toBe('ATTACK');
+    expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.8);
+    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(4.0);
+    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
   it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
