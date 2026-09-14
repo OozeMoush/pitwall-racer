@@ -15,13 +15,14 @@ export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 // AI target centres need room for the ~2.15 m half-width physical collider.
 export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 
-// Normal safety wall lives beyond runoff. On very tight inside corners the
-// same constant offset would geometrically fold across the miniature circuit,
-// so use a closer anti-cut wall just beyond the kerb instead of deleting the
-// wall entirely. That preserves a legal kerb attack but makes chicane/infield
-// straight-lining physically impossible without a penalty system.
-export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 7;
-export const TRACK_ANTI_CUT_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 5.2;
+// This game does not use time penalties for cutting, so the legal circuit must
+// be enforced physically. Keep the continuous wall just beyond the kerb rather
+// than at the far edge of the broad visual runoff. The old 34 m offset was also
+// larger than the radius of the miniature hairpins, forcing us to delete inner
+// walls exactly where chicane shortcuts were most valuable. At 22.2 m the wall
+// still leaves roughly one car-width of escape beyond the white line, follows
+// the tight geometry cleanly, and makes straight-lining the infield impossible.
+export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 5.2;
 export const TRACK_BARRIER_SEGMENT_LENGTH = 8;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
@@ -39,28 +40,13 @@ export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
   return !(pitEntryOpening || pitExitOpening);
 }
 
-/**
- * Returns the physical/rendered wall offset for this piece of circuit.
- * undefined means the intentional pit-lane door. Tight inside turns get the
- * closer anti-cut wall; all other sections retain the runoff safety wall.
- */
-export function safetyBarrierOffset(
-  progress: number,
-  side: -1 | 1,
-  signedTurn: number,
-  severity: number,
-): number | undefined {
-  if (!hasSafetyBarrier(progress, side)) return undefined;
-  const inside = Math.abs(signedTurn) > 0.025 && side === Math.sign(signedTurn);
-  if (inside && severity > 0.72) return TRACK_ANTI_CUT_BARRIER_OFFSET;
-  return TRACK_BARRIER_OFFSET;
-}
-
 export function shouldPlaceSafetyBarrier(
   progress: number,
   side: -1 | 1,
-  signedTurn: number,
-  severity: number,
+  _signedTurn: number,
+  _severity: number,
 ): boolean {
-  return safetyBarrierOffset(progress, side, signedTurn, severity) !== undefined;
+  // The closer offset no longer folds over the miniature hairpins, so do not
+  // punch exploitable holes into chicanes. Pit entry/exit are the only gaps.
+  return hasSafetyBarrier(progress, side);
 }
