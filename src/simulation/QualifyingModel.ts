@@ -14,24 +14,17 @@ interface QualifyingTrackProfile {
   spreadSeconds: number;
 }
 
-// Qualifying is calibrated to what the physical AI can actually drive on a
-// clean lap. The old 278/292/260 km/h synthetic targets made the timing screen
-// promise laps that the same drivers could never reproduce once they entered
-// the Rapier race. These are still fixed track targets (no rubber-banding), but
-// now they represent a genuinely quick flying lap rather than an impossible
-// spreadsheet lap.
+// Qualifying should look like a field of F1-level drivers, not a second tier
+// six seconds behind a competent player. These are fixed flying-lap targets;
+// there is still no player-relative rubber-banding. The physical AI regression
+// below keeps the timing sheet honest by requiring the cars to reproduce the
+// same pace on track.
 const TRACK_PROFILE: Record<TrackId, QualifyingTrackProfile> = {
-  'pitwall-gp': { averageKmh: 248, spreadSeconds: 0.42 },
-  'velocity-park': { averageKmh: 258, spreadSeconds: 0.38 },
-  'switchback-ring': { averageKmh: 210, spreadSeconds: 0.46 },
+  'pitwall-gp': { averageKmh: 278, spreadSeconds: 0.28 },
+  'velocity-park': { averageKmh: 286, spreadSeconds: 0.28 },
+  'switchback-ring': { averageKmh: 228, spreadSeconds: 0.34 },
 };
 
-/**
- * A qualifying benchmark is intentionally tougher than an average race lap.
- * It is a flying-lap target, not a hidden rubber-band: the same target is used
- * whether the player is fast or slow. Miniature circuits naturally produce
- * much shorter lap times, so no artificial 30-second floor is imposed.
- */
 export function qualifyingBenchmarkSeconds(trackId: TrackId, trackLengthMetres: number): number {
   const profile = TRACK_PROFILE[trackId];
   return trackLengthMetres / (profile.averageKmh / 3.6);
@@ -45,7 +38,9 @@ export function aiQualifyingTime(
   const profile = TRACK_PROFILE[trackId];
   const benchmark = qualifyingBenchmarkSeconds(trackId, trackLengthMetres);
   const skillReference = 1.127;
-  const skillGain = (driver.skill - skillReference) * 9;
+  // Skill should decide tenths, not create one superhero. Most of the field
+  // difference comes from a stable sub-second identity offset.
+  const skillGain = (driver.skill - skillReference) * 5;
   const identityOffset = stableOffset(driver.id) * profile.spreadSeconds;
   return Math.max(10, benchmark - skillGain + identityOffset);
 }

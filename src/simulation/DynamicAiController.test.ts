@@ -21,11 +21,27 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [ahead]);
     expect(control.battleState).toBe('ATTACK');
-    // A pass should be a deliberate lane move, not a five-metre snap. The
-    // stable side choice then persists instead of propagating a snake through
-    // the whole train.
-    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(2.5);
-    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(5.25);
+    expect(Math.abs(control.targetLane - ahead.laneOffset)).toBeGreaterThanOrEqual(2.8);
+    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(4.0);
+    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+  });
+
+  it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
+    const driver = createAiField()[1];
+    const p = sampleTrack(driver.progress, 5.5);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 76 };
+    const other: RaceTrafficCar = {
+      id: 'ai-rival',
+      lap: driver.lap,
+      progress: driver.progress + 4 / TRACK_LENGTH,
+      speed: 75,
+      laneOffset: -1.0,
+      performance: driver.skill * driver.tire.grip,
+    };
+
+    const control = dynamicAiControl(driver, vehicle, [other]);
+    expect(control.battleState).toBe('SIDE_BY_SIDE');
+    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.0);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
@@ -45,7 +61,7 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, [other]);
     expect(control.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(5.6);
+    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.0);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
