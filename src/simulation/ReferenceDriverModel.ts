@@ -69,9 +69,11 @@ interface EnvelopeResult {
  * Convert the old opaque skill number into an execution percentage of the
  * machine-limit reference. Nobody gets extra power or grip: the difference is
  * how closely the driver follows the same reference braking/line/speed plan.
+ * The best drivers may now reach 100% of the shared reference, but never exceed
+ * it; the back of the field remains close enough to keep the pack compressed.
  */
 export function referenceExecutionForSkill(skill: number): number {
-  return clamp(0.988 + (skill - 1.127) * 0.55, 0.982, 0.995);
+  return clamp(0.992 + (skill - 1.127) * 0.60, 0.985, 1.0);
 }
 
 /**
