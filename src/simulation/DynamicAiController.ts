@@ -24,11 +24,11 @@ const ALONGSIDE_EXIT_RANGE = 11.5;
 /**
  * Physical AI for the race weekend.
  *
- * Clean-air pace is now defined by the generated machine-limit reference lap.
+ * Clean-air pace is defined by the generated machine-limit reference lap.
  * Driver skill is only an execution percentage of that reference; it never
  * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
  * target. Traffic can move the car off the reference line, but once clear it
- * returns to the same line/braking plan a perfect reference driver would use.
+ * returns to the same trajectory a perfect reference driver would use.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -48,6 +48,9 @@ export function dynamicAiControl(
   const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
     ? ALONGSIDE_EXIT_RANGE
     : ALONGSIDE_ENTRY_RANGE;
+  const committedLateralSearch = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE'
+    ? 13.5
+    : AHEAD_SEARCH_LATERAL;
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
@@ -61,16 +64,12 @@ export function dynamicAiControl(
     const gap = otherDistance - driverDistance;
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
 
-    if (gap > 0 && lateral < AHEAD_SEARCH_LATERAL && gap < aheadGap) {
+    if (gap > 0 && lateral < committedLateralSearch && gap < aheadGap) {
       ahead = other;
       aheadGap = gap;
       aheadLateral = lateral;
     }
 
-    // Enter SIDE_BY_SIDE only when the car footprints genuinely overlap, then
-    // keep a small hysteresis window while the pass is being resolved. This
-    // avoids both the old 13.5 m "parallel parade" and rapid ATTACK/SIDE_BY_SIDE
-    // toggling that produced longitudinal jerk.
     if (battleSafe
       && Math.abs(gap) < alongsideRange
       && lateral >= 3.4
@@ -90,7 +89,7 @@ export function dynamicAiControl(
   const canAttack = battleSafe
     && ahead !== undefined
     && aheadGap < attackRange
-    && aheadLateral < AHEAD_SEARCH_LATERAL
+    && aheadLateral < committedLateralSearch
     && driver.tire.wear < 0.94;
 
   let battleState: BattleState = 'CLEAR';
@@ -101,10 +100,15 @@ export function dynamicAiControl(
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
-  const technicalLookahead = 1 - clamp((profile.severity - 0.62) / 0.38, 0, 1) * 0.24;
-  const lookAheadMetres = clamp(34 + speed * 0.52, 46, 94) * technicalLookahead;
+
+  // The old 50-90 m pure-pursuit point cut across the miniature hairpins and
+  // could never reproduce an optimized kerb-to-kerb trajectory. Follow a much
+  // nearer point and use the path tangent separately for heading control.
+  const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
+  const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
+  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
@@ -116,9 +120,6 @@ export function dynamicAiControl(
     const positiveRoom = Math.abs(positive - ahead.laneOffset);
     const negativeRoom = Math.abs(negative - ahead.laneOffset);
 
-    // Prefer the passing side closest to the optimized reference line. The
-    // overtake therefore comes from line choice, tow and execution quality,
-    // never an engine or tyre-grip cheat.
     let desired: number;
     if (positiveRoom < passOffset * 0.80) desired = negative;
     else if (negativeRoom < passOffset * 0.80) desired = positive;
@@ -154,28 +155,34 @@ export function dynamicAiControl(
   }
 
   const steeringProgress = offRoad
-    ? projection.progress + 20 / TRACK_LENGTH
+    ? projection.progress + 18 / TRACK_LENGTH
     : targetProgress;
   const target = sampleTrack(steeringProgress, targetLane);
-  const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
-  const headingError = wrapAngle(targetHeading - vehicle.heading);
-  const lateralError = clamp((targetLane - projection.laneOffset) / 10.5, -1, 1);
-  const recoveryGain = offRoad ? 1.32 : 0.36;
-  const headingGain = offRoad ? 3.30 : 2.94;
-  const yawDamping = offRoad ? 0.26 : 0.46;
-  const steerCommand = headingError * headingGain
-    + lateralError * recoveryGain
-    - vehicle.yawRate * yawDamping;
-  const steerLimit = offRoad ? 1 : 0.96;
-  const steer = clamp(steerCommand, -steerLimit, steerLimit);
+  const tangentProgress = steeringProgress + 8 / TRACK_LENGTH;
+  const tangentLane = offRoad
+    ? 0
+    : battleState === 'CLEAR' || battleState === 'FOLLOW'
+      ? clamp(referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      : targetLane;
+  const tangent = sampleTrack(tangentProgress, tangentLane);
+  const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
+  const bearingHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
+  const headingError = wrapAngle(pathHeading - vehicle.heading);
+  const bearingError = wrapAngle(bearingHeading - vehicle.heading);
+  const referenceLaneNow = offRoad
+    ? 0
+    : battleState === 'CLEAR' || battleState === 'FOLLOW'
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      : targetLane;
+  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
+  const steerCommand = offRoad
+    ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
+    : headingError * 2.15 + bearingError * 0.82 + lateralError * 0.52 - vehicle.yawRate * 0.38;
+  const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
-  const speedReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
 
-  // In a battle the better driver may execute closer to 100% of the same
-  // reference, but nobody is allowed to exceed the machine-limit target. Tow
-  // remains a physical aero effect in RapierRacePhysics rather than a speed
-  // multiplier hidden in the AI controller.
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
   }
@@ -185,16 +192,11 @@ export function dynamicAiControl(
       const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
       targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
     } else if (performanceDelta < -0.002) {
-      // A weaker driver on a compromised side-by-side line gives away a small
-      // execution margin. This remains below the same machine-limit reference.
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
       targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
     }
   }
 
-  // Pace-match only while physically blocked. Once the attacker has moved out
-  // of the leader's lane it returns to its own reference target and can finish
-  // the pass with tow/clean-air physics rather than a scripted speed bonus.
   if (laneBlocked && ahead) {
     const desiredGap = 8.8;
     const buffer = 4.8;
@@ -211,20 +213,33 @@ export function dynamicAiControl(
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, 26, 136);
 
-  // The reference defines *where* and *how fast*. The physical controller still
-  // closes the error against that target instead of blindly replaying a brake
-  // trace computed on an idealised envelope.
+  // Use the perfect driver's pedal trace as feed-forward, but gate it by real
+  // speed error. This keeps full acceleration on the optimized exits and starts
+  // braking before an error exists, while refusing to keep braking when the
+  // physical chassis has already fallen below the reference speed.
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.25
-    ? clamp((-speedError - 0.35) / 9.2, 0.12, 1)
+  const overspeed = -speedError;
+  const feedbackBrake = overspeed > 0.65
+    ? clamp((overspeed - 0.20) / 9.4, 0.05, 1)
     : 0;
-  const throttle = brake > 0.08
-    ? 0
-    : speedError > 2.2
-      ? 1
-      : speedError > 0.18
-        ? clamp(0.52 + speedError / 7.5, 0.52, 1)
-        : 0.24;
+  const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
+  let brake = Math.max(feedbackBrake, speedReference.brake * 0.82 * plannedBrakeWeight);
+
+  let throttle: number;
+  if (brake > 0.06) {
+    throttle = 0;
+  } else if (speedError > 0.45) {
+    throttle = 1;
+  } else if (speedError > -0.55) {
+    throttle = Math.max(speedReference.throttle, clamp(0.60 + speedError * 0.32, 0.48, 1));
+  } else {
+    throttle = speedReference.throttle * clamp(1 + speedError / 3.0, 0, 1);
+  }
+
+  if (offRoad) {
+    brake = Math.max(brake, speed > targetSpeed + 1 ? 0.18 : 0);
+    throttle = brake > 0.08 ? 0 : Math.max(throttle, 0.58);
+  }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
