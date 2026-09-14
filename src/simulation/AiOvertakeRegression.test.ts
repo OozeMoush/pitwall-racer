@@ -64,6 +64,13 @@ describe('physical AI overtaking regression', () => {
       );
     }
 
+    console.log(`OVERTAKE_METRICS ${JSON.stringify({
+      sawAttack,
+      sawSideBySide,
+      maxLateralSeparation: Number(maxLateralSeparation.toFixed(2)),
+      maxTrailerLeadMetres: Number(maxTrailerLeadMetres.toFixed(2)),
+    })}`);
+
     expect(sawAttack).toBe(true);
     expect(sawSideBySide).toBe(true);
     expect(maxLateralSeparation).toBeGreaterThan(5.5);
