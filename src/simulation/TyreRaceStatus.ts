@@ -58,14 +58,23 @@ export function tyreRaceStatus(tire: TireState): TyreRaceStatus {
   };
 }
 
+/**
+ * Keep the driver-facing copy deliberately simple. The previous line exposed
+ * implementation-ish estimates such as PACE -0.1s/LAP, SLIDE HIGH and CLIFF
+ * ~4L all at once. Those values are still useful internally, but on the HUD the
+ * player only needs one clear question answered: are the tyres healthy, worn,
+ * or due for a stop soon?
+ */
 export function formatTyreRaceStatus(status: TyreRaceStatus): string {
-  const pace = status.estimatedPaceLoss < 0.03
-    ? 'PACE ±0.0s'
-    : `PACE -${status.estimatedPaceLoss.toFixed(1)}s/LAP`;
-  const cliff = status.lapsToCliff === undefined
+  if (status.condition === 'CLIFF RISK' || status.lapsToCliff === 0) {
+    return 'PIT SOON · HEAVY WEAR';
+  }
+
+  const remaining = status.lapsToCliff === undefined
     ? ''
-    : status.lapsToCliff <= 0
-      ? ' · CLIFF NOW'
-      : ` · CLIFF ~${status.lapsToCliff}L`;
-  return `${status.condition} · ${pace} · SLIDE ${status.slideRisk}${cliff}`;
+    : ` · ~${status.lapsToCliff} LAPS TO HEAVY WEAR`;
+
+  return status.condition === 'USED'
+    ? `WORN${remaining}`
+    : `TYRE OK${remaining}`;
 }
