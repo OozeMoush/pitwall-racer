@@ -18,6 +18,7 @@ const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
+const ALONGSIDE_LONGITUDINAL_RANGE = 6.5;
 
 /**
  * Physical AI for the race weekend.
@@ -62,8 +63,13 @@ export function dynamicAiControl(
       aheadLateral = lateral;
     }
 
+    // Treat cars as SIDE_BY_SIDE only once their longitudinal footprints are
+    // genuinely overlapping. The old 13.5 m window promoted an attacker to
+    // SIDE_BY_SIDE while it was still a full car length behind, which made two
+    // otherwise quick cars settle into a parallel parade instead of finishing
+    // the pass.
     if (battleSafe
-      && Math.abs(gap) < 13.5
+      && Math.abs(gap) < ALONGSIDE_LONGITUDINAL_RANGE
       && lateral >= 3.4
       && lateral < 11.8
       && Math.abs(gap) < alongsideGap) {
@@ -101,15 +107,26 @@ export function dynamicAiControl(
   let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
 
   if (battleState === 'ATTACK' && ahead) {
-    const side = ahead.laneOffset > 1.2
-      ? -1
-      : ahead.laneOffset < -1.2
-        ? 1
-        : stableSide(driver.id);
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
-    const firstChoice = clamp(ahead.laneOffset + side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const alternate = clamp(ahead.laneOffset - side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const desired = Math.abs(firstChoice - ahead.laneOffset) >= passOffset * 0.80 ? firstChoice : alternate;
+    const positive = clamp(ahead.laneOffset + passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const negative = clamp(ahead.laneOffset - passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    const positiveRoom = Math.abs(positive - ahead.laneOffset);
+    const negativeRoom = Math.abs(negative - ahead.laneOffset);
+
+    // Prefer the passing side that is closest to the optimized reference line.
+    // That makes an overtake a line-choice problem rather than a hidden power
+    // boost, and avoids sending a quicker car onto the expensive side of a
+    // straight simply because of its id hash.
+    let desired: number;
+    if (positiveRoom < passOffset * 0.80) desired = negative;
+    else if (negativeRoom < passOffset * 0.80) desired = positive;
+    else {
+      const positiveCost = Math.abs(positive - baseLane);
+      const negativeCost = Math.abs(negative - baseLane);
+      desired = Math.abs(positiveCost - negativeCost) < 0.25
+        ? (stableSide(driver.id) > 0 ? positive : negative)
+        : positiveCost < negativeCost ? positive : negative;
+    }
     targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
@@ -158,14 +175,19 @@ export function dynamicAiControl(
   // remains a physical aero effect in RapierRacePhysics rather than a speed
   // multiplier hidden in the AI controller.
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.008);
+    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.012);
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
-      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.006);
+      const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
+      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
     } else if (performanceDelta < -0.002) {
-      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - 0.005);
+      // A weaker driver on a compromised side-by-side line gives away a small
+      // execution margin. This is still below the same machine-limit reference;
+      // there is no extra engine power or grip for the quicker car.
+      const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
+      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
     }
   }
 
