@@ -33,7 +33,17 @@ export const REFERENCE_LANE_LIMIT = FREE_KERB_DISTANCE - 2.4;
 const PLAN_SAMPLES = 320;
 const CENTRELINE_SAMPLES_PER_CONTROL = 28;
 const GRIP_BUCKET = 0.025;
+const PHYSICS_STEP_SECONDS = 1 / 120;
+
+// Rapier applies damping after the controller writes each velocity. These are
+// the exact body settings used by RapierRacePhysics.createDynamicCar(). The
+// reference solver must include them or it invents a 423 km/h car that the
+// actual rigid body can never reproduce.
+const RAPIER_LINEAR_DAMPING = 0.018;
+const RAPIER_ANGULAR_DAMPING = 1.05;
+
 const cache = new Map<string, ReferenceLap>();
+const maximumYawCache = new Map<string, number>();
 
 interface Segment {
   a: TrackPoint;
@@ -260,27 +270,41 @@ function solveCornerLimit(curvature: number, tireGrip: number, straightLimit: nu
 }
 
 function maximumReferenceYaw(speed: number, tireGrip: number): number {
+  const cacheKey = `${Math.round(speed * 4)}:${Math.round(tireGrip * 200)}`;
+  const cached = maximumYawCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   const pedalStates = [
     { throttle: 1, brake: 0 },
     { throttle: 0.45, brake: 0 },
     { throttle: 0, brake: 0 },
     { throttle: 0, brake: 0.18 },
   ] as const;
+  const angularDamping = rapierDampingFactor(RAPIER_ANGULAR_DAMPING, PHYSICS_STEP_SECONDS);
   let best = 0;
   for (const state of pedalStates) {
-    const result = controlArcadeCar(
-      { vx: speed, vy: 0, heading: 0, angularVelocity: 0 },
-      {
-        throttle: state.throttle,
-        brake: state.brake,
-        steer: 1,
-        tireGrip,
-        powerBoost: REFERENCE_POWER_BOOST,
-      },
-      10,
-    );
-    best = Math.max(best, Math.abs(result.angularVelocity));
+    let angularVelocity = 0;
+    // Converge the same controller + Rapier damping recurrence used by the
+    // physical rigid body while holding speed constant for a local corner-limit
+    // query. One second is ample for the arcade yaw response to settle.
+    for (let step = 0; step < 120; step++) {
+      const result = controlArcadeCar(
+        { vx: speed, vy: 0, heading: 0, angularVelocity },
+        {
+          throttle: state.throttle,
+          brake: state.brake,
+          steer: 1,
+          tireGrip,
+          powerBoost: REFERENCE_POWER_BOOST,
+        },
+        PHYSICS_STEP_SECONDS,
+      );
+      angularVelocity = result.angularVelocity * angularDamping;
+    }
+    best = Math.max(best, Math.abs(angularVelocity));
   }
+
+  maximumYawCache.set(cacheKey, best);
   return best;
 }
 
@@ -297,7 +321,7 @@ function longitudinalAcceleration(
   brake: number,
   steer: number,
 ): number {
-  return controlArcadeCar(
+  const result = controlArcadeCar(
     { vx: speed, vy: 0, heading: 0, angularVelocity: 0 },
     {
       throttle,
@@ -306,8 +330,20 @@ function longitudinalAcceleration(
       tireGrip,
       powerBoost: REFERENCE_POWER_BOOST,
     },
-    1 / 120,
-  ).acceleration;
+    PHYSICS_STEP_SECONDS,
+  );
+  const controlledSpeed = Math.hypot(result.vx, result.vy);
+  const dampedSpeed = controlledSpeed * rapierDampingFactor(
+    RAPIER_LINEAR_DAMPING,
+    PHYSICS_STEP_SECONDS,
+  );
+  return (dampedSpeed - speed) / PHYSICS_STEP_SECONDS;
+}
+
+function rapierDampingFactor(damping: number, dt: number): number {
+  // Rapier uses an implicit first-order damping step, which stays stable even
+  // for large coefficients: v' = v / (1 + damping * dt).
+  return 1 / (1 + Math.max(0, damping) * Math.max(0, dt));
 }
 
 function buildGeometry(controls: readonly TrackPoint[]): Geometry {
