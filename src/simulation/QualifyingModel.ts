@@ -1,4 +1,6 @@
 import type { DriverState } from './RaceModel';
+import { referenceExecutionForSkill, referenceLap } from './ReferenceDriverModel';
+import { compoundPeakGrip } from './TireModel';
 import type { TrackId } from './TrackModel';
 
 export interface QualifyingEntry {
@@ -9,25 +11,16 @@ export interface QualifyingEntry {
   isPlayer: boolean;
 }
 
-interface QualifyingTrackProfile {
-  averageKmh: number;
-  spreadSeconds: number;
-}
+const QUALIFYING_REFERENCE_GRIP = compoundPeakGrip('SOFT', 'PUSH');
+const IDENTITY_SPREAD_SECONDS = 0.10;
 
-// Qualifying should look like a field of F1-level drivers, not a second tier
-// six seconds behind a competent player. These are fixed flying-lap targets;
-// there is still no player-relative rubber-banding. The physical AI regression
-// below keeps the timing sheet honest by requiring the cars to reproduce the
-// same pace on track.
-const TRACK_PROFILE: Record<TrackId, QualifyingTrackProfile> = {
-  'pitwall-gp': { averageKmh: 278, spreadSeconds: 0.28 },
-  'velocity-park': { averageKmh: 286, spreadSeconds: 0.28 },
-  'switchback-ring': { averageKmh: 228, spreadSeconds: 0.34 },
-};
-
-export function qualifyingBenchmarkSeconds(trackId: TrackId, trackLengthMetres: number): number {
-  const profile = TRACK_PROFILE[trackId];
-  return trackLengthMetres / (profile.averageKmh / 3.6);
+/**
+ * The benchmark is no longer a hand-authored km/h target or a player-derived
+ * lap. It is the machine-limit reference lap generated from circuit geometry
+ * and the same acceleration/braking/steering equations used by the car.
+ */
+export function qualifyingBenchmarkSeconds(trackId: TrackId, _trackLengthMetres: number): number {
+  return referenceLap(trackId, QUALIFYING_REFERENCE_GRIP).lapSeconds;
 }
 
 export function aiQualifyingTime(
@@ -35,14 +28,14 @@ export function aiQualifyingTime(
   trackId: TrackId,
   trackLengthMetres: number,
 ): number {
-  const profile = TRACK_PROFILE[trackId];
-  const benchmark = qualifyingBenchmarkSeconds(trackId, trackLengthMetres);
-  const skillReference = 1.127;
-  // Skill should decide tenths, not create one superhero. Most of the field
-  // difference comes from a stable sub-second identity offset.
-  const skillGain = (driver.skill - skillReference) * 5;
-  const identityOffset = stableOffset(driver.id) * profile.spreadSeconds;
-  return Math.max(10, benchmark - skillGain + identityOffset);
+  const reference = qualifyingBenchmarkSeconds(trackId, trackLengthMetres);
+  const execution = referenceExecutionForSkill(driver.skill);
+  const identityOffset = stableOffset(driver.id) * IDENTITY_SPREAD_SECONDS;
+
+  // 100% is the generated reference. F1-level AI sits in the 98.2-99.5%
+  // execution band, so a human needs a genuinely near-limit lap to beat the
+  // field rather than merely exceeding a manually chosen target.
+  return Math.max(10, reference / execution + identityOffset);
 }
 
 export function qualifyingClassification(

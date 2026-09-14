@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { aiQualifyingTime } from './QualifyingModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
+import { compoundPeakGrip, createTire } from './TireModel';
 import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
@@ -13,8 +14,14 @@ describe('physical AI qualifying consistency', () => {
     await RAPIER.init();
   });
 
-  it('can reproduce its Pitwall GP qualifying pace on a clean physical lap', () => {
+  it('can execute the generated Pitwall reference with the same qualifying tyre state', () => {
     const driver = createAiField()[0];
+    driver.tire = {
+      ...createTire('SOFT'),
+      grip: compoundPeakGrip('SOFT', 'PUSH'),
+      temperature: 103,
+      wear: 0,
+    };
     const start = sampleTrack(driver.progress, driver.laneOffset);
     const remote = sampleTrack(0.5, 260);
     const physics = new RapierRacePhysics(createVehicle(remote.x, remote.y, remote.heading), [driver]);
@@ -43,9 +50,12 @@ describe('physical AI qualifying consistency', () => {
       physicalFlyingLap: Number((flyingLap ?? 0).toFixed(3)),
     })}`);
 
-    // Race physics should tell the same story as the qualifying sheet. Allow a
-    // small race-lap margin, but never an impossible five-to-ten-second promise.
-    expect(flyingLap!).toBeGreaterThan(qualifying - 1.0);
+    // The benchmark is an intentionally perfect machine-limit reference. The
+    // physical AI follows the same line/speed plan through a closed-loop
+    // steering controller, so a small realization loss is legitimate; what we
+    // reject is the old situation where qualifying pace and the real car told
+    // completely different stories.
+    expect(flyingLap!).toBeGreaterThan(qualifying - 0.6);
     expect(flyingLap!).toBeLessThan(qualifying + 3.0);
   }, 20_000);
 });
