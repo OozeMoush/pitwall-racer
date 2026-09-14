@@ -43,9 +43,6 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  // A passing move belongs on the usable road. If a car reaches the outer edge
-  // of the battle envelope, stop asking it to continue the attack and let the
-  // clean-line controller collect it before grass/off-track recovery is needed.
   const battleSafe = battleSeverity < 0.52
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
@@ -61,6 +58,7 @@ export function dynamicAiControl(
   let aheadLateral = Number.POSITIVE_INFINITY;
   let alongside: RaceTrafficCar | undefined;
   let alongsideGap = Number.POSITIVE_INFINITY;
+  let alongsideSignedGap = 0;
 
   for (const other of traffic) {
     if (other.id === driver.id) continue;
@@ -81,14 +79,12 @@ export function dynamicAiControl(
       && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
+      alongsideSignedGap = gap;
     }
   }
 
   const laneBlockedRange = 38;
-  // Stay in the tow until the cars are genuinely close. Pulling out from 30+
-  // metres made the quicker car drive a much longer route before the pass even
-  // began and erased its pace advantage.
-  const attackRange = 14;
+  const attackRange = 16;
   const followRange = 44;
   const laneBlocked = ahead !== undefined
     && aheadGap < laneBlockedRange
@@ -108,9 +104,6 @@ export function dynamicAiControl(
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
 
-  // The old 50-90 m pure-pursuit point cut across the miniature hairpins and
-  // could never reproduce an optimized kerb-to-kerb trajectory. Follow a much
-  // nearer point and use the path tangent separately for heading control.
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
   const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
@@ -118,10 +111,10 @@ export function dynamicAiControl(
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // 1.8 m was safe but visibly lagged behind the optimized line at the large
-  // cross-track transitions. A modest increase reduces that realization loss
-  // without the unstable 5.8 m jump tried in the rejected feed-forward pass.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.3);
+  // Move quickly enough to realize the baked cross-track trajectory, while
+  // remaining far below the unstable jump used in the rejected feed-forward
+  // experiment.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -146,7 +139,14 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
-    if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
+
+    // The car that is still marginally ahead owns its lane. Only the attacker
+    // coming from behind creates extra lateral room. Previously both cars fled
+    // from one another, turning a normal pass into a 15-30 m road split and
+    // wasting the quicker car's longitudinal advantage.
+    if (alongsideSignedGap < -0.75) {
+      targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
+    } else if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else {
       const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
@@ -230,9 +230,6 @@ export function dynamicAiControl(
     }
   }
 
-  // FOLLOW cars pace-match in the same lane. An ATTACK car that has committed
-  // to pulling out must be allowed to use its own reference pace; otherwise the
-  // old pace matcher cancels the speed advantage exactly when the pass starts.
   if (laneBlocked && ahead && battleState !== 'ATTACK') {
     const desiredGap = 8.8;
     const buffer = 4.8;
@@ -241,7 +238,6 @@ export function dynamicAiControl(
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
   }
-  // Keep an emergency collision margin even during the first metres of ATTACK.
   if (laneBlocked && ahead && aheadGap < 6.8) {
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
