@@ -145,21 +145,19 @@ export class RapierRacePhysics {
         traffic,
       );
 
-      // All cars share the same straight-line baseline. Racecraft can earn a
-      // tow, but the dirty wake costs cornering grip until the AI moves out of
-      // line, exactly like the player-facing model. Surface physics and the
-      // wear-event system are shared too, so AI cannot cut or ignore old tyres.
-      const driverExecution = Math.max(0, driver.skill - 1) * 0.20;
-      const attackCommitment = control.battleState === 'ATTACK' ? 0.035 : 0;
-
+      // AI and player now have exactly the same physical chassis baseline.
+      // Driver skill changes only how accurately the controller executes the
+      // reference lap. Tow, dirty air, tyre wear and surface effects are the
+      // same physical modifiers a player receives; there is no skill power or
+      // hidden grip multiplier left here.
       this.driveAi(index, {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * 1.145 * (1 - aero.dirtyAir * 0.36),
+        tireGrip: driver.tire.grip * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
-        powerBoost: CORE_POWER_BASELINE + driverExecution + attackCommitment + aero.tow * 0.22,
+        powerBoost: CORE_POWER_BASELINE + aero.tow * 0.22,
         powerMultiplier: surface.powerMultiplier,
         rollingResistance: surface.rollingResistance,
       }, dt);
@@ -170,7 +168,7 @@ export class RapierRacePhysics {
     const body = this.aiBodies[index];
     if (!body) return;
     const state = this.aiSlideStates[index] ?? createTyreSlideState(index + 1.13);
-    const step = this.driveBody(body, input, dt, 0.92, state);
+    const step = this.driveBody(body, input, dt, 1, state);
     this.aiSlideStates[index] = step.state;
   }
 
@@ -179,7 +177,7 @@ export class RapierRacePhysics {
     this.world.step();
 
     this.limitSpin(this.playerBody, 1.45);
-    for (const body of this.aiBodies) this.limitSpin(body, 1.35);
+    for (const body of this.aiBodies) this.limitSpin(body, 1.45);
     this.syncAiMetadataFromBodies();
   }
 
