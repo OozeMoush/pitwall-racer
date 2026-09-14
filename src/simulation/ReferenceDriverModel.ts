@@ -7,6 +7,8 @@ export interface ReferenceLapSample {
   laneOffset: number;
   targetSpeed: number;
   curvature: number;
+  throttle: number;
+  brake: number;
 }
 
 export interface ReferenceLap {
@@ -130,11 +132,39 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
     lapSeconds += (2 * segmentLengths[i]) / Math.max(8, speeds[i] + speeds[next]);
   }
 
+  // Turn the mathematical envelope into a real perfect-driver control trace.
+  // A speed target alone makes a feedback controller brake after the envelope
+  // has already started falling. Feed-forward throttle/brake tells it what the
+  // ideal lap is doing *now*, while feedback remains available for small errors.
+  const controls = speeds.map((speed, index) => {
+    const next = (index + 1) % PLAN_SAMPLES;
+    const ds = segmentLengths[index];
+    const desiredAcceleration = (speeds[next] * speeds[next] - speed * speed) / (2 * ds);
+    const steer = steeringDemand(speed, curvature[index], bucketedGrip);
+    const coast = longitudinalAcceleration(speed, bucketedGrip, 0, 0, steer);
+
+    if (desiredAcceleration >= coast) {
+      const fullThrottle = longitudinalAcceleration(speed, bucketedGrip, 1, 0, steer);
+      return {
+        throttle: clamp((desiredAcceleration - coast) / Math.max(0.001, fullThrottle - coast), 0, 1),
+        brake: 0,
+      };
+    }
+
+    const fullBrake = longitudinalAcceleration(speed, bucketedGrip, 0, 1, steer);
+    return {
+      throttle: 0,
+      brake: clamp((coast - desiredAcceleration) / Math.max(0.001, coast - fullBrake), 0, 1),
+    };
+  });
+
   const samples: ReferenceLapSample[] = speeds.map((targetSpeed, index) => ({
     progress: index / PLAN_SAMPLES,
     laneOffset: lanes[index],
     targetSpeed,
     curvature: curvature[index],
+    throttle: controls[index].throttle,
+    brake: controls[index].brake,
   }));
 
   const lap: ReferenceLap = {
@@ -166,6 +196,8 @@ export function referenceTarget(
     laneOffset: lerp(a.laneOffset, b.laneOffset, t),
     targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
     curvature: lerp(a.curvature, b.curvature, t),
+    throttle: lerp(a.throttle, b.throttle, t),
+    brake: lerp(a.brake, b.brake, t),
   };
 }
 
