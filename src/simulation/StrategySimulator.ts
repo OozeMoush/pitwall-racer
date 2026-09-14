@@ -1,4 +1,4 @@
-import { pitStopDurationSeconds } from './PitLaneModel';
+import { pitStopTimeLossEstimateSeconds } from './PitLaneModel';
 import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { REPRESENTATIVE_SLIDE_PENALTY_SECONDS, tyreSlideRisk } from './TyrePerformanceModel';
 
@@ -89,10 +89,10 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyRe
     laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });
 
     if (plan.stopAfterLap === lap && plan.nextCompound) {
-      // Strategy tooling must value a stop exactly like the live race. Keeping
-      // this coupled to PitLaneModel prevents future balance passes from making
-      // undercuts look cheap in tests while the actual player loses more time.
-      totalTime += pitStopDurationSeconds();
+      // Strategy tooling must use the live pit model's *net* race-time loss,
+      // not the full duration spent moving through pit lane. The main-route
+      // travel time would have elapsed even if the car stayed out.
+      totalTime += pitStopTimeLossEstimateSeconds();
       tire = createTire(plan.nextCompound);
       usedCompounds.add(plan.nextCompound);
     }
