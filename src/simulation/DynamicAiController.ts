@@ -166,15 +166,18 @@ export function dynamicAiControl(
   let targetSpeed = speedPlan.targetSpeed;
 
   if (battleState === 'ATTACK' && profile.severity < 0.38) targetSpeed += 8;
-  if (battleState === 'SIDE_BY_SIDE' && alongside && profile.severity < 0.42) {
+  if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
-    // Once a genuinely quicker car has earned overlap, let that advantage turn
-    // into forward progress instead of an endless two-wide stalemate. This is a
-    // target-speed/racecraft allowance, not extra engine power; both cars still
-    // use the same power model and braking physics.
-    if (performanceDelta > 0.002) {
-      const passMomentum = clamp(1.6 + performanceDelta * 42, 1.6, 5.5);
+    // A pass should resolve naturally rather than leaving two cars glued side
+    // by side forever. The quicker car gets to keep its overlap momentum on
+    // mild geometry; the clearly slower car yields a small amount once beaten.
+    // This changes throttle/brake targets only—there is no hidden power boost.
+    if (performanceDelta > 0.002 && profile.severity < 0.48) {
+      const passMomentum = clamp(1.8 + performanceDelta * 48, 1.8, 6.0);
       targetSpeed = Math.max(targetSpeed, alongside.speed + passMomentum);
+    } else if (performanceDelta < -0.002) {
+      const yieldAmount = clamp(0.8 + (-performanceDelta) * 26, 0.8, 2.8);
+      targetSpeed = Math.min(targetSpeed, Math.max(30, alongside.speed - yieldAmount));
     }
   }
 
