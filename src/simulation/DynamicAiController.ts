@@ -159,11 +159,21 @@ export function dynamicAiControl(
     battleState = 'CLEAR';
   }
 
+  const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
+  // Passing cars need a shorter pursuit horizon than a car following the
+  // optimized line. Looking 50+ metres ahead while also moving laterally made
+  // the car cut diagonally across the miniature circuit and briefly reach 30 m
+  // lane offsets. Keep the battle target local without changing clean-lap line
+  // following.
+  const steeringLookAheadMetres = battleActive
+    ? Math.min(32, lookAheadMetres)
+    : lookAheadMetres;
   const steeringProgress = offRoad
     ? projection.progress + 18 / TRACK_LENGTH
-    : targetProgress;
+    : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentProgress = steeringProgress + 8 / TRACK_LENGTH;
+  const tangentDistance = battleActive ? 6 : 8;
+  const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
@@ -180,9 +190,24 @@ export function dynamicAiControl(
       ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
+  const battleOverflow = battleActive
+    ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
+    : 0;
+  const overflowCorrection = battleOverflow > 0
+    ? -Math.sign(projection.laneOffset) * battleOverflow * 0.65
+    : 0;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
-    : headingError * 2.15 + bearingError * 0.82 + lateralError * 0.52 - vehicle.yawRate * 0.38;
+    : battleActive
+      ? headingError * 2.10
+        + bearingError * 1.02
+        + lateralError * 0.78
+        - vehicle.yawRate * 0.40
+        + overflowCorrection
+      : headingError * 2.15
+        + bearingError * 0.82
+        + lateralError * 0.56
+        - vehicle.yawRate * 0.36;
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
