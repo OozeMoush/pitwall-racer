@@ -15,7 +15,8 @@ export interface DynamicAiControl {
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
-const TRAFFIC_LANE_WIDTH = 5.4;
+const AHEAD_SEARCH_LATERAL = 10.0;
+const BLOCKING_LANE_WIDTH = 5.4;
 const BRAKING_SAMPLES_METRES = [0, 22, 46, 74, 108, 148, 194] as const;
 
 /**
@@ -45,6 +46,7 @@ export function dynamicAiControl(
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
+  let aheadLateral = Number.POSITIVE_INFINITY;
   let alongside: RaceTrafficCar | undefined;
   let alongsideGap = Number.POSITIVE_INFINITY;
 
@@ -54,9 +56,14 @@ export function dynamicAiControl(
     const gap = otherDistance - driverDistance;
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
 
-    if (gap > 0 && lateral < TRAFFIC_LANE_WIDTH && gap < aheadGap) {
+    // Keep tracking a pass target after the attacker has moved out of the
+    // leader's exact lane. The previous narrow search forgot the target halfway
+    // through a move, pulled the attacker back to the racing line, and rebuilt
+    // the parade over and over.
+    if (gap > 0 && lateral < AHEAD_SEARCH_LATERAL && gap < aheadGap) {
       ahead = other;
       aheadGap = gap;
+      aheadLateral = lateral;
     }
 
     // Side-by-side racecraft applies to every car, not just the player. Once a
@@ -73,13 +80,15 @@ export function dynamicAiControl(
   }
 
   const laneBlockedRange = 38;
-  const attackRange = 34;
+  const attackRange = 36;
   const followRange = 44;
-  const laneBlocked = ahead !== undefined && aheadGap < laneBlockedRange;
-  const canAttack = laneBlocked
-    && battleSafe
+  const laneBlocked = ahead !== undefined
+    && aheadGap < laneBlockedRange
+    && aheadLateral < BLOCKING_LANE_WIDTH;
+  const canAttack = battleSafe
     && ahead !== undefined
     && aheadGap < attackRange
+    && aheadLateral < AHEAD_SEARCH_LATERAL
     && driver.tire.wear < 0.94;
 
   let battleState: BattleState = 'CLEAR';
@@ -162,9 +171,8 @@ export function dynamicAiControl(
     targetSpeed = Math.max(targetSpeed, alongside.speed + performanceEdge);
   }
 
-  // Only match the car ahead while we are genuinely in its lane. As soon as a
-  // pass has enough lateral separation, stop the old pace-lock behaviour and
-  // let both cars race to their own braking/corner target.
+  // Pace-match only while physically blocked. An attacker that has moved clear
+  // laterally keeps its own target speed and can actually complete the pass.
   if (laneBlocked && ahead) {
     const desiredGap = 8.8;
     const buffer = 4.8;
@@ -208,8 +216,8 @@ function professionalSpeedTarget(
   grip: number,
 ): { targetSpeed: number; cornerDemand: number } {
   const usableGrip = clamp((grip - 0.55) / 0.79, 0, 1);
-  const pace = 1.085 + clamp(skill - 1.127, -0.12, 0.14) * 0.30;
-  const brakingDecel = 33.0 + usableGrip * 5.0;
+  const pace = 1.130 + clamp(skill - 1.127, -0.12, 0.14) * 0.28;
+  const brakingDecel = 35.5 + usableGrip * 5.0;
   let targetSpeed = 136;
   let cornerDemand = 0;
 
