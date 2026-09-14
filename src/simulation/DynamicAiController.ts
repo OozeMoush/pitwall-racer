@@ -14,20 +14,18 @@ export interface DynamicAiControl {
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
-const SAFE_SIDE_BY_SIDE_GAP = 7.0;
-const TRAFFIC_LANE_WIDTH = 8.0;
+const SAFE_SIDE_BY_SIDE_GAP = 6.4;
+const TRAFFIC_LANE_WIDTH = 5.4;
 const BRAKING_SAMPLES_METRES = [0, 22, 46, 74, 108, 148, 194] as const;
 
 /**
  * Physical AI for the race weekend.
  *
- * These are supposed to be professional single-seater drivers, so the default
- * behaviour is deliberately boring in the good sense: follow one repeatable
- * racing line, look far enough ahead to brake before the corner, hit the apex,
- * unwind the steering and only leave that line for an actual pass or the
- * player. The miniature circuit is shorter, but 300 km/h still needs real
- * braking distance; steering/braking lookahead therefore uses physical metres
- * and is not multiplied by the miniature layout scale.
+ * These are professional single-seater drivers. A clean lap follows one stable
+ * racing line with a forward braking envelope; traffic may create one decisive
+ * passing move, but it must never turn the field into a scripted queue. All
+ * traffic decisions use the physical Rapier positions rather than abstract
+ * occupancy lanes.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -42,7 +40,7 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  const battleSafe = battleSeverity < 0.48 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
+  const battleSafe = battleSeverity < 0.52 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
 
   let ahead: RaceTrafficCar | undefined;
@@ -61,21 +59,22 @@ export function dynamicAiControl(
       aheadGap = gap;
     }
 
-    // AI cars keep their own racing line rather than mirroring every neighbour.
-    // Only the player requires an explicit hard side-by-side avoidance move.
-    if (other.isPlayer === true
-      && battleSafe
-      && Math.abs(gap) < 13
-      && lateral < 13.5
+    // Side-by-side racecraft applies to every car, not just the player. Once a
+    // passing car has moved out of the leader's wake it must be allowed to stay
+    // alongside and complete the move instead of being pulled back into line.
+    if (battleSafe
+      && Math.abs(gap) < 13.5
+      && lateral >= 3.4
+      && lateral < 11.8
       && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
     }
   }
 
-  const laneBlockedRange = 34;
-  const attackRange = 28;
-  const followRange = 42;
+  const laneBlockedRange = 38;
+  const attackRange = 34;
+  const followRange = 44;
   const laneBlocked = ahead !== undefined && aheadGap < laneBlockedRange;
   const canAttack = laneBlocked
     && battleSafe
@@ -89,26 +88,28 @@ export function dynamicAiControl(
   else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
   const speed = vehicle.speed;
-  const technicalLookahead = 1 - clamp((profile.severity - 0.62) / 0.38, 0, 1) * 0.30;
-  const lookAheadMetres = clamp(34 + speed * 0.52, 46, 92) * technicalLookahead;
+  const technicalLookahead = 1 - clamp((profile.severity - 0.62) / 0.38, 0, 1) * 0.24;
+  const lookAheadMetres = clamp(34 + speed * 0.52, 46, 94) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const baseLane = clamp(
-    racingLineOffset(targetProgress, driver.tire.grip) * 0.88 + driver.preferredLane * 0.025,
+    racingLineOffset(targetProgress, driver.tire.grip) * 0.90 + driver.preferredLane * 0.02,
     -AI_SAFE_LANE_LIMIT,
     AI_SAFE_LANE_LIMIT,
   );
 
-  // No weaving on a clear lap. The requested line moves only a little at a
-  // time; the steering controller then converges to that stable target.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 1.7);
+  let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
 
   if (battleState === 'ATTACK' && ahead) {
-    const side = stableSide(driver.id);
-    const passOffset = ahead.isPlayer === true ? 5.8 : 4.2;
+    const side = ahead.laneOffset > 1.2
+      ? -1
+      : ahead.laneOffset < -1.2
+        ? 1
+        : stableSide(driver.id);
+    const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
     const firstChoice = clamp(ahead.laneOffset + side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     const alternate = clamp(ahead.laneOffset - side * passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    const desired = Math.abs(firstChoice - ahead.laneOffset) >= passOffset * 0.82 ? firstChoice : alternate;
-    targetLane = approachLane(projection.laneOffset, desired, ahead.isPlayer === true ? 3.6 : 2.8);
+    const desired = Math.abs(firstChoice - ahead.laneOffset) >= passOffset * 0.80 ? firstChoice : alternate;
+    targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
     if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
@@ -120,7 +121,7 @@ export function dynamicAiControl(
         -BATTLE_LANE_LIMIT,
         BATTLE_LANE_LIMIT,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 3.0);
+      targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
@@ -139,13 +140,13 @@ export function dynamicAiControl(
   const targetHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(targetHeading - vehicle.heading);
   const lateralError = clamp((targetLane - projection.laneOffset) / 10.5, -1, 1);
-  const recoveryGain = offRoad ? 1.32 : 0.34;
-  const headingGain = offRoad ? 3.30 : 2.88;
-  const yawDamping = offRoad ? 0.26 : 0.48;
+  const recoveryGain = offRoad ? 1.32 : 0.36;
+  const headingGain = offRoad ? 3.30 : 2.94;
+  const yawDamping = offRoad ? 0.26 : 0.46;
   const steerCommand = headingError * headingGain
     + lateralError * recoveryGain
     - vehicle.yawRate * yawDamping;
-  const steerLimit = offRoad ? 1 : 0.94;
+  const steerLimit = offRoad ? 1 : 0.96;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
   const speedPlan = professionalSpeedTarget(
@@ -155,44 +156,51 @@ export function dynamicAiControl(
   );
   let targetSpeed = speedPlan.targetSpeed;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.34) targetSpeed += 7;
+  if (battleState === 'ATTACK' && profile.severity < 0.38) targetSpeed += 8;
+  if (battleState === 'SIDE_BY_SIDE' && alongside && profile.severity < 0.42) {
+    const performanceEdge = clamp((driver.skill * driver.tire.grip - alongside.performance) * 18, -2.5, 3.5);
+    targetSpeed = Math.max(targetSpeed, alongside.speed + performanceEdge);
+  }
 
+  // Only match the car ahead while we are genuinely in its lane. As soon as a
+  // pass has enough lateral separation, stop the old pace-lock behaviour and
+  // let both cars race to their own braking/corner target.
   if (laneBlocked && ahead) {
-    const desiredGap = 10.5;
-    const buffer = 6.0;
+    const desiredGap = 8.8;
+    const buffer = 4.8;
     if (aheadGap < desiredGap + buffer) {
-      const closingAllowance = clamp((aheadGap - desiredGap) * 0.70, -8, 8);
+      const closingAllowance = clamp((aheadGap - desiredGap) * 0.82, -7, 9);
       targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
     }
-    if (aheadGap < 8.5) {
-      targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 4));
+    if (aheadGap < 6.8) {
+      targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
     }
   }
 
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
-  targetSpeed = clamp(targetSpeed, 26, 132);
+  targetSpeed = clamp(targetSpeed, 26, 136);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.4
-    ? clamp((-speedError - 0.4) / 9.5, 0.18, 1)
+  const brake = speedError < -1.7
+    ? clamp((-speedError - 0.5) / 10.5, 0.16, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
-    : speedError > 3.2
+    : speedError > 3.0
       ? 1
-      : speedError > 0.35
-        ? clamp(0.46 + speedError / 8, 0.46, 1)
-        : 0.18;
+      : speedError > 0.25
+        ? clamp(0.48 + speedError / 8, 0.48, 1)
+        : 0.20;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
 
 /**
- * Backwards-looking braking envelope expressed as a forward scan. For every
- * meaningful point ahead, calculate the maximum speed from which the car can
- * still brake to that corner's target. The lowest allowance wins. This is what
- * stops a nominally fast AI from discovering the wall before the brake pedal.
+ * Forward braking envelope for a qualifying-quality lap. For every meaningful
+ * point ahead, calculate the maximum speed from which the car can still brake
+ * to that corner's target. The lowest allowance wins. Skill changes execution
+ * by small amounts; it must never create one super-powered driver.
  */
 function professionalSpeedTarget(
   progress: number,
@@ -200,16 +208,16 @@ function professionalSpeedTarget(
   grip: number,
 ): { targetSpeed: number; cornerDemand: number } {
   const usableGrip = clamp((grip - 0.55) / 0.79, 0, 1);
-  const pace = 1.015 + clamp(skill - 1.10, -0.12, 0.14) * 0.42;
-  const brakingDecel = 27.5 + usableGrip * 5.5;
-  let targetSpeed = 132;
+  const pace = 1.085 + clamp(skill - 1.127, -0.12, 0.14) * 0.30;
+  const brakingDecel = 33.0 + usableGrip * 5.0;
+  let targetSpeed = 136;
   let cornerDemand = 0;
 
   for (const distance of BRAKING_SAMPLES_METRES) {
     const sample = trackProfile(progress + distance / TRACK_LENGTH, skill, grip);
     cornerDemand = Math.max(cornerDemand, sample.severity);
-    const cornerPace = 1.01 + sample.severity * usableGrip * 0.045;
-    const desiredAtSample = clamp(sample.targetSpeed * cornerPace * pace, 26, 128);
+    const cornerPace = 1.015 + sample.severity * usableGrip * 0.055;
+    const desiredAtSample = clamp(sample.targetSpeed * cornerPace * pace, 26, 132);
     const allowedNow = distance <= 0
       ? desiredAtSample
       : Math.sqrt(desiredAtSample * desiredAtSample + 2 * brakingDecel * distance);
