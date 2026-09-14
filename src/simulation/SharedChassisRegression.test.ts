@@ -14,15 +14,19 @@ describe('shared player/AI chassis', () => {
 
   it('produces the same motion for identical inputs instead of giving AI hidden power or grip', () => {
     const driver = createAiField()[0];
-    const pose = sampleTrack(0.18, 0);
-    const start = { ...createVehicle(pose.x, pose.y, pose.heading), speed: 58 };
+    const playerPose = sampleTrack(0.18, -8);
+    const aiPose = sampleTrack(0.18, 8);
+    const playerStart = { ...createVehicle(playerPose.x, playerPose.y, playerPose.heading), speed: 58 };
+    const aiStart = { ...createVehicle(aiPose.x, aiPose.y, aiPose.heading), speed: 58 };
     driver.progress = 0.18;
     driver.lap = 1;
-    driver.laneOffset = 0;
+    driver.laneOffset = 8;
 
-    const physics = new RapierRacePhysics(start, [driver]);
-    physics.setPlayerState(start);
-    physics.setAiState(0, start);
+    // Keep the bodies physically separated so the comparison measures the
+    // chassis response rather than a player/AI contact impulse.
+    const physics = new RapierRacePhysics(playerStart, [driver]);
+    physics.setPlayerState(playerStart);
+    physics.setAiState(0, aiStart);
 
     const input = {
       throttle: 0.72,
@@ -44,9 +48,8 @@ describe('shared player/AI chassis', () => {
 
     const player = physics.playerState();
     const ai = physics.aiStates()[0];
-    expect(ai.speed).toBeCloseTo(player.speed, 5);
-    expect(ai.heading).toBeCloseTo(player.heading, 5);
-    expect(ai.yawRate).toBeCloseTo(player.yawRate, 5);
-    expect(Math.hypot(ai.x - player.x, ai.y - player.y)).toBeLessThan(0.02);
+    expect(Math.abs(ai.speed - player.speed)).toBeLessThan(0.002);
+    expect(Math.abs(ai.heading - player.heading)).toBeLessThan(0.0002);
+    expect(Math.abs(ai.yawRate - player.yawRate)).toBeLessThan(0.0002);
   });
 });
