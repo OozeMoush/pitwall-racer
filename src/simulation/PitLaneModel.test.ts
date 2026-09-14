@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   PIT_BOX_T,
   PIT_ENTRY_PROGRESS,
+  PIT_SERVICE_SECONDS,
+  PIT_SPEED,
   beginPitStop,
   isPitActive,
   pitLaneOffset,
   pitLanePose,
+  pitStopDurationSeconds,
   shouldEnterPit,
   stepPitStop,
 } from './PitLaneModel';
@@ -33,6 +36,13 @@ describe('PitLaneModel', () => {
     for (let i = 0; i < 2000 && state.phase === 'TRANSIT_OUT'; i++) state = stepPitStop(state, 1 / 120);
     expect(state.phase).toBe('DONE');
     expect(state.t).toBe(1);
+  });
+
+  it('makes the miniature pit lane a real but not overwhelming strategy cost', () => {
+    expect(PIT_SPEED).toBeLessThanOrEqual(42);
+    expect(PIT_SERVICE_SECONDS).toBeGreaterThanOrEqual(2.3);
+    expect(pitStopDurationSeconds()).toBeGreaterThan(10);
+    expect(pitStopDurationSeconds()).toBeLessThan(13);
   });
 
   it('moves clearly outside the miniature racing surface and rejoins at the same lap path', () => {

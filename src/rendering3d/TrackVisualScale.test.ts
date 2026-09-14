@@ -23,8 +23,8 @@ describe('track visual scale', () => {
   });
 
   it('uses short wall and reference segments that can follow the tighter miniature curves', () => {
-    expect(BARRIER_SEGMENT_METRES).toBeGreaterThanOrEqual(8);
-    expect(BARRIER_SEGMENT_METRES).toBeLessThanOrEqual(13);
+    expect(BARRIER_SEGMENT_METRES).toBeGreaterThanOrEqual(5);
+    expect(BARRIER_SEGMENT_METRES).toBeLessThanOrEqual(8);
     expect(SPEED_REFERENCE_SPACING_METRES).toBeGreaterThanOrEqual(9);
     expect(SPEED_REFERENCE_SPACING_METRES).toBeLessThanOrEqual(16);
   });

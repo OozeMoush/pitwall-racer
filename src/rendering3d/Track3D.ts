@@ -16,7 +16,7 @@ import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
 export const EDGE_LINE_WIDTH_METRES = 0.75;
-export const KERB_SEGMENT_METRES = 6;
+export const KERB_SEGMENT_METRES = 4;
 export const BARRIER_SEGMENT_METRES = TRACK_BARRIER_SEGMENT_LENGTH;
 export const SPEED_REFERENCE_SPACING_METRES = 12;
 
@@ -25,6 +25,7 @@ const RUBBERED_HALF_WIDTH = 10.5;
 const SAMPLE_COUNT = 460;
 const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
 const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
+const SPEED_REFERENCE_OFFSET = TRACK_BARRIER_OFFSET + 2.4;
 // Match RapierRacePhysics: road edge + 2.15 m car half-width + 3 m safety margin.
 const PHYSICAL_BARRIER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 
@@ -168,10 +169,20 @@ function addCornerKerbs(root: THREE.Group): void {
     const outer = side * KERB_OUTER_OFFSET;
     const vertices = chunk % 2 === 0 ? redVertices : whiteVertices;
     const indices = chunk % 2 === 0 ? redIndices : whiteIndices;
-    appendOffsetStrip(vertices, indices, start, end, inner, outer, 0.082, 3);
+    // Keep kerbs decisively above the asphalt/runoff ribbons. The previous
+    // 0.082 height sat close enough to the edge-line layer to shimmer when the
+    // orthographic camera moved over a tight corner.
+    appendOffsetStrip(vertices, indices, start, end, inner, outer, 0.112, 3);
   }
 
-  const materialOptions = { roughness: 0.74, metalness: 0, side: THREE.DoubleSide } as const;
+  const materialOptions = {
+    roughness: 0.74,
+    metalness: 0,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  } as const;
   if (redVertices.length > 0) {
     const red = new THREE.Mesh(
       finishGeometry(redVertices, redIndices),
@@ -231,7 +242,10 @@ function addSafetyBarriers(root: THREE.Group): void {
   }
 
   const actualSegmentLength = TRACK_LENGTH / perSide;
-  const worldLength = actualSegmentLength * WORLD_SCALE * 1.05;
+  // Short segments now follow the curve closely enough that they do not need
+  // visible overlap. Tiny seams are narrower than the car and avoid the old
+  // stacked-box shimmer at the apex of tight bends.
+  const worldLength = actualSegmentLength * WORLD_SCALE * 0.98;
   const worldThickness = TRACK_BARRIER_HALF_THICKNESS * 2 * WORLD_SCALE;
   const geometry = new THREE.BoxGeometry(worldLength, 0.54, worldThickness);
   const material = new THREE.MeshStandardMaterial({ color: 0xa9afb0, roughness: 0.78, metalness: 0.16 });
@@ -316,7 +330,10 @@ function addSpeedReferencePosts(root: THREE.Group): void {
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    const p = sampleTrack((i + 0.5) / count, side * TRACK_BARRIER_OFFSET);
+    // These reference posts used to share the barrier centreline and visually
+    // poke through the wall. Keep them a little farther out so every roadside
+    // object has its own depth layer.
+    const p = sampleTrack((i + 0.5) / count, side * SPEED_REFERENCE_OFFSET);
     const world = toWorld(p.x, p.y, 0);
     matrix.compose(new THREE.Vector3(world.x, 0.39, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
     posts.setMatrixAt(i, matrix);

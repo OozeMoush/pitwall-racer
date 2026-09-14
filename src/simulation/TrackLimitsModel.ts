@@ -17,14 +17,13 @@ export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 
 // This game does not use time penalties for cutting, so the legal circuit must
 // be enforced physically. Keep the continuous wall just beyond the kerb rather
-// than at the far edge of the broad visual runoff. The old 34 m offset was also
-// larger than the radius of the miniature hairpins, forcing us to delete inner
-// walls exactly where chicane shortcuts were most valuable. At 23.5 m the wall
-// still leaves useful escape space beyond the white line, follows tight geometry
-// without folding across the road, and clears the renderer/physics road-safety
-// filter with margin.
+// than at the far edge of the broad visual runoff. Shorter wall segments matter
+// on the miniature layout: long tangent boxes overlap and poke into the next
+// part of a tight bend, creating invisible snag points. Six-metre pieces track
+// the curve much more closely while still forming an impassable wall for a car
+// wider than the tiny seams between segments.
 export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 6.5;
-export const TRACK_BARRIER_SEGMENT_LENGTH = 8;
+export const TRACK_BARRIER_SEGMENT_LENGTH = 6;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
 // Keep only two door-sized openings around the actual pit entry and exit.

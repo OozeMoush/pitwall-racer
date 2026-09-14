@@ -1,3 +1,4 @@
+import { pitStopTimeLossEstimateSeconds } from './PitLaneModel';
 import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { REPRESENTATIVE_SLIDE_PENALTY_SECONDS, tyreSlideRisk } from './TyrePerformanceModel';
 
@@ -34,7 +35,6 @@ export interface BalanceSnapshot {
 }
 
 const BASE_LAP_SECONDS = 62;
-const PIT_LOSS_SECONDS = 7;
 const REPRESENTATIVE_SECONDS_PER_LAP = 58;
 const DT = 0.5;
 const CORNER_TIME_FRACTION = 0.45;
@@ -89,7 +89,10 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyRe
     laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });
 
     if (plan.stopAfterLap === lap && plan.nextCompound) {
-      totalTime += PIT_LOSS_SECONDS;
+      // Strategy tooling must use the live pit model's *net* race-time loss,
+      // not the full duration spent moving through pit lane. The main-route
+      // travel time would have elapsed even if the car stayed out.
+      totalTime += pitStopTimeLossEstimateSeconds();
       tire = createTire(plan.nextCompound);
       usedCompounds.add(plan.nextCompound);
     }

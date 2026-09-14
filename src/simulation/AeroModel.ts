@@ -20,6 +20,13 @@ const DIRTY_HALF_WIDTH = 11;
 const SIDE_BY_SIDE_LONGITUDINAL = 18;
 const SIDE_BY_SIDE_LATERAL = 7;
 
+// Tow is deliberately stronger than the first racecraft pass. The chassis
+// converts this coefficient into extra power, so 20-30 m behind another car
+// now produces a clearly visible straight-line gain without becoming a magic
+// overtake button. Player and AI consume the same value.
+const TOW_STRENGTH = 0.22;
+const DIRTY_AIR_STRENGTH = 0.28;
+
 /**
  * Game-facing aero wake shared by player and AI.
  *
@@ -48,8 +55,8 @@ export function aerodynamicEffect(
     const longitudinalStrength = clamp01(
       (MAX_WAKE_DISTANCE - longitudinal) / (MAX_WAKE_DISTANCE - MIN_WAKE_DISTANCE),
     );
-    const towStrength = 0.15 * longitudinalStrength * clamp01(1 - lateral / TOW_HALF_WIDTH);
-    const dirtyStrength = 0.28 * longitudinalStrength * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
+    const towStrength = TOW_STRENGTH * longitudinalStrength * clamp01(1 - lateral / TOW_HALF_WIDTH);
+    const dirtyStrength = DIRTY_AIR_STRENGTH * longitudinalStrength * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
 
     tow = Math.max(tow, towStrength);
     dirtyAir = Math.max(dirtyAir, dirtyStrength);
