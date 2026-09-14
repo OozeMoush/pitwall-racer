@@ -43,15 +43,22 @@ export function dynamicAiControl(
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
+  const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
+  // Be conservative when *starting* a pass, but do not abandon an already
+  // committed move merely because the technical-corner preview crossed a
+  // threshold. That old state drop sent the attacker straight back across the
+  // reference line while the rival was still beside it. Continuing a battle
+  // still requires the car to remain on the usable circuit.
   const battleSafe = battleSeverity < 0.52
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
+  const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
+  const canRecognizeBattle = battleSafe || (battleCommitted && battleContinuationSafe);
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
   const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
     ? ALONGSIDE_EXIT_RANGE
     : ALONGSIDE_ENTRY_RANGE;
-  const committedLateralSearch = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE'
-    ? 13.5
-    : AHEAD_SEARCH_LATERAL;
+  const committedLateralSearch = battleCommitted ? 13.5 : AHEAD_SEARCH_LATERAL;
+  const alongsideLateralLimit = battleCommitted ? 13.5 : 11.8;
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
@@ -72,10 +79,10 @@ export function dynamicAiControl(
       aheadLateral = lateral;
     }
 
-    if (battleSafe
+    if (canRecognizeBattle
       && Math.abs(gap) < alongsideRange
       && lateral >= 3.4
-      && lateral < 11.8
+      && lateral < alongsideLateralLimit
       && Math.abs(gap) < alongsideGap) {
       alongside = other;
       alongsideGap = Math.abs(gap);
@@ -89,11 +96,18 @@ export function dynamicAiControl(
   const laneBlocked = ahead !== undefined
     && aheadGap < laneBlockedRange
     && aheadLateral < BLOCKING_LANE_WIDTH;
-  const canAttack = battleSafe
+  const canStartAttack = battleSafe
     && ahead !== undefined
     && aheadGap < attackRange
     && aheadLateral < committedLateralSearch
     && driver.tire.wear < 0.94;
+  const canContinueAttack = driver.battleState === 'ATTACK'
+    && battleContinuationSafe
+    && ahead !== undefined
+    && aheadGap < 24
+    && aheadLateral < 13.5
+    && driver.tire.wear < 0.96;
+  const canAttack = canStartAttack || canContinueAttack;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
@@ -142,7 +156,7 @@ export function dynamicAiControl(
 
     // The car that is still marginally ahead owns its lane. Only the attacker
     // coming from behind creates extra lateral room. Previously both cars fled
-    // from one another, turning a normal pass into a 15-30 m road split and
+    // from one another, turning a normal pass into a large road split and
     // wasting the quicker car's longitudinal advantage.
     if (alongsideSignedGap < -0.75) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
