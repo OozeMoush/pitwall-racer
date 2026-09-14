@@ -167,8 +167,15 @@ export function dynamicAiControl(
 
   if (battleState === 'ATTACK' && profile.severity < 0.38) targetSpeed += 8;
   if (battleState === 'SIDE_BY_SIDE' && alongside && profile.severity < 0.42) {
-    const performanceEdge = clamp((driver.skill * driver.tire.grip - alongside.performance) * 18, -2.5, 3.5);
-    targetSpeed = Math.max(targetSpeed, alongside.speed + performanceEdge);
+    const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
+    // Once a genuinely quicker car has earned overlap, let that advantage turn
+    // into forward progress instead of an endless two-wide stalemate. This is a
+    // target-speed/racecraft allowance, not extra engine power; both cars still
+    // use the same power model and braking physics.
+    if (performanceDelta > 0.002) {
+      const passMomentum = clamp(1.6 + performanceDelta * 42, 1.6, 5.5);
+      targetSpeed = Math.max(targetSpeed, alongside.speed + passMomentum);
+    }
   }
 
   // Pace-match only while physically blocked. An attacker that has moved clear
