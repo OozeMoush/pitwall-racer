@@ -18,7 +18,8 @@ const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
-const ALONGSIDE_LONGITUDINAL_RANGE = 6.5;
+const ALONGSIDE_ENTRY_RANGE = 9.0;
+const ALONGSIDE_EXIT_RANGE = 11.5;
 
 /**
  * Physical AI for the race weekend.
@@ -44,6 +45,9 @@ export function dynamicAiControl(
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleSafe = battleSeverity < 0.52 && projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
+  const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
+    ? ALONGSIDE_EXIT_RANGE
+    : ALONGSIDE_ENTRY_RANGE;
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
@@ -63,13 +67,12 @@ export function dynamicAiControl(
       aheadLateral = lateral;
     }
 
-    // Treat cars as SIDE_BY_SIDE only once their longitudinal footprints are
-    // genuinely overlapping. The old 13.5 m window promoted an attacker to
-    // SIDE_BY_SIDE while it was still a full car length behind, which made two
-    // otherwise quick cars settle into a parallel parade instead of finishing
-    // the pass.
+    // Enter SIDE_BY_SIDE only when the car footprints genuinely overlap, then
+    // keep a small hysteresis window while the pass is being resolved. This
+    // avoids both the old 13.5 m "parallel parade" and rapid ATTACK/SIDE_BY_SIDE
+    // toggling that produced longitudinal jerk.
     if (battleSafe
-      && Math.abs(gap) < ALONGSIDE_LONGITUDINAL_RANGE
+      && Math.abs(gap) < alongsideRange
       && lateral >= 3.4
       && lateral < 11.8
       && Math.abs(gap) < alongsideGap) {
@@ -113,10 +116,9 @@ export function dynamicAiControl(
     const positiveRoom = Math.abs(positive - ahead.laneOffset);
     const negativeRoom = Math.abs(negative - ahead.laneOffset);
 
-    // Prefer the passing side that is closest to the optimized reference line.
-    // That makes an overtake a line-choice problem rather than a hidden power
-    // boost, and avoids sending a quicker car onto the expensive side of a
-    // straight simply because of its id hash.
+    // Prefer the passing side closest to the optimized reference line. The
+    // overtake therefore comes from line choice, tow and execution quality,
+    // never an engine or tyre-grip cheat.
     let desired: number;
     if (positiveRoom < passOffset * 0.80) desired = negative;
     else if (negativeRoom < passOffset * 0.80) desired = positive;
@@ -175,7 +177,7 @@ export function dynamicAiControl(
   // remains a physical aero effect in RapierRacePhysics rather than a speed
   // multiplier hidden in the AI controller.
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.012);
+    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
@@ -184,8 +186,7 @@ export function dynamicAiControl(
       targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
     } else if (performanceDelta < -0.002) {
       // A weaker driver on a compromised side-by-side line gives away a small
-      // execution margin. This is still below the same machine-limit reference;
-      // there is no extra engine power or grip for the quicker car.
+      // execution margin. This remains below the same machine-limit reference.
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
       targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
     }
@@ -212,9 +213,7 @@ export function dynamicAiControl(
 
   // The reference defines *where* and *how fast*. The physical controller still
   // closes the error against that target instead of blindly replaying a brake
-  // trace computed on an idealised envelope. Replaying the mathematical trace
-  // directly can over-brake after real chassis tracking error and strand a car
-  // against the inside of a miniature hairpin.
+  // trace computed on an idealised envelope.
   const speedError = targetSpeed - speed;
   const brake = speedError < -1.25
     ? clamp((-speedError - 0.35) / 9.2, 0.12, 1)
