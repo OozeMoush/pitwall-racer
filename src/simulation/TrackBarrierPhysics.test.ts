@@ -4,8 +4,10 @@ import { CAR_COLLIDER_HALF_LENGTH, RapierRacePhysics } from './RapierRacePhysics
 import {
   TRACK_BARRIER_OFFSET,
   hasSafetyBarrier,
+  shouldPlaceSafetyBarrier,
 } from './TrackLimitsModel';
 import { projectTrack, sampleTrack } from './TrackModel';
+import { trackProfile } from './TrackProfile';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
@@ -26,22 +28,39 @@ describe('physical safety barriers', () => {
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {
-    expectWallStopsOutwardCar(0.50);
+    expectWallStopsOutwardCar(0.50, 1);
   });
 
   it('physically closes the old pit-side shortcut after pit entry', () => {
-    // This section used to sit inside the huge pit opening, so a player could
-    // simply stay flat and drive into the infield. It must now be a real wall,
-    // not merely a hasSafetyBarrier() bookkeeping result.
     expect(hasSafetyBarrier(0.95, 1)).toBe(true);
-    expectWallStopsOutwardCar(0.95);
+    expectWallStopsOutwardCar(0.95, 1);
+  });
+
+  it('keeps a real inside wall through the tightest chicane-style turn', () => {
+    let bestProgress = 0;
+    let bestSeverity = -1;
+    let bestTurn = 0;
+    for (let index = 0; index < 240; index++) {
+      const progress = index / 240;
+      const profile = trackProfile(progress);
+      if (profile.severity > bestSeverity && Math.abs(profile.signedTurn) > 0.025) {
+        bestProgress = progress;
+        bestSeverity = profile.severity;
+        bestTurn = profile.signedTurn;
+      }
+    }
+
+    const inside = Math.sign(bestTurn) as -1 | 1;
+    expect(bestSeverity).toBeGreaterThan(0.72);
+    expect(shouldPlaceSafetyBarrier(bestProgress, inside, bestTurn, bestSeverity)).toBe(true);
+    expectWallStopsOutwardCar(bestProgress, inside);
   });
 });
 
-function expectWallStopsOutwardCar(progress: number): void {
-  const startLane = TRACK_BARRIER_OFFSET - CAR_COLLIDER_HALF_LENGTH - 2;
+function expectWallStopsOutwardCar(progress: number, side: -1 | 1): void {
+  const startLane = side * (TRACK_BARRIER_OFFSET - CAR_COLLIDER_HALF_LENGTH - 2);
   const track = sampleTrack(progress, startLane);
-  const outwardHeading = track.heading + Math.PI / 2;
+  const outwardHeading = track.heading + side * Math.PI / 2;
   const physics = new RapierRacePhysics(
     { ...createVehicle(track.x, track.y, outwardHeading), speed: 70 },
     [],
