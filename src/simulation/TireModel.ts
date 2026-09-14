@@ -36,6 +36,16 @@ export function createTire(compoundName: Compound): TireState {
   };
 }
 
+/** Model-derived fresh grip; useful for machine-limit/reference calculations. */
+export function compoundBaseGrip(compoundName: Compound): number {
+  return compound[compoundName].baseGrip;
+}
+
+/** Peak fresh grip at the requested pace mode, before temperature/wear losses. */
+export function compoundPeakGrip(compoundName: Compound, mode: PaceMode = 'BALANCED'): number {
+  return compound[compoundName].baseGrip * pace[mode].grip;
+}
+
 /** Medium's nominal peak is the 100% reference used by UI/strategy tools. */
 export function gripRatioToMedium(grip: number): number {
   return grip / compound.MEDIUM.baseGrip;
