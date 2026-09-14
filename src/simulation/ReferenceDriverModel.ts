@@ -33,7 +33,11 @@ export const REFERENCE_LANE_LIMIT = FREE_KERB_DISTANCE - 2.4;
 const PLAN_SAMPLES = 320;
 const CENTRELINE_SAMPLES_PER_CONTROL = 28;
 const GRIP_BUCKET = 0.025;
+const OPTIMIZER_KNOTS = 48;
+const OPTIMIZER_GRIP = 1.30;
+const OPTIMIZER_STEPS = [6.0, 3.0, 1.5, 0.75] as const;
 const cache = new Map<string, ReferenceLap>();
+const optimizedLaneCache = new Map<TrackId, readonly number[]>();
 
 interface Segment {
   a: TrackPoint;
@@ -45,6 +49,14 @@ interface Segment {
 interface Geometry {
   segments: readonly Segment[];
   length: number;
+}
+
+interface EnvelopeResult {
+  curvature: number[];
+  segmentLengths: number[];
+  speeds: number[];
+  lapSeconds: number;
+  straightLimit: number;
 }
 
 /**
@@ -59,10 +71,11 @@ export function referenceExecutionForSkill(skill: number): number {
 /**
  * Build a deterministic, player-independent machine-limit lap.
  *
- * The solver uses the actual arcade-car acceleration/braking/yaw equations,
- * finds a legal kerb-to-kerb line from circuit geometry, then runs cyclic
- * forward/backward speed-envelope passes until acceleration and braking limits
- * agree around the whole lap. No human lap time is an input.
+ * V2 does not accept the first geometric racing line as truth. It starts from
+ * that line, then repeatedly perturbs a set of lane-control knots and keeps a
+ * change only when the same vehicle acceleration/braking/yaw equations produce
+ * a faster legal lap. In other words, the line itself is optimized against the
+ * car rather than copied from a human lap or hand-authored target time.
  */
 export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   const safeGrip = clamp(tireGrip, 0.55, 1.36);
@@ -72,97 +85,20 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   if (cached) return cached;
 
   const geometry = buildGeometry(getTrackDefinition(trackId).controls);
-  const rawLanes = Array.from({ length: PLAN_SAMPLES }, (_, index) => (
-    rawReferenceLane(geometry, index / PLAN_SAMPLES)
-  ));
-  const lanes = rawLanes.map((_, index) => smoothCircular(rawLanes, index));
-  const points = lanes.map((laneOffset, index) => sampleGeometry(
-    geometry,
-    index / PLAN_SAMPLES,
-    laneOffset,
-  ));
-  const curvature = points.map((_, index) => pathCurvature(points, index));
-  const segmentLengths = points.map((point, index) => {
-    const next = points[(index + 1) % points.length];
-    return Math.max(0.1, Math.hypot(next.x - point.x, next.y - point.y));
-  });
+  const lanes = optimizedReferenceLanes(trackId, geometry);
+  const envelope = evaluateLanes(geometry, lanes, bucketedGrip, 10);
+  const controls = controlTrace(
+    envelope.speeds,
+    envelope.curvature,
+    envelope.segmentLengths,
+    bucketedGrip,
+  );
 
-  const straightLimit = solveStraightLimit();
-  const localLimits = curvature.map((value) => solveCornerLimit(value, bucketedGrip, straightLimit));
-  const speeds = [...localLimits];
-
-  // Closed circuit: repeated forward/backward sweeps propagate every braking
-  // zone and acceleration zone through the start/finish seam as well.
-  for (let pass = 0; pass < 10; pass++) {
-    for (let i = 0; i < PLAN_SAMPLES; i++) {
-      const next = (i + 1) % PLAN_SAMPLES;
-      const ds = segmentLengths[i];
-      const steerDemand = steeringDemand(speeds[i], curvature[i], bucketedGrip);
-      const acceleration = Math.max(0, longitudinalAcceleration(
-        speeds[i],
-        bucketedGrip,
-        1,
-        0,
-        steerDemand,
-      ));
-      const reachable = Math.sqrt(Math.max(0, speeds[i] * speeds[i] + 2 * acceleration * ds));
-      speeds[next] = Math.min(speeds[next], localLimits[next], reachable);
-    }
-
-    for (let i = PLAN_SAMPLES - 1; i >= 0; i--) {
-      const next = (i + 1) % PLAN_SAMPLES;
-      const ds = segmentLengths[i];
-      const probeSpeed = Math.max(speeds[i], speeds[next]);
-      const steerDemand = steeringDemand(probeSpeed, curvature[i], bucketedGrip);
-      const braking = Math.max(1, -longitudinalAcceleration(
-        probeSpeed,
-        bucketedGrip,
-        0,
-        1,
-        steerDemand,
-      ));
-      const allowedEntry = Math.sqrt(Math.max(0, speeds[next] * speeds[next] + 2 * braking * ds));
-      speeds[i] = Math.min(speeds[i], localLimits[i], allowedEntry);
-    }
-  }
-
-  let lapSeconds = 0;
-  for (let i = 0; i < PLAN_SAMPLES; i++) {
-    const next = (i + 1) % PLAN_SAMPLES;
-    lapSeconds += (2 * segmentLengths[i]) / Math.max(8, speeds[i] + speeds[next]);
-  }
-
-  // Turn the mathematical envelope into a real perfect-driver control trace.
-  // A speed target alone makes a feedback controller brake after the envelope
-  // has already started falling. Feed-forward throttle/brake tells it what the
-  // ideal lap is doing *now*, while feedback remains available for small errors.
-  const controls = speeds.map((speed, index) => {
-    const next = (index + 1) % PLAN_SAMPLES;
-    const ds = segmentLengths[index];
-    const desiredAcceleration = (speeds[next] * speeds[next] - speed * speed) / (2 * ds);
-    const steer = steeringDemand(speed, curvature[index], bucketedGrip);
-    const coast = longitudinalAcceleration(speed, bucketedGrip, 0, 0, steer);
-
-    if (desiredAcceleration >= coast) {
-      const fullThrottle = longitudinalAcceleration(speed, bucketedGrip, 1, 0, steer);
-      return {
-        throttle: clamp((desiredAcceleration - coast) / Math.max(0.001, fullThrottle - coast), 0, 1),
-        brake: 0,
-      };
-    }
-
-    const fullBrake = longitudinalAcceleration(speed, bucketedGrip, 0, 1, steer);
-    return {
-      throttle: 0,
-      brake: clamp((coast - desiredAcceleration) / Math.max(0.001, coast - fullBrake), 0, 1),
-    };
-  });
-
-  const samples: ReferenceLapSample[] = speeds.map((targetSpeed, index) => ({
+  const samples: ReferenceLapSample[] = envelope.speeds.map((targetSpeed, index) => ({
     progress: index / PLAN_SAMPLES,
     laneOffset: lanes[index],
     targetSpeed,
-    curvature: curvature[index],
+    curvature: envelope.curvature[index],
     throttle: controls[index].throttle,
     brake: controls[index].brake,
   }));
@@ -170,8 +106,8 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   const lap: ReferenceLap = {
     trackId,
     tireGrip: bucketedGrip,
-    lapSeconds,
-    straightLimit,
+    lapSeconds: envelope.lapSeconds,
+    straightLimit: envelope.straightLimit,
     samples,
   };
   cache.set(key, lap);
@@ -199,6 +135,173 @@ export function referenceTarget(
     throttle: lerp(a.throttle, b.throttle, t),
     brake: lerp(a.brake, b.brake, t),
   };
+}
+
+function optimizedReferenceLanes(trackId: TrackId, geometry: Geometry): readonly number[] {
+  const cached = optimizedLaneCache.get(trackId);
+  if (cached) return cached;
+
+  const heuristic = Array.from({ length: PLAN_SAMPLES }, (_, index) => (
+    rawReferenceLane(geometry, index / PLAN_SAMPLES)
+  )).map((_, index, values) => smoothCircular(values, index));
+
+  let knots = Array.from({ length: OPTIMIZER_KNOTS }, (_, knot) => {
+    const index = Math.round(knot * PLAN_SAMPLES / OPTIMIZER_KNOTS) % PLAN_SAMPLES;
+    return heuristic[index];
+  });
+
+  let lanes = lanesFromKnots(knots);
+  let bestSeconds = evaluateLanes(geometry, lanes, OPTIMIZER_GRIP, 5).lapSeconds;
+
+  // A centreline seed is worth testing as well: on closely linked corners the
+  // old outside-apex-outside heuristic can commit to the wrong side too early.
+  const centreKnots = new Array<number>(OPTIMIZER_KNOTS).fill(0);
+  const centreLanes = lanesFromKnots(centreKnots);
+  const centreSeconds = evaluateLanes(geometry, centreLanes, OPTIMIZER_GRIP, 5).lapSeconds;
+  if (centreSeconds < bestSeconds) {
+    knots = centreKnots;
+    lanes = centreLanes;
+    bestSeconds = centreSeconds;
+  }
+
+  // Deterministic coordinate descent. Each candidate is a complete legal lap,
+  // not a local corner score. That lets the optimizer sacrifice one apex when
+  // doing so improves the following braking/acceleration sequence.
+  for (const step of OPTIMIZER_STEPS) {
+    for (let knot = 0; knot < OPTIMIZER_KNOTS; knot++) {
+      const original = knots[knot];
+      let chosen = original;
+      let chosenSeconds = bestSeconds;
+
+      for (const direction of [-1, 1] as const) {
+        const candidateValue = clamp(original + direction * step, -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
+        if (Math.abs(candidateValue - original) < 0.001) continue;
+        const candidateKnots = [...knots];
+        candidateKnots[knot] = candidateValue;
+        const candidateLanes = lanesFromKnots(candidateKnots);
+        const candidateSeconds = evaluateLanes(geometry, candidateLanes, OPTIMIZER_GRIP, 5).lapSeconds;
+        if (candidateSeconds < chosenSeconds - 0.0005) {
+          chosen = candidateValue;
+          chosenSeconds = candidateSeconds;
+        }
+      }
+
+      if (chosen !== original) {
+        knots[knot] = chosen;
+        lanes = lanesFromKnots(knots);
+        bestSeconds = chosenSeconds;
+      }
+    }
+  }
+
+  // One gentle sample-space smoothing pass removes sub-car-width optimizer
+  // ripples without erasing the deliberately asymmetric line it discovered.
+  const optimized = lanes.map((_, index) => smoothCircular(lanes, index));
+  optimizedLaneCache.set(trackId, optimized);
+  return optimized;
+}
+
+function lanesFromKnots(knots: readonly number[]): number[] {
+  return Array.from({ length: PLAN_SAMPLES }, (_, index) => {
+    const position = index * knots.length / PLAN_SAMPLES;
+    const aIndex = Math.floor(position) % knots.length;
+    const bIndex = (aIndex + 1) % knots.length;
+    const t = position - Math.floor(position);
+    const eased = t * t * (3 - 2 * t);
+    return clamp(lerp(knots[aIndex], knots[bIndex], eased), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
+  });
+}
+
+function evaluateLanes(
+  geometry: Geometry,
+  lanes: readonly number[],
+  tireGrip: number,
+  passes: number,
+): EnvelopeResult {
+  const points = lanes.map((laneOffset, index) => sampleGeometry(
+    geometry,
+    index / PLAN_SAMPLES,
+    laneOffset,
+  ));
+  const curvature = points.map((_, index) => pathCurvature(points, index));
+  const segmentLengths = points.map((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return Math.max(0.1, Math.hypot(next.x - point.x, next.y - point.y));
+  });
+
+  const straightLimit = solveStraightLimit();
+  const localLimits = curvature.map((value) => solveCornerLimit(value, tireGrip, straightLimit));
+  const speeds = [...localLimits];
+
+  for (let pass = 0; pass < passes; pass++) {
+    for (let i = 0; i < PLAN_SAMPLES; i++) {
+      const next = (i + 1) % PLAN_SAMPLES;
+      const ds = segmentLengths[i];
+      const steerDemand = steeringDemand(speeds[i], curvature[i], tireGrip);
+      const acceleration = Math.max(0, longitudinalAcceleration(
+        speeds[i],
+        tireGrip,
+        1,
+        0,
+        steerDemand,
+      ));
+      const reachable = Math.sqrt(Math.max(0, speeds[i] * speeds[i] + 2 * acceleration * ds));
+      speeds[next] = Math.min(speeds[next], localLimits[next], reachable);
+    }
+
+    for (let i = PLAN_SAMPLES - 1; i >= 0; i--) {
+      const next = (i + 1) % PLAN_SAMPLES;
+      const ds = segmentLengths[i];
+      const probeSpeed = Math.max(speeds[i], speeds[next]);
+      const steerDemand = steeringDemand(probeSpeed, curvature[i], tireGrip);
+      const braking = Math.max(1, -longitudinalAcceleration(
+        probeSpeed,
+        tireGrip,
+        0,
+        1,
+        steerDemand,
+      ));
+      const allowedEntry = Math.sqrt(Math.max(0, speeds[next] * speeds[next] + 2 * braking * ds));
+      speeds[i] = Math.min(speeds[i], localLimits[i], allowedEntry);
+    }
+  }
+
+  let lapSeconds = 0;
+  for (let i = 0; i < PLAN_SAMPLES; i++) {
+    const next = (i + 1) % PLAN_SAMPLES;
+    lapSeconds += (2 * segmentLengths[i]) / Math.max(8, speeds[i] + speeds[next]);
+  }
+
+  return { curvature, segmentLengths, speeds, lapSeconds, straightLimit };
+}
+
+function controlTrace(
+  speeds: readonly number[],
+  curvature: readonly number[],
+  segmentLengths: readonly number[],
+  tireGrip: number,
+): { throttle: number; brake: number }[] {
+  return speeds.map((speed, index) => {
+    const next = (index + 1) % PLAN_SAMPLES;
+    const ds = segmentLengths[index];
+    const desiredAcceleration = (speeds[next] * speeds[next] - speed * speed) / (2 * ds);
+    const steer = steeringDemand(speed, curvature[index], tireGrip);
+    const coast = longitudinalAcceleration(speed, tireGrip, 0, 0, steer);
+
+    if (desiredAcceleration >= coast) {
+      const fullThrottle = longitudinalAcceleration(speed, tireGrip, 1, 0, steer);
+      return {
+        throttle: clamp((desiredAcceleration - coast) / Math.max(0.001, fullThrottle - coast), 0, 1),
+        brake: 0,
+      };
+    }
+
+    const fullBrake = longitudinalAcceleration(speed, tireGrip, 0, 1, steer);
+    return {
+      throttle: 0,
+      brake: clamp((coast - desiredAcceleration) / Math.max(0.001, coast - fullBrake), 0, 1),
+    };
+  });
 }
 
 function rawReferenceLane(geometry: Geometry, progress: number): number {
@@ -247,7 +350,7 @@ function solveCornerLimit(curvature: number, tireGrip: number, straightLimit: nu
   if (curvature < 0.00035) return straightLimit;
   let low = 12;
   let high = straightLimit;
-  for (let iteration = 0; iteration < 15; iteration++) {
+  for (let iteration = 0; iteration < 13; iteration++) {
     const mid = (low + high) / 2;
     const requiredYaw = mid * curvature;
     const availableYaw = maximumReferenceYaw(mid, tireGrip);
@@ -258,8 +361,6 @@ function solveCornerLimit(curvature: number, tireGrip: number, straightLimit: nu
 }
 
 function maximumReferenceYaw(speed: number, tireGrip: number): number {
-  // The perfect driver may use lift rotation or a modest trail-brake phase, but
-  // it cannot ask for controls unavailable to the player.
   const pedalStates = [
     { throttle: 1, brake: 0 },
     { throttle: 0.45, brake: 0 },
