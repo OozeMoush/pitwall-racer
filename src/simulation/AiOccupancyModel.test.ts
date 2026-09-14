@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { resolveAiOccupancy } from './AiOccupancyModel';
-import { createAiField, raceDistance } from './RaceModel';
-import { TRACK_LENGTH } from './TrackModel';
+import { createAiField } from './RaceModel';
 
 describe('AiOccupancyModel', () => {
-  it('does not leave a seven-car pack in the same rendered body volume', () => {
+  it('does not fabricate lanes or race distance for a close physical pack', () => {
     const field = createAiField();
     for (const driver of field) {
       driver.lap = 2;
@@ -15,42 +14,23 @@ describe('AiOccupancyModel', () => {
 
     const resolved = resolveAiOccupancy(field, 1 / 60);
 
-    for (let i = 0; i < resolved.length; i++) {
-      for (let j = i + 1; j < resolved.length; j++) {
-        const longitudinal = Math.abs(
-          raceDistance(resolved[i].lap, resolved[i].progress) - raceDistance(resolved[j].lap, resolved[j].progress),
-        ) * TRACK_LENGTH;
-        const lateral = Math.abs(resolved[i].laneOffset - resolved[j].laneOffset);
-        expect(longitudinal >= 41 || lateral >= 19).toBe(true);
-      }
-    }
+    expect(resolved).toBe(field);
+    expect(resolved.every((driver) => driver.lap === 2)).toBe(true);
+    expect(resolved.every((driver) => driver.progress === 0.42)).toBe(true);
+    expect(resolved.every((driver) => driver.laneOffset === 0)).toBe(true);
   });
 
-  it('uses several lateral lanes before forcing another train row', () => {
-    const field = createAiField().slice(0, 5);
-    for (const driver of field) {
-      driver.lap = 2;
-      driver.progress = 0.42;
-      driver.laneOffset = 0;
-    }
-
-    const resolved = resolveAiOccupancy(field);
-    expect(new Set(resolved.map((driver) => driver.laneOffset)).size).toBeGreaterThanOrEqual(4);
-  });
-
-  it('leaves separated cars alone', () => {
+  it('leaves already separated physical metadata untouched', () => {
     const [a, b] = createAiField();
     a.lap = 2;
     a.progress = 0.6;
-    a.laneOffset = -20;
+    a.laneOffset = -8;
     b.lap = 2;
     b.progress = 0.5;
-    b.laneOffset = 20;
+    b.laneOffset = 8;
 
     const resolved = resolveAiOccupancy([a, b], 1 / 60);
-    expect(resolved[0].progress).toBe(a.progress);
-    expect(resolved[1].progress).toBe(b.progress);
-    expect(resolved[0].laneOffset).toBe(a.laneOffset);
-    expect(resolved[1].laneOffset).toBe(b.laneOffset);
+    expect(resolved[0]).toBe(a);
+    expect(resolved[1]).toBe(b);
   });
 });
