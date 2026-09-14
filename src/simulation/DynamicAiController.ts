@@ -189,16 +189,30 @@ export function dynamicAiControl(
   targetSpeed = clamp(targetSpeed, 26, 136);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.25
-    ? clamp((-speedError - 0.35) / 9.2, 0.12, 1)
+  const feedbackBrake = speedError < -0.8
+    ? clamp((-speedError - 0.15) / 8.2, 0.08, 1)
     : 0;
-  const throttle = brake > 0.08
-    ? 0
-    : speedError > 2.2
-      ? 1
-      : speedError > 0.18
-        ? clamp(0.52 + speedError / 7.5, 0.52, 1)
-        : 0.24;
+  let brake = Math.max(speedReference.brake, feedbackBrake);
+
+  let throttle: number;
+  if (speedError > 1.4) {
+    throttle = 1;
+  } else if (speedError > 0.15) {
+    throttle = Math.max(speedReference.throttle, clamp(0.50 + speedError / 5.5, 0.50, 1));
+  } else if (speedError < -0.15) {
+    throttle = speedReference.throttle * clamp(1 + speedError / 2.0, 0, 1);
+  } else {
+    throttle = speedReference.throttle;
+  }
+
+  // Traffic may force a lower target than the clean-air reference. In that
+  // case feedback wins; otherwise use the reference driver's braking/throttle
+  // trace before an error develops instead of reacting one segment late.
+  if (brake > 0.06) throttle = 0;
+  if (offRoad) {
+    brake = Math.max(brake, speed > targetSpeed + 1 ? 0.22 : 0);
+    throttle = brake > 0.08 ? 0 : Math.max(throttle, 0.55);
+  }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
 }
