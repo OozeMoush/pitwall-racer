@@ -19,10 +19,11 @@ export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 // be enforced physically. Keep the continuous wall just beyond the kerb rather
 // than at the far edge of the broad visual runoff. The old 34 m offset was also
 // larger than the radius of the miniature hairpins, forcing us to delete inner
-// walls exactly where chicane shortcuts were most valuable. At 22.2 m the wall
-// still leaves roughly one car-width of escape beyond the white line, follows
-// the tight geometry cleanly, and makes straight-lining the infield impossible.
-export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 5.2;
+// walls exactly where chicane shortcuts were most valuable. At 23.5 m the wall
+// still leaves useful escape space beyond the white line, follows tight geometry
+// without folding across the road, and clears the renderer/physics road-safety
+// filter with margin.
+export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 6.5;
 export const TRACK_BARRIER_SEGMENT_LENGTH = 8;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
