@@ -44,6 +44,7 @@ describe('physical AI overtaking regression', () => {
     let maxTrailerLeadMetres = Number.NEGATIVE_INFINITY;
     let sawAttack = false;
     let sawSideBySide = false;
+    const timeline: Array<Record<string, number | string>> = [];
 
     for (let tick = 0; tick < 12 / DT; tick++) {
       physics.syncAiKinematics([trailer, leader], DT, -10);
@@ -54,14 +55,25 @@ describe('physical AI overtaking regression', () => {
       const states = physics.aiStates();
       const trailerProjection = projectTrackNear(states[0].x, states[0].y, trailer.progress);
       const leaderProjection = projectTrackNear(states[1].x, states[1].y, leader.progress);
+      const signedGap = (raceDistance(trailer.lap, trailer.progress) - raceDistance(leader.lap, leader.progress)) * TRACK_LENGTH;
       maxLateralSeparation = Math.max(
         maxLateralSeparation,
         Math.abs(trailerProjection.laneOffset - leaderProjection.laneOffset),
       );
-      maxTrailerLeadMetres = Math.max(
-        maxTrailerLeadMetres,
-        (raceDistance(trailer.lap, trailer.progress) - raceDistance(leader.lap, leader.progress)) * TRACK_LENGTH,
-      );
+      maxTrailerLeadMetres = Math.max(maxTrailerLeadMetres, signedGap);
+
+      if ((tick + 1) % 120 === 0) {
+        timeline.push({
+          second: (tick + 1) / 120,
+          gap: Number(signedGap.toFixed(1)),
+          trailerKmh: Math.round(states[0].speed * 3.6),
+          leaderKmh: Math.round(states[1].speed * 3.6),
+          trailerLane: Number(trailerProjection.laneOffset.toFixed(1)),
+          leaderLane: Number(leaderProjection.laneOffset.toFixed(1)),
+          trailerState: trailer.battleState,
+          leaderState: leader.battleState,
+        });
+      }
     }
 
     console.log(`OVERTAKE_METRICS ${JSON.stringify({
@@ -69,6 +81,7 @@ describe('physical AI overtaking regression', () => {
       sawSideBySide,
       maxLateralSeparation: Number(maxLateralSeparation.toFixed(2)),
       maxTrailerLeadMetres: Number(maxTrailerLeadMetres.toFixed(2)),
+      timeline,
     })}`);
 
     expect(sawAttack).toBe(true);
