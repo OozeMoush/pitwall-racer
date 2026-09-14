@@ -3,8 +3,12 @@ import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 export const PIT_ENTRY_PROGRESS = 0.91;
 export const PIT_EXIT_PROGRESS = 0.075;
 export const PIT_BOX_T = 0.47;
-export const PIT_SERVICE_SECONDS = 2.0;
-export const PIT_SPEED = 55;
+export const PIT_SERVICE_SECONDS = 2.5;
+// Still faster than a literal modern-F1 80 km/h limiter because the circuit is
+// intentionally miniature, but no longer a ~200 km/h drive-through. This keeps
+// an extra stop meaningful without making a two-stop strategy automatically
+// hopeless on a 25-30 second lap.
+export const PIT_SPEED = 40;
 
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
 
@@ -47,6 +51,10 @@ export function shouldEnterPit(
   return previousProgress < PIT_ENTRY_PROGRESS && currentProgress >= PIT_ENTRY_PROGRESS;
 }
 
+export function pitStopDurationSeconds(): number {
+  return (PIT_SPAN * TRACK_LENGTH) / PIT_SPEED + PIT_SERVICE_SECONDS;
+}
+
 export function stepPitStop(state: PitStopState, dt: number): PitStopState {
   if (state.phase === 'IDLE' || state.phase === 'DONE') return state;
 
@@ -62,8 +70,8 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
   }
 
   // TRACK_LENGTH is a live binding because the circuit can be selected before
-  // race construction. On the miniature layout the shorter transit naturally
-  // keeps total pit loss in the useful single-digit-second range.
+  // race construction. Player and AI both step this exact same state machine,
+  // so neither side receives a hidden pit-lane timing advantage.
   const pitTRate = PIT_SPEED / Math.max(1, PIT_SPAN * TRACK_LENGTH);
   const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= PIT_BOX_T) {
