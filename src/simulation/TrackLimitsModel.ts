@@ -15,17 +15,17 @@ export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 // AI target centres need room for the ~2.15 m half-width physical collider.
 export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 
-// Track limits are primarily physical. The wall sits beyond runoff so normal
-// mistakes remain recoverable, but the segments are short enough that a car
-// cannot thread through visible gaps at racing speed.
+// Normal safety wall lives beyond runoff. On very tight inside corners the
+// same constant offset would geometrically fold across the miniature circuit,
+// so use a closer anti-cut wall just beyond the kerb instead of deleting the
+// wall entirely. That preserves a legal kerb attack but makes chicane/infield
+// straight-lining physically impossible without a penalty system.
 export const TRACK_BARRIER_OFFSET = TRACK_RUNOFF_HALF_WIDTH + 7;
+export const TRACK_ANTI_CUT_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 5.2;
 export const TRACK_BARRIER_SEGMENT_LENGTH = 8;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
-// The old pit opening removed the outside barrier for almost a quarter of the
-// lap. That effectively created an infield shortcut. Keep only two door-sized
-// openings around the real pit entry and exit; everywhere else the same wall is
-// both visible and physical, which naturally forms a pit wall along the straight.
+// Keep only two door-sized openings around the actual pit entry and exit.
 const PIT_ENTRY_GAP_START = 0.898;
 const PIT_ENTRY_GAP_END = 0.924;
 const PIT_EXIT_GAP_START = 0.056;
@@ -39,19 +39,28 @@ export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
   return !(pitEntryOpening || pitExitOpening);
 }
 
+/**
+ * Returns the physical/rendered wall offset for this piece of circuit.
+ * undefined means the intentional pit-lane door. Tight inside turns get the
+ * closer anti-cut wall; all other sections retain the runoff safety wall.
+ */
+export function safetyBarrierOffset(
+  progress: number,
+  side: -1 | 1,
+  signedTurn: number,
+  severity: number,
+): number | undefined {
+  if (!hasSafetyBarrier(progress, side)) return undefined;
+  const inside = Math.abs(signedTurn) > 0.025 && side === Math.sign(signedTurn);
+  if (inside && severity > 0.72) return TRACK_ANTI_CUT_BARRIER_OFFSET;
+  return TRACK_BARRIER_OFFSET;
+}
+
 export function shouldPlaceSafetyBarrier(
   progress: number,
   side: -1 | 1,
   signedTurn: number,
   severity: number,
 ): boolean {
-  if (!hasSafetyBarrier(progress, side)) return false;
-  const inside = Math.abs(signedTurn) > 0.025 && side === Math.sign(signedTurn);
-
-  // A literal constant-offset wall can fold over itself in only the very
-  // sharpest miniature hairpins. Keep the inner wall through medium corners so
-  // obvious straight-line cuts are physically closed, and omit it only where
-  // the geometry would genuinely intrude onto the asphalt.
-  if (inside && severity > 0.72) return false;
-  return true;
+  return safetyBarrierOffset(progress, side, signedTurn, severity) !== undefined;
 }
