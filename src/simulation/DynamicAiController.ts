@@ -1,7 +1,8 @@
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
+import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
-import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
-import { racingLineOffset, trackProfile } from './TrackProfile';
+import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
 
 export interface DynamicAiControl {
@@ -17,16 +18,15 @@ const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
-const BRAKING_SAMPLES_METRES = [0, 22, 46, 74, 108, 148, 194] as const;
 
 /**
  * Physical AI for the race weekend.
  *
- * These are professional single-seater drivers. A clean lap follows one stable
- * racing line with a forward braking envelope; traffic may create one decisive
- * passing move, but it must never turn the field into a scripted queue. All
- * traffic decisions use the physical Rapier positions rather than abstract
- * occupancy lanes.
+ * Clean-air pace is now defined by the generated machine-limit reference lap.
+ * Driver skill is only an execution percentage of that reference; it never
+ * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
+ * target. Traffic can move the car off the reference line, but once clear it
+ * returns to the same line/braking plan a perfect reference driver would use.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -34,10 +34,10 @@ export function dynamicAiControl(
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
-  const profile = trackProfile(projection.progress, driver.skill, driver.tire.grip);
+  const profile = trackProfile(projection.progress, 1, driver.tire.grip);
   const battlePreview = trackProfile(
     projection.progress + 72 / TRACK_LENGTH,
-    driver.skill,
+    1,
     driver.tire.grip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
@@ -56,19 +56,12 @@ export function dynamicAiControl(
     const gap = otherDistance - driverDistance;
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
 
-    // Keep tracking a pass target after the attacker has moved out of the
-    // leader's exact lane. The previous narrow search forgot the target halfway
-    // through a move, pulled the attacker back to the racing line, and rebuilt
-    // the parade over and over.
     if (gap > 0 && lateral < AHEAD_SEARCH_LATERAL && gap < aheadGap) {
       ahead = other;
       aheadGap = gap;
       aheadLateral = lateral;
     }
 
-    // Side-by-side racecraft applies to every car, not just the player. Once a
-    // passing car has moved out of the leader's wake it must be allowed to stay
-    // alongside and complete the move instead of being pulled back into line.
     if (battleSafe
       && Math.abs(gap) < 13.5
       && lateral >= 3.4
@@ -96,15 +89,14 @@ export function dynamicAiControl(
   else if (canAttack) battleState = 'ATTACK';
   else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
+  const trackId = getActiveTrack().id;
+  const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
   const technicalLookahead = 1 - clamp((profile.severity - 0.62) / 0.38, 0, 1) * 0.24;
   const lookAheadMetres = clamp(34 + speed * 0.52, 46, 94) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
-  const baseLane = clamp(
-    racingLineOffset(targetProgress, driver.tire.grip) * 0.90 + driver.preferredLane * 0.02,
-    -AI_SAFE_LANE_LIMIT,
-    AI_SAFE_LANE_LIMIT,
-  );
+  const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
+  const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
 
@@ -158,31 +150,28 @@ export function dynamicAiControl(
   const steerLimit = offRoad ? 1 : 0.96;
   const steer = clamp(steerCommand, -steerLimit, steerLimit);
 
-  const speedPlan = professionalSpeedTarget(
-    projection.progress,
-    driver.skill,
-    driver.tire.grip,
-  );
-  let targetSpeed = speedPlan.targetSpeed;
+  const speedReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  let targetSpeed = speedReference.targetSpeed * execution;
 
-  if (battleState === 'ATTACK' && profile.severity < 0.38) targetSpeed += 8;
+  // In a battle the better driver may execute closer to 100% of the same
+  // reference, but nobody is allowed to exceed the machine-limit target. Tow
+  // remains a physical aero effect in RapierRacePhysics rather than a speed
+  // multiplier hidden in the AI controller.
+  if (battleState === 'ATTACK' && profile.severity < 0.42) {
+    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.008);
+  }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
-    // A pass should resolve naturally rather than leaving two cars glued side
-    // by side forever. The quicker car gets to keep its overlap momentum on
-    // mild geometry; the clearly slower car yields a small amount once beaten.
-    // This changes throttle/brake targets only—there is no hidden power boost.
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
-      const passMomentum = clamp(1.8 + performanceDelta * 48, 1.8, 6.0);
-      targetSpeed = Math.max(targetSpeed, alongside.speed + passMomentum);
+      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.006);
     } else if (performanceDelta < -0.002) {
-      const yieldAmount = clamp(0.8 + (-performanceDelta) * 26, 0.8, 2.8);
-      targetSpeed = Math.min(targetSpeed, Math.max(30, alongside.speed - yieldAmount));
+      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - 0.005);
     }
   }
 
-  // Pace-match only while physically blocked. An attacker that has moved clear
-  // laterally keeps its own target speed and can actually complete the pass.
+  // Pace-match only while physically blocked. Once the attacker has moved out
+  // of the leader's lane it returns to its own reference target and can finish
+  // the pass with tow/clean-air physics rather than a scripted speed bonus.
   if (laneBlocked && ahead) {
     const desiredGap = 8.8;
     const buffer = 4.8;
@@ -200,49 +189,18 @@ export function dynamicAiControl(
   targetSpeed = clamp(targetSpeed, 26, 136);
 
   const speedError = targetSpeed - speed;
-  const brake = speedError < -1.7
-    ? clamp((-speedError - 0.5) / 10.5, 0.16, 1)
+  const brake = speedError < -1.25
+    ? clamp((-speedError - 0.35) / 9.2, 0.12, 1)
     : 0;
   const throttle = brake > 0.08
     ? 0
-    : speedError > 3.0
+    : speedError > 2.2
       ? 1
-      : speedError > 0.25
-        ? clamp(0.48 + speedError / 8, 0.48, 1)
-        : 0.20;
+      : speedError > 0.18
+        ? clamp(0.52 + speedError / 7.5, 0.52, 1)
+        : 0.24;
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
-}
-
-/**
- * Forward braking envelope for a qualifying-quality lap. For every meaningful
- * point ahead, calculate the maximum speed from which the car can still brake
- * to that corner's target. The lowest allowance wins. Skill changes execution
- * by small amounts; it must never create one super-powered driver.
- */
-function professionalSpeedTarget(
-  progress: number,
-  skill: number,
-  grip: number,
-): { targetSpeed: number; cornerDemand: number } {
-  const usableGrip = clamp((grip - 0.55) / 0.79, 0, 1);
-  const pace = 1.130 + clamp(skill - 1.127, -0.12, 0.14) * 0.28;
-  const brakingDecel = 35.5 + usableGrip * 5.0;
-  let targetSpeed = 136;
-  let cornerDemand = 0;
-
-  for (const distance of BRAKING_SAMPLES_METRES) {
-    const sample = trackProfile(progress + distance / TRACK_LENGTH, skill, grip);
-    cornerDemand = Math.max(cornerDemand, sample.severity);
-    const cornerPace = 1.015 + sample.severity * usableGrip * 0.055;
-    const desiredAtSample = clamp(sample.targetSpeed * cornerPace * pace, 26, 132);
-    const allowedNow = distance <= 0
-      ? desiredAtSample
-      : Math.sqrt(desiredAtSample * desiredAtSample + 2 * brakingDecel * distance);
-    targetSpeed = Math.min(targetSpeed, allowedNow);
-  }
-
-  return { targetSpeed, cornerDemand };
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
