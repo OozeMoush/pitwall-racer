@@ -110,14 +110,8 @@ export function dynamicAiControl(
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  const currentReferenceLane = clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // A look-ahead lane belongs to the reference path, not to the car's current
-  // error. Capping it to only 1.8 m from the *actual* lane made the controller
-  // perpetually late whenever the optimized trajectory crossed the circuit.
-  // Bound the path's own lane change instead, then let feedback remove any
-  // residual vehicle error.
-  let targetLane = approachLane(currentReferenceLane, baseLane, 5.8);
+  let targetLane = approachLane(projection.laneOffset, baseLane, 1.8);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -131,9 +125,8 @@ export function dynamicAiControl(
     if (positiveRoom < passOffset * 0.80) desired = negative;
     else if (negativeRoom < passOffset * 0.80) desired = positive;
     else if (Math.abs(relativeLane) > 2.0) {
-      // Once the attacker has moved out, stay committed to that side. Choosing
-      // the cheapest side from the moving reference every tick could flip the
-      // pass direction and launch the car across the road.
+      // Once an attacker has pulled out, stay on that side until overlap. A
+      // moving reference line must not make the car reverse its passing move.
       desired = relativeLane > 0 ? positive : negative;
     } else {
       const positiveCost = Math.abs(positive - baseLane);
@@ -157,7 +150,7 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
-    targetLane = approachLane(currentReferenceLane, baseLane, 4.5);
+    targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
@@ -184,32 +177,12 @@ export function dynamicAiControl(
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? currentReferenceLane
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
-
-  // Heading/lateral feedback alone waits until the car has already missed the
-  // bend before asking for steering. Estimate the optimized path's signed yaw
-  // rate one short segment ahead and feed it forward, then correct the real
-  // body's yaw-rate error. This is the steering equivalent of the reference
-  // brake trace and is essential for actually realizing an optimized lap.
-  const curvePreviewProgress = tangentProgress + 8 / TRACK_LENGTH;
-  const curvePreviewLane = offRoad
-    ? 0
-    : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(referenceTarget(trackId, curvePreviewProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
-      : targetLane;
-  const curvePreview = sampleTrack(curvePreviewProgress, curvePreviewLane);
-  const nextPathHeading = Math.atan2(curvePreview.y - tangent.y, curvePreview.x - tangent.x);
-  const signedHeadingChange = wrapAngle(nextPathHeading - pathHeading);
-  const referenceYawRate = signedHeadingChange * Math.max(0, speed) / 8;
-
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
-    : headingError * 1.95
-      + bearingError * 0.78
-      + lateralError * 0.62
-      + (referenceYawRate - vehicle.yawRate) * 0.72;
+    : headingError * 2.15 + bearingError * 0.82 + lateralError * 0.52 - vehicle.yawRate * 0.38;
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
