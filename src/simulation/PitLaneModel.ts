@@ -11,6 +11,10 @@ export const PIT_SERVICE_SECONDS = 2.5;
 export const PIT_SPEED = 40;
 
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
+// Approximate the time the same section would consume at racing speed. Strategy
+// tools care about *time lost versus staying out*, not the full clock time spent
+// traversing the pit lane.
+const MAINLINE_REFERENCE_SPEED = 80;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
@@ -53,6 +57,11 @@ export function shouldEnterPit(
 
 export function pitStopDurationSeconds(): number {
   return (PIT_SPAN * TRACK_LENGTH) / PIT_SPEED + PIT_SERVICE_SECONDS;
+}
+
+export function pitStopTimeLossEstimateSeconds(): number {
+  const mainlineSeconds = (PIT_SPAN * TRACK_LENGTH) / MAINLINE_REFERENCE_SPEED;
+  return Math.max(PIT_SERVICE_SECONDS, pitStopDurationSeconds() - mainlineSeconds);
 }
 
 export function stepPitStop(state: PitStopState, dt: number): PitStopState {
