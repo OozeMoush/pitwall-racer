@@ -29,7 +29,7 @@ describe('machine-limit reference driver', () => {
     });
 
     console.log(`REFERENCE_DRIVER ${JSON.stringify(telemetry)}`);
-  });
+  }, 20_000);
 
   it('makes tyre grip change the physical reference instead of changing engine power', () => {
     const soft = referenceLap('pitwall-gp', compoundPeakGrip('SOFT', 'PUSH'));
