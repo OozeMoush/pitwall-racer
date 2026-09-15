@@ -15,10 +15,10 @@ export interface PitwallApexTarget {
  *
  * In the rapid-direction-change zones, scan the legal reference line and pick
  * meaningful local extrema. When the first apex is already close, begin a
- * restrained hand-off toward the following apex before the first kerb is fully
- * behind the car. The previous version switched too hard and made the car
- * overshoot across the road; this version keeps the geometric anticipation but
- * deliberately de-rates the controller's "apex commitment" during the blend.
+ * small hand-off toward the following apex before the first kerb is fully
+ * behind the car. The hand-off is deliberately shallow: enough to start the
+ * opposite rotation earlier, but not enough to make the closed-loop steering
+ * chase across the whole road.
  */
 export function nextPitwallReferenceApex(
   trackId: TrackId,
@@ -30,7 +30,7 @@ export function nextPitwallReferenceApex(
   const stepMetres = 4;
   const minimumDistance = 4;
   const maximumDistance = 92;
-  const earlyHandoffDistance = 15;
+  const earlyHandoffDistance = 14;
 
   let previousLane = referenceTarget(trackId, progress, tireGrip).laneOffset;
   let currentDistance = stepMetres;
@@ -68,17 +68,13 @@ export function nextPitwallReferenceApex(
           0,
           1,
         );
-        const handoffFraction = 0.16 + urgency * 0.22;
+        const handoffFraction = 0.06 + urgency * 0.12;
         const handoffDistance = firstApex.distanceMetres + gap * handoffFraction;
         const handoffProgress = wrap01(progress + handoffDistance / TRACK_LENGTH);
 
         return {
           progress: handoffProgress,
-          // The target point is physically at handoffDistance, but reporting a
-          // slightly longer pursuit distance prevents DynamicAiController from
-          // simultaneously applying its maximum chicane gain while the target
-          // is already being advanced toward the next apex.
-          distanceMetres: handoffDistance + 8,
+          distanceMetres: handoffDistance,
           laneOffset: referenceTarget(trackId, handoffProgress, tireGrip).laneOffset,
         };
       }
