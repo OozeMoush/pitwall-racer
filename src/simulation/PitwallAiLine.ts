@@ -13,15 +13,12 @@ export interface PitwallApexTarget {
  * Pitwall is compact enough that a 25-40 m gaze sometimes lands between two
  * opposing apexes, which is exactly where a human driver would *not* aim.
  *
- * In the two rapid-direction-change zones, scan the already-generated legal
- * reference line and return the next meaningful local lane extremum. When the
- * first apex is already very close, start handing the steering target toward
- * the following apex before the car has fully passed the first one. A good
- * chicane line does not wait until the first kerb is behind the rear axle before
- * preparing the opposite lock.
- *
- * No grip, power or collision rule is changed here; this is only geometric
- * anticipation for the physical steering controller.
+ * In the rapid-direction-change zones, scan the legal reference line and pick
+ * meaningful local extrema. When the first apex is already close, begin a
+ * restrained hand-off toward the following apex before the first kerb is fully
+ * behind the car. The previous version switched too hard and made the car
+ * overshoot across the road; this version keeps the geometric anticipation but
+ * deliberately de-rates the controller's "apex commitment" during the blend.
  */
 export function nextPitwallReferenceApex(
   trackId: TrackId,
@@ -33,7 +30,7 @@ export function nextPitwallReferenceApex(
   const stepMetres = 4;
   const minimumDistance = 4;
   const maximumDistance = 92;
-  const earlyHandoffDistance = 18;
+  const earlyHandoffDistance = 15;
 
   let previousLane = referenceTarget(trackId, progress, tireGrip).laneOffset;
   let currentDistance = stepMetres;
@@ -65,21 +62,23 @@ export function nextPitwallReferenceApex(
         firstApex = apex;
         if (firstApex.distanceMetres > earlyHandoffDistance) return firstApex;
       } else {
-        // Blend part-way from the nearly-reached first apex toward the second.
-        // This preserves the first clip while beginning the direction change a
-        // few metres earlier, which is where the old controller lost most of
-        // its time in the 55-60% and final Pitwall complexes.
         const gap = apex.distanceMetres - firstApex.distanceMetres;
-        const handoffFraction = clamp(
-          0.24 + (earlyHandoffDistance - firstApex.distanceMetres) / earlyHandoffDistance * 0.34,
-          0.24,
-          0.58,
+        const urgency = clamp(
+          (earlyHandoffDistance - firstApex.distanceMetres) / earlyHandoffDistance,
+          0,
+          1,
         );
+        const handoffFraction = 0.16 + urgency * 0.22;
         const handoffDistance = firstApex.distanceMetres + gap * handoffFraction;
         const handoffProgress = wrap01(progress + handoffDistance / TRACK_LENGTH);
+
         return {
           progress: handoffProgress,
-          distanceMetres: handoffDistance,
+          // The target point is physically at handoffDistance, but reporting a
+          // slightly longer pursuit distance prevents DynamicAiController from
+          // simultaneously applying its maximum chicane gain while the target
+          // is already being advanced toward the next apex.
+          distanceMetres: handoffDistance + 8,
           laneOffset: referenceTarget(trackId, handoffProgress, tireGrip).laneOffset,
         };
       }
