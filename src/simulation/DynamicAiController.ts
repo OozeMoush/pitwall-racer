@@ -16,6 +16,10 @@ export interface DynamicAiControl {
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
+// A clean car may use the same kerb-adjacent centre position that the player can
+// use. Battles stay on the narrower limit above so wheel-to-wheel racing keeps
+// margin for two physical colliders.
+const CLEAN_AIR_LANE_LIMIT = Math.min(14.5, AI_SAFE_LANE_LIMIT + 0.65);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
@@ -146,13 +150,9 @@ export function dynamicAiControl(
   const lookAheadMetres = Math.max(21, genericLookAheadMetres * (1 - chicaneDemand * 0.40));
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
-  const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
+  const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  // Keep the forward geometric target aggressive, but do not drag the current
-  // lateral-error term almost all the way to that future lane. The previous
-  // version changed side too early in the last S-complex and then had to unwind
-  // the steering on exit. A calmer phase term lets the speed increase become
-  // real exit speed rather than extra lateral travel.
   const cleanLaneReach = 3.2 + chicaneDemand * 4.8;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
@@ -204,10 +204,15 @@ export function dynamicAiControl(
   const target = sampleTrack(steeringProgress, targetLane);
   const tangentDistance = battleActive ? 6 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
+  const cleanReferenceLimit = battleActive ? AI_SAFE_LANE_LIMIT : CLEAN_AIR_LANE_LIMIT;
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      ? clamp(
+        referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset,
+        -cleanReferenceLimit,
+        cleanReferenceLimit,
+      )
       : targetLane;
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
@@ -215,8 +220,15 @@ export function dynamicAiControl(
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
 
-  const currentReferenceLane = clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.60;
+  const currentReferenceLane = clamp(
+    currentLineReference.laneOffset,
+    -cleanReferenceLimit,
+    cleanReferenceLimit,
+  );
+  // The .60 setting lagged the final direction change and the .94 setting began
+  // it too early. Keep the error term slightly ahead of the car, while the path
+  // heading itself remains responsible for the majority of the turn-in.
+  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.80;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
@@ -234,7 +246,11 @@ export function dynamicAiControl(
   const previewProgress = tangentProgress + 12 / TRACK_LENGTH;
   const previewLane = battleActive
     ? targetLane
-    : clamp(referenceTarget(trackId, previewProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    : clamp(
+      referenceTarget(trackId, previewProgress, driver.tire.grip).laneOffset,
+      -CLEAN_AIR_LANE_LIMIT,
+      CLEAN_AIR_LANE_LIMIT,
+    );
   const preview = sampleTrack(previewProgress, previewLane);
   const previewHeading = Math.atan2(preview.y - tangent.y, preview.x - tangent.x);
   const turnFeedForward = battleActive || offRoad
@@ -266,7 +282,12 @@ export function dynamicAiControl(
     : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
   const cleanAirPaceMultiplier = battleActive || offRoad
     ? 1
-    : competitiveCornerPaceMultiplier(trackId, profile.severity, laneSwing);
+    : competitiveCornerPaceMultiplier(
+      trackId,
+      projection.progress,
+      profile.severity,
+      laneSwing,
+    );
   let targetSpeed = speedReference.targetSpeed
     * execution
     * cleanAirPaceMultiplier
@@ -287,6 +308,7 @@ export function dynamicAiControl(
       const futureLaneSwing = Math.abs(futureAfter.laneOffset - future.laneOffset);
       const futurePaceMultiplier = competitiveCornerPaceMultiplier(
         trackId,
+        futureProgress,
         futureProfile.severity,
         futureLaneSwing,
       );
