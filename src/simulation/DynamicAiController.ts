@@ -29,6 +29,11 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
  * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
  * target. Traffic can move the car off the reference line, but once clear it
  * returns to the same trajectory a perfect reference driver would use.
+ *
+ * The rigid-body car cannot instantaneously realize a rapidly alternating
+ * reference line, so chicanes add deterministic steering/speed feed-forward.
+ * This changes only the requested controls; the AI still uses exactly the same
+ * chassis, tyre grip, engine and surface physics as the player.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -121,19 +126,39 @@ export function dynamicAiControl(
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
+  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  const nearLineReference = referenceTarget(
+    trackId,
+    projection.progress + 24 / TRACK_LENGTH,
+    driver.tire.grip,
+  );
+  const farLineReference = referenceTarget(
+    trackId,
+    projection.progress + 48 / TRACK_LENGTH,
+    driver.tire.grip,
+  );
 
+  // A fast chicane is not one broad bend. The reference lane changes side in
+  // tens of metres, and a long generic look-ahead used to make the controller
+  // aim beyond the first apex. Detect the lateral swing in the *baked* racing
+  // line, shorten the gaze, and let the physical car commit to the next apex.
+  const laneSwing = Math.max(
+    Math.abs(nearLineReference.laneOffset - currentLineReference.laneOffset),
+    Math.abs(farLineReference.laneOffset - nearLineReference.laneOffset),
+  );
+  const chicaneDemand = clamp((laneSwing - 1.4) / 7.2, 0, 1);
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
-  const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+  const genericLookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+  const lookAheadMetres = Math.max(25, genericLookAheadMetres * (1 - chicaneDemand * 0.27));
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
-  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // Keep the proven closed-loop reference follower for clean-air pace. The
-  // visible weaving was primarily tactical side switching, not the reference
-  // path itself; replacing this loop made the car miss the final complex and
-  // lose the qualifying lap entirely.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
+  // Normal bends keep the proven stable follower. Rapid direction changes get
+  // more deterministic lane reach so the car actually clips both apexes rather
+  // than arriving several metres late and making a wide amateur-looking arc.
+  const cleanLaneReach = 2.6 + chicaneDemand * 4.2;
+  let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -168,7 +193,7 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
-    targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
+    targetLane = approachLane(projection.laneOffset, baseLane, 1.5 + chicaneDemand * 2.7);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
@@ -209,6 +234,7 @@ export function dynamicAiControl(
   const overflowCorrection = battleOverflow > 0
     ? -Math.sign(projection.laneOffset) * battleOverflow * 0.65
     : 0;
+  const precisionGain = battleActive ? 0 : chicaneDemand;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
     : battleActive
@@ -217,14 +243,23 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * 2.15
-        + bearingError * 0.82
-        + lateralError * 0.52
-        - vehicle.yawRate * 0.38;
+      : headingError * (2.15 + precisionGain * 0.25)
+        + bearingError * (0.82 + precisionGain * 0.30)
+        + lateralError * (0.52 + precisionGain * 0.40)
+        - vehicle.yawRate * (0.38 + precisionGain * 0.05);
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
-  let targetSpeed = speedReference.targetSpeed * execution;
+  const lineErrorMetres = Math.abs(referenceLaneNow - projection.laneOffset);
+  const linePrecision = 1 - clamp(lineErrorMetres / 8.0, 0, 1);
+  const cornerDemand = clamp((profile.severity - 0.18) / 0.70, 0, 1);
+  // Command a little beyond the planner in technical sections to compensate
+  // for closed-loop realization lag. This is not a hidden speed or grip boost:
+  // the shared chassis still decides what speed is physically achievable.
+  const trackingFeedForward = battleActive || offRoad
+    ? 0
+    : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
+  let targetSpeed = speedReference.targetSpeed * execution * (1 + trackingFeedForward);
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
@@ -262,7 +297,11 @@ export function dynamicAiControl(
     ? clamp((overspeed - 0.20) / 9.4, 0.05, 1)
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
-  let brake = Math.max(feedbackBrake, speedReference.brake * 0.82 * plannedBrakeWeight);
+  const brakeCommit = 1 - trackingFeedForward * 2.2;
+  let brake = Math.max(
+    feedbackBrake,
+    speedReference.brake * 0.82 * clamp(brakeCommit, 0.78, 1) * plannedBrakeWeight,
+  );
 
   let throttle: number;
   if (brake > 0.06) {
