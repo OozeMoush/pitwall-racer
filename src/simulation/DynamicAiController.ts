@@ -258,7 +258,13 @@ export function dynamicAiControl(
   const trackingFeedForward = battleActive || offRoad
     ? 0
     : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
-  let targetSpeed = speedReference.targetSpeed * execution * (1 + trackingFeedForward);
+  const cleanAirPaceMultiplier = battleActive || offRoad
+    ? 1
+    : competitiveCornerPaceMultiplier(trackId, profile.severity, laneSwing);
+  let targetSpeed = speedReference.targetSpeed
+    * execution
+    * cleanAirPaceMultiplier
+    * (1 + trackingFeedForward * 0.45);
 
   // A good human brakes *before* the first chicane apex. The reference envelope
   // already knows the upcoming corner speed, but the old physical controller
@@ -271,12 +277,21 @@ export function dynamicAiControl(
     const brakingDeceleration = 28 + clamp((driver.tire.grip - 0.90) * 10, -2, 3.5);
     let brakingPreviewCap = Number.POSITIVE_INFINITY;
     for (const distance of BRAKING_PREVIEW_DISTANCES) {
-      const future = referenceTarget(
+      const futureProgress = projection.progress + distance / TRACK_LENGTH;
+      const future = referenceTarget(trackId, futureProgress, driver.tire.grip);
+      const futureAfter = referenceTarget(
         trackId,
-        projection.progress + distance / TRACK_LENGTH,
+        futureProgress + 24 / TRACK_LENGTH,
         driver.tire.grip,
       );
-      const futureSpeed = future.targetSpeed * execution;
+      const futureProfile = trackProfile(futureProgress, 1, driver.tire.grip);
+      const futureLaneSwing = Math.abs(futureAfter.laneOffset - future.laneOffset);
+      const futurePaceMultiplier = competitiveCornerPaceMultiplier(
+        trackId,
+        futureProfile.severity,
+        futureLaneSwing,
+      );
+      const futureSpeed = future.targetSpeed * execution * futurePaceMultiplier;
       const allowedNow = Math.sqrt(
         Math.max(0, futureSpeed * futureSpeed + 2 * brakingDeceleration * distance),
       );
@@ -322,9 +337,18 @@ export function dynamicAiControl(
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const brakeCommit = 1 - trackingFeedForward * 2.2;
+  const cornerAttackBrakeRelease = clamp(
+    1 - (cleanAirPaceMultiplier - 1) * 3.0,
+    0.52,
+    1,
+  );
   let brake = Math.max(
     feedbackBrake,
-    speedReference.brake * 0.82 * clamp(brakeCommit, 0.78, 1) * plannedBrakeWeight,
+    speedReference.brake
+      * 0.82
+      * clamp(brakeCommit, 0.78, 1)
+      * cornerAttackBrakeRelease
+      * plannedBrakeWeight,
   );
 
   let throttle: number;
@@ -344,6 +368,17 @@ export function dynamicAiControl(
   }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
+}
+
+function competitiveCornerPaceMultiplier(
+  trackId: string,
+  severity: number,
+  laneSwing: number,
+): number {
+  if (trackId !== 'pitwall-gp') return 1;
+  const technical = clamp((severity - 0.24) / 0.70, 0, 1);
+  const directionChange = clamp((laneSwing - 1.2) / 6.5, 0, 1);
+  return 1 + technical * (0.09 + directionChange * 0.07);
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
