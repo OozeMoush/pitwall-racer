@@ -9,37 +9,32 @@ import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
  * Calibrate the baked line once, before any reference laps are cached. This is
  * deliberately a trajectory-only correction: no engine power, tyre grip or
  * straight-line speed is added. Broad outside/apex placement is preserved,
- * while the fast chicanes are treated as flowing arcs rather than a sequence of
- * full-width left-right lane targets.
+ * while short left-right spikes are rounded into continuous chicane arcs.
  */
 export function installReferenceLineCalibration(): void {
   const raw = OPTIMIZED_REFERENCE_LANES['pitwall-gp'];
   if (raw.length === 0 || isCalibrated(raw)) return;
 
   const smoothed = smoothCircular(raw, 2);
-  const reachable = limitCircularLaneRate(smoothed, 1.35, 6);
+  const reachable = limitCircularLaneRate(smoothed, 1.55, 5);
 
-  // The physical telemetry shows the biggest loss at roughly 55-65% and again
-  // in the final complex: the car is still on the previous side of the road
-  // when the raw optimizer has already demanded the opposite edge. A much
-  // broader local average produces the same human-like result as straightening
-  // a chicane: one continuous transition instead of chasing every local apex.
-  const broad = smoothCircular(reachable, 14);
+  // Human pace comes from treating these as one flowing S rather than three
+  // disconnected turn-in events. A broader local filter keeps the useful
+  // outside/apex direction while removing the short lane reversals that made
+  // the physical AI chase a path it could not finish before the next apex.
+  const broad = smoothCircular(reachable, 8);
   const chicaneRounded = reachable.map((value, index) => {
     const progress = index / reachable.length;
     const technicalWeight = Math.max(
-      windowWeight(progress, 0.500, 0.730, 0.035),
-      windowWeight(progress, 0.815, 0.998, 0.035),
-      windowWeight(progress, 0.000, 0.060, 0.028),
+      windowWeight(progress, 0.505, 0.725, 0.030),
+      windowWeight(progress, 0.825, 0.998, 0.030),
+      windowWeight(progress, 0.000, 0.055, 0.024),
     );
-    return lerp(value, broad[index], technicalWeight);
+    return lerp(value, broad[index], technicalWeight * 0.94);
   });
 
-  // Keep the centre path physically reachable at race speed. The final tiny
-  // smoothing pass removes sample-to-sample kinks introduced by the window
-  // blend without erasing the broad outside/inside/outside shape.
-  const settled = limitCircularLaneRate(chicaneRounded, 0.90, 8);
-  const finalLine = smoothCircular(settled, 3).map((value) => clamp(value, -14.2, 14.2));
+  const settled = limitCircularLaneRate(chicaneRounded, 1.25, 6);
+  const finalLine = smoothCircular(settled, 2).map((value) => clamp(value, -14.5, 14.5));
 
   OPTIMIZED_REFERENCE_LANES['pitwall-gp'] = Object.freeze(markCalibrated(finalLine));
 }
