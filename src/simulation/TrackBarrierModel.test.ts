@@ -20,15 +20,12 @@ describe('TrackBarrierModel', () => {
       }
     }
 
-    // The barrier centre line must retain multiple metres of runoff beyond the
-    // 17 m road edge. This specifically catches tangent/chord pieces poking back
-    // into the hairpin like the visual snag reported in play.
     expect(closest).toBeGreaterThan(TRACK_ROAD_HALF_WIDTH + 3.5);
   });
 
-  it('uses finite short segments instead of long midpoint tangents', () => {
+  it('uses very short finite chords so miniature bends do not look faceted', () => {
     const segments = safetyBarrierSegments();
     expect(segments.every((segment) => Number.isFinite(segment.heading))).toBe(true);
-    expect(Math.max(...segments.map((segment) => segment.length))).toBeLessThan(9);
+    expect(Math.max(...segments.map((segment) => segment.length))).toBeLessThan(5);
   });
 });
