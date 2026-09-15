@@ -1,3 +1,4 @@
+import { competitiveCornerPaceMultiplier } from './PitwallAiPace';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -147,7 +148,12 @@ export function dynamicAiControl(
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  const cleanLaneReach = 3.4 + chicaneDemand * 6.2;
+  // Keep the forward geometric target aggressive, but do not drag the current
+  // lateral-error term almost all the way to that future lane. The previous
+  // version changed side too early in the last S-complex and then had to unwind
+  // the steering on exit. A calmer phase term lets the speed increase become
+  // real exit speed rather than extra lateral travel.
+  const cleanLaneReach = 3.2 + chicaneDemand * 4.8;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -210,7 +216,7 @@ export function dynamicAiControl(
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
 
   const currentReferenceLane = clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.94;
+  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.60;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
@@ -361,17 +367,6 @@ export function dynamicAiControl(
   }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
-}
-
-function competitiveCornerPaceMultiplier(
-  trackId: string,
-  severity: number,
-  laneSwing: number,
-): number {
-  if (trackId !== 'pitwall-gp') return 1;
-  const technical = clamp((severity - 0.22) / 0.70, 0, 1);
-  const directionChange = clamp((laneSwing - 1.0) / 6.0, 0, 1);
-  return 1 + technical * (0.14 + directionChange * 0.12);
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
