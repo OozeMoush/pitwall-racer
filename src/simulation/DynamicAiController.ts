@@ -18,6 +18,8 @@ export interface DynamicAiControl {
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
 const CLEAN_AIR_LANE_LIMIT = Math.min(14.5, AI_SAFE_LANE_LIMIT + 0.65);
+const CLEAN_AIR_CORRIDOR_LIMIT = Math.max(9.5, AI_SAFE_LANE_LIMIT - 0.35);
+const CLEAN_AIR_RECOVERY_LANE = Math.max(8.5, AI_SAFE_LANE_LIMIT - 2.0);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
@@ -195,6 +197,28 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5 + chicaneDemand * 2.7);
   }
 
+  // A fast line may use the kerb, but a professional driver should not let the
+  // centre of the car wander metres beyond the intended road just because the
+  // next reference apex is on the opposite side. Keep a soft clean-air
+  // corridor: it does nothing while the car is on line, then progressively
+  // prioritises an inward target before the excursion becomes a deep cut.
+  const cleanAirState = battleState === 'CLEAR' || battleState === 'FOLLOW';
+  const corridorOverflow = cleanAirState
+    ? clamp((Math.abs(projection.laneOffset) - CLEAN_AIR_CORRIDOR_LIMIT) / 3.2, 0, 1)
+    : 0;
+  if (corridorOverflow > 0) {
+    const recoveryLane = clamp(
+      baseLane,
+      -CLEAN_AIR_RECOVERY_LANE,
+      CLEAN_AIR_RECOVERY_LANE,
+    );
+    targetLane = approachLane(
+      projection.laneOffset,
+      recoveryLane,
+      5.0 + corridorOverflow * 8.0,
+    );
+  }
+
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
   if (offRoad) {
     targetLane = 0;
@@ -249,8 +273,13 @@ export function dynamicAiControl(
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
     : 0;
-  const overflowCorrection = battleOverflow > 0
+  const battleOverflowCorrection = battleOverflow > 0
     ? -Math.sign(projection.laneOffset) * battleOverflow * 0.65
+    : 0;
+  const cleanOverflowCorrection = !battleActive && !offRoad && corridorOverflow > 0
+    ? -Math.sign(projection.laneOffset)
+      * corridorOverflow
+      * (0.78 + chicaneDemand * 0.34)
     : 0;
 
   const previewProgress = tangentProgress + 12 / TRACK_LENGTH;
@@ -282,13 +311,15 @@ export function dynamicAiControl(
         + bearingError * 1.02
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
-        + overflowCorrection
+        + battleOverflowCorrection
       : headingError * (2.15 + precisionGain * 0.18)
         + bearingError * (0.82 + precisionGain * 0.16)
         + lateralError * (0.52 + precisionGain * 0.25)
         + yawGuide
+        + cleanOverflowCorrection
         - vehicle.yawRate * (0.34 + precisionGain * 0.18);
-  const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const steeringLimit = corridorOverflow > 0 && !battleActive && !offRoad ? 1 : 0.98;
+  const steer = clamp(steerCommand, offRoad ? -1 : -steeringLimit, offRoad ? 1 : steeringLimit);
 
   const speedReference = currentLineReference;
   const lineErrorMetres = Math.abs(referenceLaneNow - projection.laneOffset);
@@ -362,6 +393,14 @@ export function dynamicAiControl(
   }
   if (laneBlocked && ahead && aheadGap < 6.8) {
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
+  }
+
+  // The corridor correction should normally solve the line error without
+  // throwing away speed. Only when the car is already well outside the safe
+  // centre corridor do we trim a small amount of target pace so the inward
+  // steering can catch up before a physical wall/grass excursion costs seconds.
+  if (!battleActive && !offRoad && corridorOverflow > 0) {
+    targetSpeed *= 1 - corridorOverflow * 0.08;
   }
 
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
