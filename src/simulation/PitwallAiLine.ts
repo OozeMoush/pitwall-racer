@@ -15,10 +15,9 @@ export interface PitwallApexTarget {
  *
  * In the rapid-direction-change zones, scan the legal reference line and pick
  * meaningful local extrema. When the first apex is already close, begin a
- * small hand-off toward the following apex before the first kerb is fully
- * behind the car. The hand-off is deliberately shallow: enough to start the
- * opposite rotation earlier, but not enough to make the closed-loop steering
- * chase across the whole road.
+ * measured hand-off toward the following apex before the first kerb is fully
+ * behind the car. This is intentionally between the old late 6-18% hand-off
+ * and the rejected 22-52% experiment that made the car jump across the road.
  */
 export function nextPitwallReferenceApex(
   trackId: TrackId,
@@ -30,7 +29,7 @@ export function nextPitwallReferenceApex(
   const stepMetres = 4;
   const minimumDistance = 4;
   const maximumDistance = 92;
-  const earlyHandoffDistance = 14;
+  const earlyHandoffDistance = 16;
 
   let previousLane = referenceTarget(trackId, progress, tireGrip).laneOffset;
   let currentDistance = stepMetres;
@@ -68,7 +67,7 @@ export function nextPitwallReferenceApex(
           0,
           1,
         );
-        const handoffFraction = 0.06 + urgency * 0.12;
+        const handoffFraction = 0.10 + urgency * 0.16;
         const handoffDistance = firstApex.distanceMetres + gap * handoffFraction;
         const handoffProgress = wrap01(progress + handoffDistance / TRACK_LENGTH);
 
