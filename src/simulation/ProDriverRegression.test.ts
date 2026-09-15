@@ -13,7 +13,7 @@ describe('professional AI driving regression', () => {
     await RAPIER.init();
   });
 
-  it('keeps a clear-lap driver fast and on the circuit instead of discovering the wall', () => {
+  it('keeps a clear-lap driver fast, on-circuit, and free of nervous weaving', () => {
     const driver = createAiField()[0];
     driver.progress = 0.02;
     driver.lap = 1;
@@ -26,18 +26,43 @@ describe('professional AI driving regression', () => {
 
     let deepCuts = 0;
     let samples = 0;
+    const laneSamples: number[] = [];
+    const sampleEvery = Math.round(0.20 / DT);
     for (let tick = 0; tick < 28 / DT; tick++) {
       physics.syncAiKinematics([driver], DT, -10);
       physics.step(DT);
       const state = physics.aiStates()[0];
       const projection = projectTrackNear(state.x, state.y, driver.progress);
       if (projection.distance > DEEP_CUT_DISTANCE) deepCuts += 1;
+      if (tick % sampleEvery === 0) laneSamples.push(projection.laneOffset);
       samples += 1;
     }
+
+    let largeReversals = 0;
+    let previousDelta = 0;
+    for (let index = 1; index < laneSamples.length; index++) {
+      const delta = laneSamples[index] - laneSamples[index - 1];
+      if (Math.abs(delta) > 0.8
+        && Math.abs(previousDelta) > 0.8
+        && Math.sign(delta) !== Math.sign(previousDelta)) {
+        largeReversals += 1;
+      }
+      if (Math.abs(delta) > 0.35) previousDelta = delta;
+    }
+
+    console.log('PRO_DRIVER_LINE', JSON.stringify({
+      largeReversals,
+      laneRange: Number((Math.max(...laneSamples) - Math.min(...laneSamples)).toFixed(2)),
+      deepCutRatio: Number((deepCuts / samples).toFixed(4)),
+    }));
 
     // A quick car can now cross the start line inside this window, so compare
     // total race distance rather than raw progress modulo one lap.
     expect(raceDistance(driver.lap, driver.progress) - startDistance).toBeGreaterThan(0.80);
     expect(deepCuts / samples).toBeLessThan(0.025);
+    // The racing line legitimately crosses the circuit between corners, but it
+    // should not reverse direction every few tenths like a driver sawing at the
+    // wheel. Keep a generous cap for real corner-to-corner transitions.
+    expect(largeReversals).toBeLessThan(24);
   }, 20_000);
 });
