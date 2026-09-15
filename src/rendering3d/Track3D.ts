@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { aiGridSlot, PLAYER_GRID } from '../simulation/GridModel';
+import { safetyBarrierSegments } from '../simulation/TrackBarrierModel';
 import {
   TRACK_BARRIER_HALF_THICKNESS,
   TRACK_BARRIER_OFFSET,
@@ -8,15 +9,14 @@ import {
   TRACK_KERB_OUTER_OFFSET,
   TRACK_ROAD_HALF_WIDTH,
   TRACK_RUNOFF_HALF_WIDTH,
-  shouldPlaceSafetyBarrier,
 } from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
-import { projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import { sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
 export const EDGE_LINE_WIDTH_METRES = 0.75;
-export const KERB_SEGMENT_METRES = 4;
+export const KERB_SEGMENT_METRES = 3;
 export const BARRIER_SEGMENT_METRES = TRACK_BARRIER_SEGMENT_LENGTH;
 export const SPEED_REFERENCE_SPACING_METRES = 12;
 
@@ -26,8 +26,6 @@ const SAMPLE_COUNT = 460;
 const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
 const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
 const SPEED_REFERENCE_OFFSET = TRACK_BARRIER_OFFSET + 2.4;
-// Match RapierRacePhysics: road edge + 2.15 m car half-width + 3 m safety margin.
-const PHYSICAL_BARRIER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
@@ -150,6 +148,29 @@ function addEdgeLines(root: THREE.Group): void {
   }
 }
 
+function kerbChunkIsSafe(start: number, end: number, innerOffset: number, outerOffset: number): boolean {
+  const centreStart = sampleTrack(start);
+  const centreEnd = sampleTrack(end);
+  const innerStart = sampleTrack(start, innerOffset);
+  const innerEnd = sampleTrack(end, innerOffset);
+  const outerStart = sampleTrack(start, outerOffset);
+  const outerEnd = sampleTrack(end, outerOffset);
+
+  const centreDx = centreEnd.x - centreStart.x;
+  const centreDy = centreEnd.y - centreStart.y;
+  const centreLength = Math.hypot(centreDx, centreDy);
+  if (centreLength < 0.05) return false;
+
+  const aligned = (ax: number, ay: number, bx: number, by: number) => {
+    const length = Math.hypot(ax, ay);
+    if (length < centreLength * 0.20 || length > centreLength * 2.8) return false;
+    return (ax * bx + ay * by) / Math.max(0.0001, length * centreLength) > 0.15;
+  };
+
+  return aligned(innerEnd.x - innerStart.x, innerEnd.y - innerStart.y, centreDx, centreDy)
+    && aligned(outerEnd.x - outerStart.x, outerEnd.y - outerStart.y, centreDx, centreDy);
+}
+
 function addCornerKerbs(root: THREE.Group): void {
   const chunkCount = Math.max(1, Math.ceil(TRACK_LENGTH / KERB_SEGMENT_METRES));
   const redVertices: number[] = [];
@@ -167,12 +188,15 @@ function addCornerKerbs(root: THREE.Group): void {
     const side = Math.sign(profile.signedTurn);
     const inner = side * KERB_INNER_OFFSET;
     const outer = side * KERB_OUTER_OFFSET;
+    // At the very tight miniature apexes, offset curves can locally fold over
+    // themselves. Drawing that quad produces the red/white star-shaped spikes
+    // seen in play. Omit only the degenerate pieces; the wall still enforces the
+    // corner and neighbouring kerb chunks remain visible.
+    if (!kerbChunkIsSafe(start, end, inner, outer)) continue;
+
     const vertices = chunk % 2 === 0 ? redVertices : whiteVertices;
     const indices = chunk % 2 === 0 ? redIndices : whiteIndices;
-    // Keep kerbs decisively above the asphalt/runoff ribbons. The previous
-    // 0.082 height sat close enough to the edge-line layer to shimmer when the
-    // orthographic camera moved over a tight corner.
-    appendOffsetStrip(vertices, indices, start, end, inner, outer, 0.112, 3);
+    appendOffsetStrip(vertices, indices, start, end, inner, outer, 0.112, 2);
   }
 
   const materialOptions = {
@@ -227,27 +251,9 @@ function addGridBoxes(root: THREE.Group): void {
 }
 
 function addSafetyBarriers(root: THREE.Group): void {
-  const perSide = Math.max(96, Math.ceil(TRACK_LENGTH / BARRIER_SEGMENT_METRES));
-  const segments: Array<{ progress: number; side: -1 | 1 }> = [];
-  for (let i = 0; i < perSide; i++) {
-    const progress = (i + 0.5) / perSide;
-    const profile = trackProfile(progress);
-    for (const side of [-1, 1] as const) {
-      if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) continue;
-      const pose = sampleTrack(progress, side * TRACK_BARRIER_OFFSET);
-      const nearestTrack = projectTrack(pose.x, pose.y);
-      if (nearestTrack.distance < PHYSICAL_BARRIER_ROAD_CLEARANCE) continue;
-      segments.push({ progress, side });
-    }
-  }
-
-  const actualSegmentLength = TRACK_LENGTH / perSide;
-  // Short segments now follow the curve closely enough that they do not need
-  // visible overlap. Tiny seams are narrower than the car and avoid the old
-  // stacked-box shimmer at the apex of tight bends.
-  const worldLength = actualSegmentLength * WORLD_SCALE * 0.98;
+  const segments = safetyBarrierSegments();
   const worldThickness = TRACK_BARRIER_HALF_THICKNESS * 2 * WORLD_SCALE;
-  const geometry = new THREE.BoxGeometry(worldLength, 0.54, worldThickness);
+  const geometry = new THREE.BoxGeometry(1, 0.54, worldThickness);
   const material = new THREE.MeshStandardMaterial({ color: 0xa9afb0, roughness: 0.78, metalness: 0.16 });
   const barriers = new THREE.InstancedMesh(geometry, material, segments.length);
   const matrix = new THREE.Matrix4();
@@ -255,10 +261,13 @@ function addSafetyBarriers(root: THREE.Group): void {
   const yAxis = new THREE.Vector3(0, 1, 0);
 
   segments.forEach((segment, index) => {
-    const p = sampleTrack(segment.progress, segment.side * TRACK_BARRIER_OFFSET);
-    const world = toWorld(p.x, p.y, 0.27);
-    quaternion.setFromAxisAngle(yAxis, headingToYaw(p.heading));
-    matrix.compose(world, quaternion, new THREE.Vector3(1, 1, 1));
+    const world = toWorld(segment.x, segment.y, 0.27);
+    quaternion.setFromAxisAngle(yAxis, headingToYaw(segment.heading));
+    matrix.compose(
+      world,
+      quaternion,
+      new THREE.Vector3(segment.length * WORLD_SCALE * 0.985, 1, 1),
+    );
     barriers.setMatrixAt(index, matrix);
   });
 
@@ -330,9 +339,6 @@ function addSpeedReferencePosts(root: THREE.Group): void {
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    // These reference posts used to share the barrier centreline and visually
-    // poke through the wall. Keep them a little farther out so every roadside
-    // object has its own depth layer.
     const p = sampleTrack((i + 0.5) / count, side * SPEED_REFERENCE_OFFSET);
     const world = toWorld(p.x, p.y, 0);
     matrix.compose(new THREE.Vector3(world.x, 0.39, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
