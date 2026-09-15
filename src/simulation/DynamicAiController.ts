@@ -160,10 +160,6 @@ export function dynamicAiControl(
   const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
   const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  // Each detected apex is a commitment point rather than merely another sample
-  // in a long gaze. The lane target is still approached through the shared
-  // steering physics, but it is allowed to move decisively enough to clip the
-  // next kerb before the opposite apex becomes the target.
   const cleanLaneReach = 3.2 + chicaneDemand * 5.6;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
@@ -267,10 +263,17 @@ export function dynamicAiControl(
     );
   const preview = sampleTrack(previewProgress, previewLane);
   const previewHeading = Math.atan2(preview.y - tangent.y, preview.x - tangent.x);
-  const turnFeedForward = battleActive || offRoad
+  const pathHeadingDelta = wrapAngle(previewHeading - pathHeading);
+  const desiredYawRate = battleActive || offRoad
     ? 0
-    : wrapAngle(previewHeading - pathHeading) * (0.55 + chicaneDemand * 0.85);
+    : clamp(pathHeadingDelta * speed / 12, -1.35, 1.35);
+  const yawGuide = desiredYawRate * (0.24 + chicaneDemand * 0.42);
 
+  // At high speed the decisive chicane input is *when* the yaw changes sign.
+  // Lateral-error-only steering reacts after the car has already missed the
+  // next apex. Feed the reference path's desired yaw rate forward so the car
+  // starts the opposite rotation on time, while the explicit yaw damping keeps
+  // that anticipation from turning into the old left-right sawing motion.
   const precisionGain = battleActive ? 0 : chicaneDemand;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
@@ -280,11 +283,11 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * (2.15 + precisionGain * 0.28)
-        + bearingError * (0.82 + precisionGain * 0.30)
-        + lateralError * (0.52 + precisionGain * 0.46)
-        + turnFeedForward
-        - vehicle.yawRate * (0.38 + precisionGain * 0.05);
+      : headingError * (2.15 + precisionGain * 0.18)
+        + bearingError * (0.82 + precisionGain * 0.16)
+        + lateralError * (0.52 + precisionGain * 0.25)
+        + yawGuide
+        - vehicle.yawRate * (0.34 + precisionGain * 0.18);
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
