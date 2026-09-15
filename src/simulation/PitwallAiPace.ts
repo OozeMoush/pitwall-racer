@@ -13,9 +13,9 @@ export function competitiveCornerPaceMultiplier(
   laneSwing: number,
 ): number {
   if (trackId !== 'pitwall-gp') return 1;
-  const technical = clamp((severity - 0.20) / 0.68, 0, 1);
-  const directionChange = clamp((laneSwing - 0.9) / 5.8, 0, 1);
-  return 1 + technical * (0.27 + directionChange * 0.18);
+  const technical = clamp((severity - 0.22) / 0.70, 0, 1);
+  const directionChange = clamp((laneSwing - 1.0) / 6.0, 0, 1);
+  return 1 + technical * (0.14 + directionChange * 0.12);
 }
 
 function clamp(value: number, min: number, max: number): number {
