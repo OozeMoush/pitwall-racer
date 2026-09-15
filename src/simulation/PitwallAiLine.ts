@@ -14,11 +14,10 @@ export interface PitwallApexTarget {
  * opposing apexes, which is exactly where a human driver would *not* aim.
  *
  * In the rapid-direction-change zones, scan the legal reference line and pick
- * meaningful local extrema. When the first apex is already close, begin a
- * small hand-off toward the following apex before the first kerb is fully
- * behind the car. The hand-off is deliberately shallow: enough to start the
- * opposite rotation earlier, but not enough to make the closed-loop steering
- * chase across the whole road.
+ * meaningful local extrema. Once the first apex is close, begin the transition
+ * toward the following apex substantially earlier than a generic pure-pursuit
+ * follower would. A strong human lap is mostly won by having the car already
+ * rotating for the second kerb while the first kerb is still beside it.
  */
 export function nextPitwallReferenceApex(
   trackId: TrackId,
@@ -29,8 +28,8 @@ export function nextPitwallReferenceApex(
 
   const stepMetres = 4;
   const minimumDistance = 4;
-  const maximumDistance = 92;
-  const earlyHandoffDistance = 14;
+  const maximumDistance = 104;
+  const earlyHandoffDistance = 20;
 
   let previousLane = referenceTarget(trackId, progress, tireGrip).laneOffset;
   let currentDistance = stepMetres;
@@ -68,7 +67,10 @@ export function nextPitwallReferenceApex(
           0,
           1,
         );
-        const handoffFraction = 0.06 + urgency * 0.12;
+        // The old 6-18% hand-off still left the car finishing apex one before
+        // asking for apex two. Shift roughly a quarter to half of the gap ahead
+        // so the yaw reversal begins while the first kerb is being clipped.
+        const handoffFraction = 0.22 + urgency * 0.30;
         const handoffDistance = firstApex.distanceMetres + gap * handoffFraction;
         const handoffProgress = wrap01(progress + handoffDistance / TRACK_LENGTH);
 
