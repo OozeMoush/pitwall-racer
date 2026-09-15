@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
 import { runQualifyingSession } from './game/QualifyingGame';
+import { installReferenceLineCalibration } from './simulation/ReferenceLineCalibration';
 import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { installRacePauseController } from './ui/RacePauseController';
@@ -18,6 +19,12 @@ async function bootstrap(): Promise<void> {
 
   hud.innerHTML = '<div class="physics-loading">INITIALIZING PHYSICS…</div>';
   await RAPIER.init();
+
+  // Reference laps are cached on first use by qualifying and race AI. Make the
+  // miniature Pitwall trajectory physically reachable before either session can
+  // request that cache; the calibration changes line geometry only, never car
+  // power, grip or tyre behaviour.
+  installReferenceLineCalibration();
 
   const setup = await showPreRaceMenu(hud);
   setActiveTrack(setup.trackId);
