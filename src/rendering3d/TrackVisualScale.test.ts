@@ -9,8 +9,8 @@ import {
 
 describe('track visual scale', () => {
   it('uses kerb blocks sized for the miniature lap rather than the old full-size circuit', () => {
-    expect(KERB_SEGMENT_METRES).toBeGreaterThanOrEqual(4);
-    expect(KERB_SEGMENT_METRES).toBeLessThanOrEqual(8);
+    expect(KERB_SEGMENT_METRES).toBeGreaterThanOrEqual(2.5);
+    expect(KERB_SEGMENT_METRES).toBeLessThanOrEqual(6);
   });
 
   it('keeps edge lines readable at race speed', () => {
