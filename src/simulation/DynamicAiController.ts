@@ -21,20 +21,6 @@ const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
 
-/**
- * Physical AI for the race weekend.
- *
- * Clean-air pace is defined by the generated machine-limit reference lap.
- * Driver skill is only an execution percentage of that reference; it never
- * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
- * target. Traffic can move the car off the reference line, but once clear it
- * returns to the same trajectory a perfect reference driver would use.
- *
- * The rigid-body car cannot instantaneously realize a rapidly alternating
- * reference line, so chicanes add deterministic steering/speed feed-forward.
- * This changes only the requested controls; the AI still uses exactly the same
- * chassis, tyre grip, engine and surface physics as the player.
- */
 export function dynamicAiControl(
   driver: DriverState,
   vehicle: VehicleState,
@@ -49,7 +35,6 @@ export function dynamicAiControl(
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
-
   const battleSafe = battleSeverity < 0.40
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
@@ -79,7 +64,6 @@ export function dynamicAiControl(
       aheadGap = gap;
       aheadLateral = lateral;
     }
-
     if (canRecognizeBattle
       && Math.abs(gap) < alongsideRange
       && lateral >= 3.4
@@ -112,28 +96,18 @@ export function dynamicAiControl(
     && aheadGap < 24
     && aheadLateral < 13.5
     && driver.tire.wear < 0.96;
-  const canAttack = canStartAttack || canContinueAttack;
 
   let battleState: BattleState = 'CLEAR';
   if (alongside) battleState = 'SIDE_BY_SIDE';
-  else if (canAttack) battleState = 'ATTACK';
+  else if (canStartAttack || canContinueAttack) battleState = 'ATTACK';
   else if (laneBlocked && aheadGap < followRange) battleState = 'FOLLOW';
 
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
-  const nearLineReference = referenceTarget(
-    trackId,
-    projection.progress + 24 / TRACK_LENGTH,
-    driver.tire.grip,
-  );
-  const farLineReference = referenceTarget(
-    trackId,
-    projection.progress + 48 / TRACK_LENGTH,
-    driver.tire.grip,
-  );
-
+  const nearLineReference = referenceTarget(trackId, projection.progress + 24 / TRACK_LENGTH, driver.tire.grip);
+  const farLineReference = referenceTarget(trackId, projection.progress + 48 / TRACK_LENGTH, driver.tire.grip);
   const laneSwing = Math.max(
     Math.abs(nearLineReference.laneOffset - currentLineReference.laneOffset),
     Math.abs(farLineReference.laneOffset - nearLineReference.laneOffset),
@@ -145,7 +119,6 @@ export function dynamicAiControl(
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-
   const cleanLaneReach = 3.2 + chicaneDemand * 4.8;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
@@ -163,19 +136,15 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
-
-    if (alongsideSignedGap < -0.75) {
-      targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    } else if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
+    if (alongsideSignedGap < -0.75 || currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else {
       const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-      const desired = clamp(
-        alongside.laneOffset + side * SAFE_SIDE_BY_SIDE_GAP,
-        -BATTLE_LANE_LIMIT,
-        BATTLE_LANE_LIMIT,
+      targetLane = approachLane(
+        projection.laneOffset,
+        clamp(alongside.laneOffset + side * SAFE_SIDE_BY_SIDE_GAP, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT),
+        3.2,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5 + chicaneDemand * 2.7);
@@ -188,9 +157,7 @@ export function dynamicAiControl(
   }
 
   const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
-  const steeringLookAheadMetres = battleActive
-    ? Math.min(32, lookAheadMetres)
-    : lookAheadMetres;
+  const steeringLookAheadMetres = battleActive ? Math.min(32, lookAheadMetres) : lookAheadMetres;
   const steeringProgress = offRoad
     ? projection.progress + 18 / TRACK_LENGTH
     : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
@@ -216,7 +183,6 @@ export function dynamicAiControl(
       ? currentReferenceLane + (targetLane - currentReferenceLane) * leadBlend
       : targetLane;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 8.2, -1, 1);
-
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
     : 0;
@@ -238,11 +204,7 @@ export function dynamicAiControl(
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
     : battleActive
-      ? headingError * 2.10
-        + bearingError * 1.02
-        + lateralError * 0.78
-        - vehicle.yawRate * 0.40
-        + overflowCorrection
+      ? headingError * 2.10 + bearingError * 1.02 + lateralError * 0.78 - vehicle.yawRate * 0.40 + overflowCorrection
       : headingError * (2.15 + precisionGain * 0.25)
         + bearingError * (0.82 + precisionGain * 0.24)
         + lateralError * (0.52 + precisionGain * 0.34)
@@ -256,7 +218,7 @@ export function dynamicAiControl(
   const cornerDemand = clamp((profile.severity - 0.18) / 0.70, 0, 1);
   const trackingFeedForward = battleActive || offRoad
     ? 0
-    : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
+    : cornerDemand * linePrecision * (0.035 + chicaneDemand * 0.025);
   let targetSpeed = speedReference.targetSpeed * execution * (1 + trackingFeedForward);
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
@@ -265,11 +227,9 @@ export function dynamicAiControl(
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
-      const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
-      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
+      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + clamp(performanceDelta * 0.24, 0.004, 0.012));
     } else if (performanceDelta < -0.002) {
-      const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
-      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
+      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - clamp(-performanceDelta * 0.18, 0.003, 0.010));
     }
   }
 
@@ -277,14 +237,12 @@ export function dynamicAiControl(
     const desiredGap = 8.8;
     const buffer = 4.8;
     if (aheadGap < desiredGap + buffer) {
-      const closingAllowance = clamp((aheadGap - desiredGap) * 0.82, -7, 9);
-      targetSpeed = Math.min(targetSpeed, ahead.speed + closingAllowance);
+      targetSpeed = Math.min(targetSpeed, ahead.speed + clamp((aheadGap - desiredGap) * 0.82, -7, 9));
     }
   }
   if (laneBlocked && ahead && aheadGap < 6.8) {
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
-
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, 26, 136);
@@ -298,8 +256,21 @@ export function dynamicAiControl(
   const brakeCommit = 1 - trackingFeedForward * 2.2;
   let brake = Math.max(
     feedbackBrake,
-    speedReference.brake * 0.82 * clamp(brakeCommit, 0.78, 1) * plannedBrakeWeight,
+    speedReference.brake * 0.82 * clamp(brakeCommit, 0.80, 1) * plannedBrakeWeight,
   );
+
+  // The shared arcade chassis intentionally rotates more under braking. A human
+  // naturally exploits that in the chicanes; the AI previously released the
+  // brake as soon as it reached the nominal speed and then arrived late at the
+  // second apex. Keep a small amount of trail brake only while a real heading
+  // correction is still required. This uses the exact same brake/yaw physics as
+  // the player and also prevents the faster reference from turning into a cut.
+  const rotationError = clamp((Math.abs(headingError) + Math.abs(bearingError) - 0.08) / 0.32, 0, 1);
+  const trailWindow = clamp((speed - targetSpeed + 6) / 10, 0, 1);
+  const trailBrake = battleActive || offRoad
+    ? 0
+    : chicaneDemand * cornerDemand * rotationError * trailWindow * 0.42;
+  brake = Math.max(brake, trailBrake);
 
   let throttle: number;
   if (brake > 0.06) {
