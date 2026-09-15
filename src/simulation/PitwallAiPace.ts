@@ -7,11 +7,10 @@ import type { TrackId } from './TrackModel';
  * speed multiplier only: it does not change engine power, tyre grip, drag or
  * straight-line speed, and other circuits remain untouched.
  *
- * The boost is deliberately progress-aware. Telemetry showed that the middle
- * S-sections remain composed with substantially more corner speed, while an
- * equally large boost in the final 10% makes the car cross to the wrong side of
- * the last chicane and *lose* time. Spend the pace budget where the physical car
- * can actually convert it into lap time instead of raising every corner target.
+ * Human playtesting is the authority here: the player is already several
+ * seconds quicker than the physical AI on a worn Soft, with most of that time
+ * coming from committing to the two S-sections. Spend the extra pace only in
+ * real corners/direction changes; straights stay completely unchanged.
  */
 export function competitiveCornerPaceMultiplier(
   trackId: TrackId,
@@ -24,15 +23,20 @@ export function competitiveCornerPaceMultiplier(
   const p = wrap01(progress);
   const technical = clamp((severity - 0.22) / 0.70, 0, 1);
   const directionChange = clamp((laneSwing - 1.0) / 6.0, 0, 1);
-  const stableBase = technical * (0.14 + directionChange * 0.12);
+
+  // Raise the whole technical baseline modestly, then spend most of the extra
+  // budget where the player is currently winning the lap: the middle and final
+  // rapid direction changes. These multipliers are still merely controller
+  // targets; the shared chassis/tyres determine whether the car can realize it.
+  const stableBase = technical * (0.16 + directionChange * 0.13);
 
   const middleAttack = windowWeight(p, 0.47, 0.73, 0.035)
     * technical
-    * (0.14 + directionChange * 0.07);
+    * (0.16 + directionChange * 0.08);
 
-  const finalApproach = windowWeight(p, 0.79, 0.895, 0.025)
+  const finalApproach = windowWeight(p, 0.79, 0.995, 0.025)
     * technical
-    * (0.11 + directionChange * 0.05);
+    * (0.18 + directionChange * 0.07);
 
   return 1 + stableBase + middleAttack + finalApproach;
 }
