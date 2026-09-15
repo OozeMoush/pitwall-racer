@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { dynamicAiControl } from './DynamicAiController';
 import { aiQualifyingTime } from './QualifyingModel';
 import { referenceTarget } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
@@ -21,6 +22,8 @@ interface LaneBin {
   signedLaneError: number;
   actualLane: number;
   referenceLane: number;
+  controlLane: number;
+  steer: number;
   maxLaneError: number;
 }
 
@@ -33,11 +36,21 @@ function createBin(): LaneBin {
     signedLaneError: 0,
     actualLane: 0,
     referenceLane: 0,
+    controlLane: 0,
+    steer: 0,
     maxLaneError: 0,
   };
 }
 
-function addSample(bin: LaneBin, speed: number, targetSpeed: number, actualLane: number, referenceLane: number): void {
+function addSample(
+  bin: LaneBin,
+  speed: number,
+  targetSpeed: number,
+  actualLane: number,
+  referenceLane: number,
+  controlLane: number,
+  steer: number,
+): void {
   const signedLaneError = actualLane - referenceLane;
   const laneError = Math.abs(signedLaneError);
   bin.ticks++;
@@ -47,6 +60,8 @@ function addSample(bin: LaneBin, speed: number, targetSpeed: number, actualLane:
   bin.signedLaneError += signedLaneError;
   bin.actualLane += actualLane;
   bin.referenceLane += referenceLane;
+  bin.controlLane += controlLane;
+  bin.steer += steer;
   bin.maxLaneError = Math.max(bin.maxLaneError, laneError);
 }
 
@@ -60,6 +75,8 @@ function summarizeBin(bin: LaneBin, index: number, count: number) {
     targetKmh: Math.round((bin.targetSpeed / samples) * 3.6),
     actualLane: Number((bin.actualLane / samples).toFixed(2)),
     referenceLane: Number((bin.referenceLane / samples).toFixed(2)),
+    controlLane: Number((bin.controlLane / samples).toFixed(2)),
+    avgSteer: Number((bin.steer / samples).toFixed(2)),
     signedLaneError: Number((bin.signedLaneError / samples).toFixed(2)),
     avgLaneError: Number((bin.laneError / samples).toFixed(2)),
     maxLaneError: Number(bin.maxLaneError.toFixed(2)),
@@ -102,10 +119,27 @@ describe('physical AI qualifying consistency', () => {
         const state = physics.aiStates()[0];
         const projection = projectTrackNear(state.x, state.y, driver.progress);
         const reference = referenceTarget('pitwall-gp', projection.progress, driver.tire.grip);
+        const control = dynamicAiControl(driver, state, []);
         const coarseIndex = Math.min(DIAGNOSTIC_BINS - 1, Math.floor(projection.progress * DIAGNOSTIC_BINS));
         const fineIndex = Math.min(FINE_BINS - 1, Math.floor(projection.progress * FINE_BINS));
-        addSample(bins[coarseIndex], state.speed, reference.targetSpeed, projection.laneOffset, reference.laneOffset);
-        addSample(fineBins[fineIndex], state.speed, reference.targetSpeed, projection.laneOffset, reference.laneOffset);
+        addSample(
+          bins[coarseIndex],
+          state.speed,
+          reference.targetSpeed,
+          projection.laneOffset,
+          reference.laneOffset,
+          control.targetLane,
+          control.steer,
+        );
+        addSample(
+          fineBins[fineIndex],
+          state.speed,
+          reference.targetSpeed,
+          projection.laneOffset,
+          reference.laneOffset,
+          control.targetLane,
+          control.steer,
+        );
       }
 
       if (driver.lap >= 2 && firstCrossing !== undefined) {
