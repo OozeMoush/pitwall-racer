@@ -160,12 +160,11 @@ export function dynamicAiControl(
   const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
   const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  // Preserve the early apex target, but do not chase it with a full-width lane
-  // jump in one controller tick. The car is already rotating at 200+ km/h in
-  // the two Pitwall complexes; giving the feedback loop more lane reach at the
-  // same time as more steering gain was the source of the visible S-shaped
-  // overshoot. Anticipation stays, feedback becomes calmer.
-  const cleanLaneReach = 3.2 + chicaneDemand * 4.0;
+  // Each detected apex is a commitment point rather than merely another sample
+  // in a long gaze. The lane target is still approached through the shared
+  // steering physics, but it is allowed to move decisively enough to clip the
+  // next kerb before the opposite apex becomes the target.
+  const cleanLaneReach = 3.2 + chicaneDemand * 5.6;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -242,8 +241,8 @@ export function dynamicAiControl(
   const leadBlend = battleActive || offRoad
     ? 0
     : nextApex
-      ? clamp(0.40 + apexCommitment * 0.26, 0.40, 0.66)
-      : chicaneDemand * 0.60;
+      ? clamp(0.52 + apexCommitment * 0.34, 0.52, 0.86)
+      : chicaneDemand * 0.80;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
@@ -268,17 +267,9 @@ export function dynamicAiControl(
     );
   const preview = sampleTrack(previewProgress, previewLane);
   const previewHeading = Math.atan2(preview.y - tangent.y, preview.x - tangent.x);
-  const lineTrackingError = Math.abs(currentReferenceLane - projection.laneOffset);
-  const feedForwardGuard = 1 - clamp((lineTrackingError - 2.5) / 9.0, 0, 0.75);
   const turnFeedForward = battleActive || offRoad
     ? 0
-    : clamp(
-      wrapAngle(previewHeading - pathHeading)
-        * (0.42 + chicaneDemand * 0.55)
-        * feedForwardGuard,
-      -0.55,
-      0.55,
-    );
+    : wrapAngle(previewHeading - pathHeading) * (0.55 + chicaneDemand * 0.85);
 
   const precisionGain = battleActive ? 0 : chicaneDemand;
   const steerCommand = offRoad
@@ -289,11 +280,11 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * (2.15 + precisionGain * 0.10)
-        + bearingError * (0.82 + precisionGain * 0.10)
-        + lateralError * (0.52 + precisionGain * 0.16)
+      : headingError * (2.15 + precisionGain * 0.28)
+        + bearingError * (0.82 + precisionGain * 0.30)
+        + lateralError * (0.52 + precisionGain * 0.46)
         + turnFeedForward
-        - vehicle.yawRate * (0.38 + precisionGain * 0.20);
+        - vehicle.yawRate * (0.38 + precisionGain * 0.05);
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
