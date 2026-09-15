@@ -28,9 +28,29 @@ describe('dynamicAiControl', () => {
     };
     const attack = dynamicAiControl(driver, vehicle, [closeAhead]);
     expect(attack.battleState).toBe('ATTACK');
-    expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.8);
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(4.0);
+    expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.2);
+    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(3.0);
     expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+  });
+
+  it('commits to the same passing side instead of weaving across the rival', () => {
+    const driver = createAiField()[0];
+    const ahead: RaceTrafficCar = {
+      id: 'leader',
+      lap: driver.lap,
+      progress: driver.progress + 10 / TRACK_LENGTH,
+      speed: 68,
+      laneOffset: 0,
+      performance: 1,
+    };
+    const left = sampleTrack(driver.progress, -1.2);
+    const right = sampleTrack(driver.progress, 1.2);
+    const leftControl = dynamicAiControl(driver, { ...createVehicle(left.x, left.y, left.heading), speed: 78 }, [ahead]);
+    const rightControl = dynamicAiControl(driver, { ...createVehicle(right.x, right.y, right.heading), speed: 78 }, [ahead]);
+
+    expect(leftControl.battleState).toBe('ATTACK');
+    expect(rightControl.battleState).toBe('ATTACK');
+    expect(Math.sign(leftControl.targetLane)).toBe(Math.sign(rightControl.targetLane));
   });
 
   it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
