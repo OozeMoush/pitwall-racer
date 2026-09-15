@@ -69,27 +69,28 @@ describe('physical AI qualifying consistency', () => {
 
     expect(flyingLap).toBeDefined();
     const qualifying = aiQualifyingTime(driver, 'pitwall-gp', TRACK_LENGTH);
+    const diagnosticBins = bins.map((bin, index) => ({
+      p: `${index * 10}-${(index + 1) * 10}%`,
+      seconds: Number((bin.ticks * DT).toFixed(2)),
+      avgKmh: Math.round((bin.speed / Math.max(1, bin.ticks)) * 3.6),
+      targetKmh: Math.round((bin.targetSpeed / Math.max(1, bin.ticks)) * 3.6),
+      avgLaneError: Number((bin.laneError / Math.max(1, bin.ticks)).toFixed(2)),
+      maxLaneError: Number(bin.maxLaneError.toFixed(2)),
+    }));
     console.log(`AI_QUALIFYING_CONSISTENCY ${JSON.stringify({
       qualifying: Number(qualifying.toFixed(3)),
       physicalFlyingLap: Number((flyingLap ?? 0).toFixed(3)),
-      bins: bins.map((bin, index) => ({
-        p: `${index * 10}-${(index + 1) * 10}%`,
-        seconds: Number((bin.ticks * DT).toFixed(2)),
-        avgKmh: Math.round((bin.speed / Math.max(1, bin.ticks)) * 3.6),
-        targetKmh: Math.round((bin.targetSpeed / Math.max(1, bin.ticks)) * 3.6),
-        avgLaneError: Number((bin.laneError / Math.max(1, bin.ticks)).toFixed(2)),
-        maxLaneError: Number(bin.maxLaneError.toFixed(2)),
-      })),
+      bins: diagnosticBins,
     })}`);
 
-    // The benchmark is an intentionally perfect machine-limit reference. The
-    // physical AI follows the same line/speed plan through a closed-loop
-    // steering controller, so a small realization loss is legitimate; what we
-    // reject is the old situation where qualifying pace and the real car told
-    // completely different stories. Keep a little margin above the observed
-    // controller realization loss rather than changing gameplay to chase a
-    // single 120 Hz timing boundary.
-    expect(flyingLap!).toBeGreaterThan(qualifying - 0.6);
-    expect(flyingLap!).toBeLessThan(qualifying + 3.2);
+    // Human playtests show the time is won in the two rapid-direction-change
+    // complexes, not by extra straight-line power. The physical car therefore
+    // has to realize the reference within roughly two seconds and stay much
+    // closer to the intended lane in those complexes than the old 6+ metre
+    // average miss.
+    expect(flyingLap!).toBeGreaterThan(qualifying - 0.8);
+    expect(flyingLap!).toBeLessThan(qualifying + 1.8);
+    expect(diagnosticBins[5].avgLaneError).toBeLessThan(5.5);
+    expect(diagnosticBins[9].avgLaneError).toBeLessThan(5.5);
   }, 20_000);
 });
