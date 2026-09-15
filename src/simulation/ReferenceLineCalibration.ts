@@ -18,23 +18,23 @@ export function installReferenceLineCalibration(): void {
   const smoothed = smoothCircular(raw, 2);
   const reachable = limitCircularLaneRate(smoothed, 1.55, 5);
 
-  // Telemetry showed that almost all of the remaining phase error lives in the
-  // 55-70% and 85-100% direction-change complexes. A wider low-pass is blended
-  // only there. This removes the optimizer's short alternating spikes instead
-  // of globally flattening the useful outside/apex placement on fast corners.
-  const broad = smoothCircular(reachable, 5);
+  // Human pace comes from treating these as one flowing S rather than three
+  // disconnected turn-in events. A broader local filter keeps the useful
+  // outside/apex direction while removing the short lane reversals that made
+  // the physical AI chase a path it could not finish before the next apex.
+  const broad = smoothCircular(reachable, 8);
   const chicaneRounded = reachable.map((value, index) => {
     const progress = index / reachable.length;
     const technicalWeight = Math.max(
-      windowWeight(progress, 0.515, 0.715, 0.025),
-      windowWeight(progress, 0.835, 0.995, 0.025),
-      windowWeight(progress, 0.000, 0.045, 0.020),
+      windowWeight(progress, 0.505, 0.725, 0.030),
+      windowWeight(progress, 0.825, 0.998, 0.030),
+      windowWeight(progress, 0.000, 0.055, 0.024),
     );
-    return lerp(value, broad[index], technicalWeight * 0.84);
+    return lerp(value, broad[index], technicalWeight * 0.94);
   });
 
-  const settled = limitCircularLaneRate(chicaneRounded, 1.42, 4);
-  const finalLine = smoothCircular(settled, 1).map((value) => clamp(value, -14.5, 14.5));
+  const settled = limitCircularLaneRate(chicaneRounded, 1.25, 6);
+  const finalLine = smoothCircular(settled, 2).map((value) => clamp(value, -14.5, 14.5));
 
   OPTIMIZED_REFERENCE_LANES['pitwall-gp'] = Object.freeze(markCalibrated(finalLine));
 }
