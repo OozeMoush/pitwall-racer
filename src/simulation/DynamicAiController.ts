@@ -1,3 +1,4 @@
+import { nextPitwallReferenceApex } from './PitwallAiLine';
 import { competitiveCornerPaceMultiplier } from './PitwallAiPace';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
@@ -16,9 +17,6 @@ export interface DynamicAiControl {
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
-// A clean car may use the same kerb-adjacent centre position that the player can
-// use. Battles stay on the narrower limit above so wheel-to-wheel racing keeps
-// margin for two physical colliders.
 const CLEAN_AIR_LANE_LIMIT = Math.min(14.5, AI_SAFE_LANE_LIMIT + 0.65);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
@@ -36,10 +34,9 @@ const BRAKING_PREVIEW_DISTANCES = [24, 40, 56, 72] as const;
  * target. Traffic can move the car off the reference line, but once clear it
  * returns to the same trajectory a perfect reference driver would use.
  *
- * The rigid-body car cannot instantaneously realize a rapidly alternating
- * reference line, so chicanes add deterministic steering feed-forward and a
- * braking preview. Both only change driver inputs: the AI still uses exactly
- * the same chassis, tyre grip, engine and surface physics as the player.
+ * The compact Pitwall chicanes are driven apex-to-apex. That avoids the common
+ * pure-pursuit failure where a fixed look-ahead point lands between two turns
+ * and the car draws one slow, wide arc through the whole S.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -144,16 +141,30 @@ export function dynamicAiControl(
     Math.abs(nearLineReference.laneOffset - currentLineReference.laneOffset),
     Math.abs(farLineReference.laneOffset - nearLineReference.laneOffset),
   );
-  const chicaneDemand = clamp((laneSwing - 1.4) / 7.2, 0, 1);
+  const rawChicaneDemand = clamp((laneSwing - 1.4) / 7.2, 0, 1);
+  const nextApex = battleState === 'CLEAR'
+    ? nextPitwallReferenceApex(trackId, projection.progress, driver.tire.grip)
+    : undefined;
+  const apexCommitment = nextApex
+    ? clamp(1 - (nextApex.distanceMetres - 11) / 51, 0.28, 1)
+    : 0;
+  const chicaneDemand = Math.max(rawChicaneDemand, apexCommitment * 0.86);
+
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
   const genericLookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
-  const lookAheadMetres = Math.max(21, genericLookAheadMetres * (1 - chicaneDemand * 0.40));
-  const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
+  const fallbackLookAheadMetres = Math.max(21, genericLookAheadMetres * (1 - chicaneDemand * 0.40));
+  const lookAheadMetres = nextApex?.distanceMetres ?? fallbackLookAheadMetres;
+  const targetProgress = nextApex?.progress
+    ?? projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
   const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  const cleanLaneReach = 3.2 + chicaneDemand * 4.8;
+  // Each detected apex is a commitment point rather than merely another sample
+  // in a long gaze. The lane target is still approached through the shared
+  // steering physics, but it is allowed to move decisively enough to clip the
+  // next kerb before the opposite apex becomes the target.
+  const cleanLaneReach = 3.2 + chicaneDemand * 5.6;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -200,9 +211,11 @@ export function dynamicAiControl(
     : lookAheadMetres;
   const steeringProgress = offRoad
     ? projection.progress + 18 / TRACK_LENGTH
-    : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
+    : nextApex && !battleActive
+      ? nextApex.progress
+      : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentDistance = battleActive ? 6 : 8;
+  const tangentDistance = battleActive ? 6 : nextApex ? 5 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
   const cleanReferenceLimit = battleActive ? AI_SAFE_LANE_LIMIT : CLEAN_AIR_LANE_LIMIT;
   const tangentLane = offRoad
@@ -225,10 +238,11 @@ export function dynamicAiControl(
     -cleanReferenceLimit,
     cleanReferenceLimit,
   );
-  // The .60 setting lagged the final direction change and the .94 setting began
-  // it too early. Keep the error term slightly ahead of the car, while the path
-  // heading itself remains responsible for the majority of the turn-in.
-  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.80;
+  const leadBlend = battleActive || offRoad
+    ? 0
+    : nextApex
+      ? clamp(0.52 + apexCommitment * 0.34, 0.52, 0.86)
+      : chicaneDemand * 0.80;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
