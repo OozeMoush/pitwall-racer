@@ -45,13 +45,14 @@ export function dynamicAiControl(
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
 
-  // Professional drivers do not start weaving into a move in the middle of a
-  // technical complex. Begin an overtake only in a genuinely open section;
-  // once committed, however, keep the move alive until the cars sort out.
+  // Do not begin a speculative pass in a technical complex. This is the main
+  // anti-weave rule: a professional waits for a real opening, picks one side,
+  // and commits. Already-side-by-side cars are still recognised everywhere on
+  // the usable road so they never ignore one another mid-corner.
   const battleSafe = battleSeverity < 0.40
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
-  const canRecognizeBattle = battleSafe || (battleCommitted && battleContinuationSafe);
+  const canRecognizeBattle = battleContinuationSafe;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
   const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
     ? ALONGSIDE_EXIT_RANGE
@@ -126,16 +127,13 @@ export function dynamicAiControl(
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
-  const currentBaseLane = clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  const lookAheadBaseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // Follow the reference trajectory itself instead of repeatedly aiming a few
-  // metres left/right of the car's current lane. The old relative target was
-  // effectively a high-frequency correction loop at 120 Hz and looked like a
-  // nervous amateur weaving even in clean air. Blending current + look-ahead
-  // reference lanes gives one smooth, committed arc through each corner.
-  const baseLane = currentBaseLane * 0.32 + lookAheadBaseLane * 0.68;
-  let targetLane = baseLane;
+  // Keep the proven closed-loop reference follower for clean-air pace. The
+  // visible weaving was primarily tactical side switching, not the reference
+  // path itself; replacing this loop made the car miss the final complex and
+  // lose the qualifying lap entirely.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -144,20 +142,18 @@ export function dynamicAiControl(
     const positiveRoom = Math.abs(positive - ahead.laneOffset);
     const negativeRoom = Math.abs(negative - ahead.laneOffset);
 
-    // Pick one deterministic side and stay there. Previously the desired side
-    // could flip as the cars crossed the centreline, creating the visible
-    // left-right weave the player called out.
+    // Deterministic side selection prevents ATTACK from oscillating left/right
+    // as the two cars cross the centreline. Only switch if the preferred side
+    // physically does not have enough road.
     const preferredPositive = stableSide(driver.id) > 0;
     let desired: number;
     if (preferredPositive && positiveRoom >= passOffset * 0.80) desired = positive;
     else if (!preferredPositive && negativeRoom >= passOffset * 0.80) desired = negative;
     else desired = positiveRoom >= negativeRoom ? positive : negative;
-    targetLane = approachLane(projection.laneOffset, desired, 2.4);
+    targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
 
-    // The car that is still marginally ahead owns its lane. Only the attacker
-    // coming from behind creates extra lateral room.
     if (alongsideSignedGap < -0.75) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
@@ -169,10 +165,10 @@ export function dynamicAiControl(
         -BATTLE_LANE_LIMIT,
         BATTLE_LANE_LIMIT,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 2.5);
+      targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
-    targetLane = baseLane;
+    targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
@@ -204,9 +200,9 @@ export function dynamicAiControl(
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? currentBaseLane
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
-  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 10.5, -1, 1);
+  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
     : 0;
@@ -216,16 +212,16 @@ export function dynamicAiControl(
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
     : battleActive
-      ? headingError * 2.12
-        + bearingError * 0.88
-        + lateralError * 0.68
-        - vehicle.yawRate * 0.46
+      ? headingError * 2.10
+        + bearingError * 1.02
+        + lateralError * 0.78
+        - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * 2.22
-        + bearingError * 0.54
-        + lateralError * 0.40
-        - vehicle.yawRate * 0.52;
-  const steer = clamp(steerCommand, offRoad ? -1 : -0.96, offRoad ? 1 : 0.96);
+      : headingError * 2.15
+        + bearingError * 0.82
+        + lateralError * 0.52
+        - vehicle.yawRate * 0.38;
+  const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
 
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
