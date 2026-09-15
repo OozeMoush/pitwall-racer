@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { aiQualifyingTime } from './QualifyingModel';
 import { referenceTarget } from './ReferenceDriverModel';
+import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
 import { compoundPeakGrip, createTire } from './TireModel';
@@ -13,6 +14,7 @@ const DIAGNOSTIC_BINS = 10;
 
 describe('physical AI qualifying consistency', () => {
   beforeAll(async () => {
+    installReferenceLineCalibration();
     await RAPIER.init();
   });
 
