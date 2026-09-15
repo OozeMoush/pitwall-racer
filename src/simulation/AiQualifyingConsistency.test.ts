@@ -38,6 +38,9 @@ describe('physical AI qualifying consistency', () => {
       speed: 0,
       targetSpeed: 0,
       laneError: 0,
+      signedLaneError: 0,
+      actualLane: 0,
+      referenceLane: 0,
       maxLaneError: 0,
     }));
     const maximumSeconds = 70;
@@ -54,12 +57,16 @@ describe('physical AI qualifying consistency', () => {
         const projection = projectTrackNear(state.x, state.y, driver.progress);
         const reference = referenceTarget('pitwall-gp', projection.progress, driver.tire.grip);
         const index = Math.min(DIAGNOSTIC_BINS - 1, Math.floor(projection.progress * DIAGNOSTIC_BINS));
-        const laneError = Math.abs(projection.laneOffset - reference.laneOffset);
+        const signedLaneError = projection.laneOffset - reference.laneOffset;
+        const laneError = Math.abs(signedLaneError);
         const bin = bins[index];
         bin.ticks++;
         bin.speed += state.speed;
         bin.targetSpeed += reference.targetSpeed;
         bin.laneError += laneError;
+        bin.signedLaneError += signedLaneError;
+        bin.actualLane += projection.laneOffset;
+        bin.referenceLane += reference.laneOffset;
         bin.maxLaneError = Math.max(bin.maxLaneError, laneError);
       }
 
@@ -76,6 +83,9 @@ describe('physical AI qualifying consistency', () => {
       seconds: Number((bin.ticks * DT).toFixed(2)),
       avgKmh: Math.round((bin.speed / Math.max(1, bin.ticks)) * 3.6),
       targetKmh: Math.round((bin.targetSpeed / Math.max(1, bin.ticks)) * 3.6),
+      actualLane: Number((bin.actualLane / Math.max(1, bin.ticks)).toFixed(2)),
+      referenceLane: Number((bin.referenceLane / Math.max(1, bin.ticks)).toFixed(2)),
+      signedLaneError: Number((bin.signedLaneError / Math.max(1, bin.ticks)).toFixed(2)),
       avgLaneError: Number((bin.laneError / Math.max(1, bin.ticks)).toFixed(2)),
       maxLaneError: Number(bin.maxLaneError.toFixed(2)),
     }));
@@ -85,11 +95,6 @@ describe('physical AI qualifying consistency', () => {
       bins: diagnosticBins,
     })}`);
 
-    // Human playtests show the time is won in the two rapid-direction-change
-    // complexes, not by extra straight-line power. The physical car therefore
-    // has to realize the reference within roughly two seconds and stay much
-    // closer to the intended lane in those complexes than the old 6+ metre
-    // average miss.
     expect(flyingLap!).toBeGreaterThan(qualifying - 0.8);
     expect(flyingLap!).toBeLessThan(qualifying + 1.8);
     expect(diagnosticBins[5].avgLaneError).toBeLessThan(5.5);
