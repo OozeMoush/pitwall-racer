@@ -20,6 +20,7 @@ const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
+const BRAKING_PREVIEW_DISTANCES = [24, 40, 56, 72] as const;
 
 /**
  * Physical AI for the race weekend.
@@ -31,9 +32,9 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
  * returns to the same trajectory a perfect reference driver would use.
  *
  * The rigid-body car cannot instantaneously realize a rapidly alternating
- * reference line, so chicanes add deterministic steering/speed feed-forward.
- * This changes only the requested controls; the AI still uses exactly the same
- * chassis, tyre grip, engine and surface physics as the player.
+ * reference line, so chicanes add deterministic steering feed-forward and a
+ * braking preview. Both only change driver inputs: the AI still uses exactly
+ * the same chassis, tyre grip, engine and surface physics as the player.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -258,6 +259,31 @@ export function dynamicAiControl(
     ? 0
     : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
   let targetSpeed = speedReference.targetSpeed * execution * (1 + trackingFeedForward);
+
+  // A good human brakes *before* the first chicane apex. The reference envelope
+  // already knows the upcoming corner speed, but the old physical controller
+  // reacted only after the current sample had dropped and routinely entered the
+  // 50-60% complex about 30 km/h too fast. Convert future reference speeds back
+  // into a legal entry-speed cap using only the shared car's braking ability.
+  // This starts the stop a few tenths earlier without changing top speed, grip,
+  // engine output or the corner-speed target itself.
+  if (!battleActive && !offRoad) {
+    const brakingDeceleration = 28 + clamp((driver.tire.grip - 0.90) * 10, -2, 3.5);
+    let brakingPreviewCap = Number.POSITIVE_INFINITY;
+    for (const distance of BRAKING_PREVIEW_DISTANCES) {
+      const future = referenceTarget(
+        trackId,
+        projection.progress + distance / TRACK_LENGTH,
+        driver.tire.grip,
+      );
+      const futureSpeed = future.targetSpeed * execution;
+      const allowedNow = Math.sqrt(
+        Math.max(0, futureSpeed * futureSpeed + 2 * brakingDeceleration * distance),
+      );
+      brakingPreviewCap = Math.min(brakingPreviewCap, allowedNow);
+    }
+    targetSpeed = Math.min(targetSpeed, brakingPreviewCap);
+  }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
