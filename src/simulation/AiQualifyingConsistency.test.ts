@@ -11,6 +11,60 @@ import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
 const DIAGNOSTIC_BINS = 10;
+const FINE_BINS = 20;
+
+interface LaneBin {
+  ticks: number;
+  speed: number;
+  targetSpeed: number;
+  laneError: number;
+  signedLaneError: number;
+  actualLane: number;
+  referenceLane: number;
+  maxLaneError: number;
+}
+
+function createBin(): LaneBin {
+  return {
+    ticks: 0,
+    speed: 0,
+    targetSpeed: 0,
+    laneError: 0,
+    signedLaneError: 0,
+    actualLane: 0,
+    referenceLane: 0,
+    maxLaneError: 0,
+  };
+}
+
+function addSample(bin: LaneBin, speed: number, targetSpeed: number, actualLane: number, referenceLane: number): void {
+  const signedLaneError = actualLane - referenceLane;
+  const laneError = Math.abs(signedLaneError);
+  bin.ticks++;
+  bin.speed += speed;
+  bin.targetSpeed += targetSpeed;
+  bin.laneError += laneError;
+  bin.signedLaneError += signedLaneError;
+  bin.actualLane += actualLane;
+  bin.referenceLane += referenceLane;
+  bin.maxLaneError = Math.max(bin.maxLaneError, laneError);
+}
+
+function summarizeBin(bin: LaneBin, index: number, count: number) {
+  const samples = Math.max(1, bin.ticks);
+  const step = 100 / count;
+  return {
+    p: `${index * step}-${(index + 1) * step}%`,
+    seconds: Number((bin.ticks * DT).toFixed(2)),
+    avgKmh: Math.round((bin.speed / samples) * 3.6),
+    targetKmh: Math.round((bin.targetSpeed / samples) * 3.6),
+    actualLane: Number((bin.actualLane / samples).toFixed(2)),
+    referenceLane: Number((bin.referenceLane / samples).toFixed(2)),
+    signedLaneError: Number((bin.signedLaneError / samples).toFixed(2)),
+    avgLaneError: Number((bin.laneError / samples).toFixed(2)),
+    maxLaneError: Number(bin.maxLaneError.toFixed(2)),
+  };
+}
 
 describe('physical AI qualifying consistency', () => {
   beforeAll(async () => {
@@ -33,16 +87,8 @@ describe('physical AI qualifying consistency', () => {
 
     let firstCrossing: number | undefined;
     let flyingLap: number | undefined;
-    const bins = Array.from({ length: DIAGNOSTIC_BINS }, () => ({
-      ticks: 0,
-      speed: 0,
-      targetSpeed: 0,
-      laneError: 0,
-      signedLaneError: 0,
-      actualLane: 0,
-      referenceLane: 0,
-      maxLaneError: 0,
-    }));
+    const bins = Array.from({ length: DIAGNOSTIC_BINS }, createBin);
+    const fineBins = Array.from({ length: FINE_BINS }, createBin);
     const maximumSeconds = 70;
 
     for (let tick = 0; tick < maximumSeconds / DT; tick++) {
@@ -56,18 +102,10 @@ describe('physical AI qualifying consistency', () => {
         const state = physics.aiStates()[0];
         const projection = projectTrackNear(state.x, state.y, driver.progress);
         const reference = referenceTarget('pitwall-gp', projection.progress, driver.tire.grip);
-        const index = Math.min(DIAGNOSTIC_BINS - 1, Math.floor(projection.progress * DIAGNOSTIC_BINS));
-        const signedLaneError = projection.laneOffset - reference.laneOffset;
-        const laneError = Math.abs(signedLaneError);
-        const bin = bins[index];
-        bin.ticks++;
-        bin.speed += state.speed;
-        bin.targetSpeed += reference.targetSpeed;
-        bin.laneError += laneError;
-        bin.signedLaneError += signedLaneError;
-        bin.actualLane += projection.laneOffset;
-        bin.referenceLane += reference.laneOffset;
-        bin.maxLaneError = Math.max(bin.maxLaneError, laneError);
+        const coarseIndex = Math.min(DIAGNOSTIC_BINS - 1, Math.floor(projection.progress * DIAGNOSTIC_BINS));
+        const fineIndex = Math.min(FINE_BINS - 1, Math.floor(projection.progress * FINE_BINS));
+        addSample(bins[coarseIndex], state.speed, reference.targetSpeed, projection.laneOffset, reference.laneOffset);
+        addSample(fineBins[fineIndex], state.speed, reference.targetSpeed, projection.laneOffset, reference.laneOffset);
       }
 
       if (driver.lap >= 2 && firstCrossing !== undefined) {
@@ -78,21 +116,13 @@ describe('physical AI qualifying consistency', () => {
 
     expect(flyingLap).toBeDefined();
     const qualifying = aiQualifyingTime(driver, 'pitwall-gp', TRACK_LENGTH);
-    const diagnosticBins = bins.map((bin, index) => ({
-      p: `${index * 10}-${(index + 1) * 10}%`,
-      seconds: Number((bin.ticks * DT).toFixed(2)),
-      avgKmh: Math.round((bin.speed / Math.max(1, bin.ticks)) * 3.6),
-      targetKmh: Math.round((bin.targetSpeed / Math.max(1, bin.ticks)) * 3.6),
-      actualLane: Number((bin.actualLane / Math.max(1, bin.ticks)).toFixed(2)),
-      referenceLane: Number((bin.referenceLane / Math.max(1, bin.ticks)).toFixed(2)),
-      signedLaneError: Number((bin.signedLaneError / Math.max(1, bin.ticks)).toFixed(2)),
-      avgLaneError: Number((bin.laneError / Math.max(1, bin.ticks)).toFixed(2)),
-      maxLaneError: Number(bin.maxLaneError.toFixed(2)),
-    }));
+    const diagnosticBins = bins.map((bin, index) => summarizeBin(bin, index, DIAGNOSTIC_BINS));
+    const fineDiagnosticBins = fineBins.map((bin, index) => summarizeBin(bin, index, FINE_BINS));
     console.log(`AI_QUALIFYING_CONSISTENCY ${JSON.stringify({
       qualifying: Number(qualifying.toFixed(3)),
       physicalFlyingLap: Number((flyingLap ?? 0).toFixed(3)),
       bins: diagnosticBins,
+      fineBins: fineDiagnosticBins,
     })}`);
 
     expect(flyingLap!).toBeGreaterThan(qualifying - 0.8);
