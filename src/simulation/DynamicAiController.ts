@@ -162,12 +162,14 @@ export function dynamicAiControl(
   const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
   const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  // This is a target envelope, not a per-tick lane-rate limiter. The old 8.8 m
-  // maximum meant a car that arrived ten metres late to one side of a chicane
-  // literally could not be told to aim at the opposite apex. A human can hold a
-  // steering key and commit immediately, so let clean-air AI do the same while
-  // the physical steering model still limits how quickly the car can rotate.
-  const cleanLaneReach = 4.0 + chicaneDemand * 13.0;
+  // The generic follower keeps a modest target envelope. Only the middle
+  // complex, where an explicit next apex is locked, gets the extra reach needed
+  // to tell a late car to aim across the full S. Applying the same full-width
+  // commitment to the final complex made the car overshoot into recovery and
+  // lose several seconds even though the raw lane signal looked similar.
+  const cleanLaneReach = 3.2
+    + chicaneDemand * 5.6
+    + (nextApex ? chicaneDemand * 5.2 : 0);
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -202,11 +204,6 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5 + chicaneDemand * 2.7);
   }
 
-  // A fast line may use the kerb, but a professional driver should not let the
-  // centre of the car wander metres beyond the intended road just because the
-  // next reference apex is on the opposite side. Keep a soft clean-air
-  // corridor: it does nothing while the car is on line, then progressively
-  // prioritises an inward target before the excursion becomes a deep cut.
   const cleanAirState = battleState === 'CLEAR' || battleState === 'FOLLOW';
   const corridorOverflow = cleanAirState
     ? clamp((Math.abs(projection.laneOffset) - CLEAN_AIR_CORRIDOR_LIMIT) / 3.2, 0, 1)
@@ -303,11 +300,6 @@ export function dynamicAiControl(
     : clamp(pathHeadingDelta * speed / 12, -1.35, 1.35);
   const yawGuide = desiredYawRate * (0.24 + chicaneDemand * 0.42);
 
-  // At high speed the decisive chicane input is *when* the yaw changes sign.
-  // Lateral-error-only steering reacts after the car has already missed the
-  // next apex. Feed the reference path's desired yaw rate forward so the car
-  // starts the opposite rotation on time, while the explicit yaw damping keeps
-  // that anticipation from turning into the old left-right sawing motion.
   const precisionGain = battleActive ? 0 : chicaneDemand;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
@@ -400,10 +392,6 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  // The corridor correction should normally solve the line error without
-  // throwing away speed. Only when the car is already well outside the safe
-  // centre corridor do we trim a small amount of target pace so the inward
-  // steering can catch up before a physical wall/grass excursion costs seconds.
   if (!battleActive && !offRoad && corridorOverflow > 0) {
     targetSpeed *= 1 - corridorOverflow * 0.08;
   }
