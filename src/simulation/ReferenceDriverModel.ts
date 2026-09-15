@@ -35,10 +35,6 @@ const CENTRELINE_SAMPLES_PER_CONTROL = 28;
 const GRIP_BUCKET = 0.025;
 const PHYSICS_STEP_SECONDS = 1 / 120;
 
-// Rapier applies damping after the controller writes each velocity. These are
-// the exact body settings used by RapierRacePhysics.createDynamicCar(). The
-// reference solver must include them or it invents a 423 km/h car that the
-// actual rigid body can never reproduce.
 const RAPIER_LINEAR_DAMPING = 0.018;
 const RAPIER_ANGULAR_DAMPING = 1.05;
 
@@ -65,26 +61,10 @@ interface EnvelopeResult {
   straightLimit: number;
 }
 
-/**
- * Convert the old opaque skill number into an execution percentage of the
- * machine-limit reference. Nobody gets extra power or grip: the difference is
- * how closely the driver follows the same reference braking/line/speed plan.
- * The best drivers may now reach 100% of the shared reference, but never exceed
- * it; the back of the field remains close enough to keep the pack compressed.
- */
 export function referenceExecutionForSkill(skill: number): number {
   return clamp(0.992 + (skill - 1.127) * 0.60, 0.985, 1.0);
 }
 
-/**
- * Build the player-independent machine-limit lap.
- *
- * The lane trajectory is the deterministic result of an offline whole-lap
- * coordinate-descent optimizer. Every candidate was legal and was scored with
- * these same vehicle acceleration/braking/yaw equations. Baking the resulting
- * path keeps gameplay instantaneous; tyre-specific speed and control envelopes
- * are still recomputed from the actual car physics, never from a human lap.
- */
 export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   const safeGrip = clamp(tireGrip, 0.55, 1.36);
   const bucketedGrip = Math.round(safeGrip / GRIP_BUCKET) * GRIP_BUCKET;
@@ -93,10 +73,6 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   if (cached) return cached;
 
   const geometry = buildGeometry(getTrackDefinition(trackId).controls);
-  // The optimizer dump is rounded for source control. Normalizing it on a
-  // circular parameter also makes the bake robust if a logging/copy step omits
-  // a handful of adjacent samples; the trajectory shape is preserved while the
-  // runtime envelope always operates on the solver's canonical 320 points.
   const lanes = resampleCircular(OPTIMIZED_REFERENCE_LANES[trackId], PLAN_SAMPLES);
 
   const envelope = evaluateLanes(geometry, lanes, bucketedGrip, 10);
@@ -276,19 +252,23 @@ function maximumReferenceYaw(speed: number, tireGrip: number): number {
   const cached = maximumYawCache.get(cacheKey);
   if (cached !== undefined) return cached;
 
+  // The arcade chassis gains real rotation under trail braking. The previous
+  // reference solver only sampled 18% brake, so it declared chicane speeds
+  // impossible that a player can legitimately achieve with the same physics.
+  // Include the stronger pedal states the shared car already exposes; this is
+  // a planning correction, not extra AI grip or steering authority.
   const pedalStates = [
     { throttle: 1, brake: 0 },
     { throttle: 0.45, brake: 0 },
     { throttle: 0, brake: 0 },
     { throttle: 0, brake: 0.18 },
+    { throttle: 0, brake: 0.42 },
+    { throttle: 0, brake: 0.72 },
   ] as const;
   const angularDamping = rapierDampingFactor(RAPIER_ANGULAR_DAMPING, PHYSICS_STEP_SECONDS);
   let best = 0;
   for (const state of pedalStates) {
     let angularVelocity = 0;
-    // Converge the same controller + Rapier damping recurrence used by the
-    // physical rigid body while holding speed constant for a local corner-limit
-    // query. One second is ample for the arcade yaw response to settle.
     for (let step = 0; step < 120; step++) {
       const result = controlArcadeCar(
         { vx: speed, vy: 0, heading: 0, angularVelocity },
@@ -343,8 +323,6 @@ function longitudinalAcceleration(
 }
 
 function rapierDampingFactor(damping: number, dt: number): number {
-  // Rapier uses an implicit first-order damping step, which stays stable even
-  // for large coefficients: v' = v / (1 + damping * dt).
   return 1 / (1 + Math.max(0, damping) * Math.max(0, dt));
 }
 
