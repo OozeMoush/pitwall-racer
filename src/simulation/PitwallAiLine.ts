@@ -13,11 +13,11 @@ export interface PitwallApexTarget {
  * Pitwall is compact enough that a 25-40 m gaze sometimes lands between two
  * opposing apexes, which is exactly where a human driver would *not* aim.
  *
- * In the rapid-direction-change zones, scan the legal reference line and pick
- * meaningful local extrema. When the first apex is already close, begin a
- * measured hand-off toward the following apex before the first kerb is fully
- * behind the car. This is intentionally between the old late 6-18% hand-off
- * and the rejected 22-52% experiment that made the car jump across the road.
+ * Use explicit apex scanning only in the middle S-complex where telemetry
+ * shows a clear next-apex execution loss. The final complex is short enough
+ * that aggressively locking to a local extremum makes the car cross the road,
+ * hit the recovery path and lose seconds; there the ordinary smoothed
+ * look-ahead is more stable.
  */
 export function nextPitwallReferenceApex(
   trackId: TrackId,
@@ -29,7 +29,7 @@ export function nextPitwallReferenceApex(
   const stepMetres = 4;
   const minimumDistance = 4;
   const maximumDistance = 92;
-  const earlyHandoffDistance = 16;
+  const earlyHandoffDistance = 14;
 
   let previousLane = referenceTarget(trackId, progress, tireGrip).laneOffset;
   let currentDistance = stepMetres;
@@ -67,7 +67,7 @@ export function nextPitwallReferenceApex(
           0,
           1,
         );
-        const handoffFraction = 0.10 + urgency * 0.16;
+        const handoffFraction = 0.06 + urgency * 0.12;
         const handoffDistance = firstApex.distanceMetres + gap * handoffFraction;
         const handoffProgress = wrap01(progress + handoffDistance / TRACK_LENGTH);
 
@@ -90,7 +90,7 @@ export function nextPitwallReferenceApex(
 
 function isTechnicalWindow(progress: number): boolean {
   const p = wrap01(progress);
-  return (p >= 0.42 && p <= 0.75) || p >= 0.77 || p <= 0.03;
+  return p >= 0.42 && p <= 0.75;
 }
 
 function wrap01(value: number): number {
