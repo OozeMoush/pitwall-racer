@@ -29,7 +29,10 @@ describe('dynamicAiControl', () => {
     const attack = dynamicAiControl(driver, vehicle, [closeAhead]);
     expect(attack.battleState).toBe('ATTACK');
     expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.2);
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(3.0);
+    // A 3.2 m first move is deliberate enough to clear the wake without the
+    // old full-lane jump; the separate stable-side regression prevents it from
+    // oscillating back across the rival on the next controller tick.
+    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(3.3);
     expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
