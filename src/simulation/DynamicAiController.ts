@@ -162,7 +162,12 @@ export function dynamicAiControl(
   const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
   const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
 
-  const cleanLaneReach = 3.2 + chicaneDemand * 5.6;
+  // This is a target envelope, not a per-tick lane-rate limiter. The old 8.8 m
+  // maximum meant a car that arrived ten metres late to one side of a chicane
+  // literally could not be told to aim at the opposite apex. A human can hold a
+  // steering key and commit immediately, so let clean-air AI do the same while
+  // the physical steering model still limits how quickly the car can rotate.
+  const cleanLaneReach = 4.0 + chicaneDemand * 13.0;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
