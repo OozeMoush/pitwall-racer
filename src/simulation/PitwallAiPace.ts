@@ -9,10 +9,9 @@ import type { TrackId } from './TrackModel';
  *
  * The boost is deliberately progress-aware. Telemetry showed that the middle
  * S-sections remain composed with substantially more corner speed, while an
- * equally large boost throughout the final 10% makes the car cross to the wrong
- * side of the last chicane. Attack the final apex only moderately, then release
- * the car on exit so it crosses the line with speed instead of finishing the
- * corner as a separate stop-start event.
+ * equally large boost in the final 10% makes the car cross to the wrong side of
+ * the last chicane and *lose* time. Spend the pace budget where the physical car
+ * can actually convert it into lap time instead of raising every corner target.
  */
 export function competitiveCornerPaceMultiplier(
   trackId: TrackId,
@@ -35,20 +34,7 @@ export function competitiveCornerPaceMultiplier(
     * technical
     * (0.11 + directionChange * 0.05);
 
-  // A smaller final-apex increment is enough to lift the 90-95% minimum speed
-  // without reproducing the unstable +45% experiment.
-  const finalApex = windowWeight(p, 0.885, 0.955, 0.018)
-    * technical
-    * (0.055 + directionChange * 0.035);
-
-  // The generated envelope stays cautious after the last rotation and therefore
-  // leaves the AI accelerating from too low a speed across start/finish. Once
-  // the final apex is behind it, ask for a clean release. This only changes the
-  // pedal target; the shared engine still determines the actual acceleration.
-  const finalExit = windowWeight(p, 0.945, 0.999, 0.012)
-    * (0.075 + directionChange * 0.025);
-
-  return 1 + stableBase + middleAttack + finalApproach + finalApex + finalExit;
+  return 1 + stableBase + middleAttack + finalApproach;
 }
 
 function windowWeight(progress: number, start: number, end: number, feather: number): number {
