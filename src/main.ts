@@ -3,11 +3,13 @@ import { CoreRaceGame } from './game/CoreRaceGame';
 import { runQualifyingSession } from './game/QualifyingGame';
 import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
+import { installRacePauseController } from './ui/RacePauseController';
 import { showPreRaceMenu } from './ui/PreRaceMenu';
 import './style.css';
 import './battle-timing.css';
 import './timing-highlight-fix.css';
 import './weekend.css';
+import './pause.css';
 
 async function bootstrap(): Promise<void> {
   const game = document.querySelector<HTMLElement>('#game');
@@ -29,6 +31,9 @@ async function bootstrap(): Promise<void> {
 
   hud.innerHTML = '';
   installHudEnhancer(hud);
+  // Install before CoreRaceGame creates its RAF loop so P/Escape can freeze
+  // simulation time and present the live timing tower as a proper pause screen.
+  installRacePauseController(game, hud);
   const race = new CoreRaceGame(game, hud, raceSetup);
 
   // CoreRaceGame predates the long-race format and still carries a private
