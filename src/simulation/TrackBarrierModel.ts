@@ -17,15 +17,19 @@ export interface SafetyBarrierSegment {
 }
 
 const MIN_OTHER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
-const MAX_BARRIER_CHORD_LENGTH = 6.5;
+// The first chord-aligned pass removed the dangerous apex spikes, but ~6 m
+// pieces can still read as a faceted polygon on this tiny circuit. Keep every
+// physical/visual wall chord close to 3 m so curves look round and wall brushes
+// do not meet a visibly sharp corner.
+const MAX_BARRIER_CHORD_LENGTH = 3.5;
 
 /**
  * Build wall pieces from chords between consecutive offset samples.
  *
  * Progress spacing alone is not enough: on the outside of a tight bend a 6 m
- * centreline interval can become a 15+ m wall interval. Each base interval is
- * therefore subdivided by the actual offset-path chord length before creating
- * the physical/visual wall pieces.
+ * centreline interval can become a much longer wall interval. Each base
+ * interval is therefore subdivided by the actual offset-path chord length
+ * before creating the physical/visual wall pieces.
  */
 export function safetyBarrierSegments(): SafetyBarrierSegment[] {
   const baseCount = Math.max(128, Math.ceil(TRACK_LENGTH / TRACK_BARRIER_SEGMENT_LENGTH));
