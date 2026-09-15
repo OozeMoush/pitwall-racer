@@ -147,7 +147,7 @@ export function dynamicAiControl(
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  const cleanLaneReach = 3.2 + chicaneDemand * 4.8;
+  const cleanLaneReach = 3.4 + chicaneDemand * 6.2;
   let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -210,13 +210,13 @@ export function dynamicAiControl(
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
 
   const currentReferenceLane = clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.72;
+  const leadBlend = battleActive || offRoad ? 0 : chicaneDemand * 0.94;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
       ? currentReferenceLane + (targetLane - currentReferenceLane) * leadBlend
       : targetLane;
-  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 8.2, -1, 1);
+  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 8.0, -1, 1);
 
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
@@ -244,9 +244,9 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * (2.15 + precisionGain * 0.25)
-        + bearingError * (0.82 + precisionGain * 0.24)
-        + lateralError * (0.52 + precisionGain * 0.34)
+      : headingError * (2.15 + precisionGain * 0.28)
+        + bearingError * (0.82 + precisionGain * 0.30)
+        + lateralError * (0.52 + precisionGain * 0.46)
         + turnFeedForward
         - vehicle.yawRate * (0.38 + precisionGain * 0.05);
   const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
@@ -266,13 +266,6 @@ export function dynamicAiControl(
     * cleanAirPaceMultiplier
     * (1 + trackingFeedForward * 0.45);
 
-  // A good human brakes *before* the first chicane apex. The reference envelope
-  // already knows the upcoming corner speed, but the old physical controller
-  // reacted only after the current sample had dropped and routinely entered the
-  // 50-60% complex about 30 km/h too fast. Convert future reference speeds back
-  // into a legal entry-speed cap using only the shared car's braking ability.
-  // This starts the stop a few tenths earlier without changing top speed, grip,
-  // engine output or the corner-speed target itself.
   if (!battleActive && !offRoad) {
     const brakingDeceleration = 28 + clamp((driver.tire.grip - 0.90) * 10, -2, 3.5);
     let brakingPreviewCap = Number.POSITIVE_INFINITY;
@@ -338,8 +331,8 @@ export function dynamicAiControl(
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const brakeCommit = 1 - trackingFeedForward * 2.2;
   const cornerAttackBrakeRelease = clamp(
-    1 - (cleanAirPaceMultiplier - 1) * 3.0,
-    0.52,
+    1 - (cleanAirPaceMultiplier - 1) * 3.2,
+    0.30,
     1,
   );
   let brake = Math.max(
@@ -376,9 +369,9 @@ function competitiveCornerPaceMultiplier(
   laneSwing: number,
 ): number {
   if (trackId !== 'pitwall-gp') return 1;
-  const technical = clamp((severity - 0.24) / 0.70, 0, 1);
-  const directionChange = clamp((laneSwing - 1.2) / 6.5, 0, 1);
-  return 1 + technical * (0.09 + directionChange * 0.07);
+  const technical = clamp((severity - 0.22) / 0.70, 0, 1);
+  const directionChange = clamp((laneSwing - 1.0) / 6.0, 0, 1);
+  return 1 + technical * (0.14 + directionChange * 0.12);
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
