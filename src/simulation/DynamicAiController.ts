@@ -44,15 +44,15 @@ export function dynamicAiControl(
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
-  // Be conservative when *starting* a pass, but do not abandon an already
-  // committed move merely because the technical-corner preview crossed a
-  // threshold. That old state drop sent the attacker straight back across the
-  // reference line while the rival was still beside it. Continuing a battle
-  // still requires the car to remain on the usable circuit.
-  const battleSafe = battleSeverity < 0.52
+
+  // Do not begin a speculative pass in a technical complex. This is the main
+  // anti-weave rule: a professional waits for a real opening, picks one side,
+  // and commits. Already-side-by-side cars are still recognised everywhere on
+  // the usable road so they never ignore one another mid-corner.
+  const battleSafe = battleSeverity < 0.40
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
-  const canRecognizeBattle = battleSafe || (battleCommitted && battleContinuationSafe);
+  const canRecognizeBattle = battleContinuationSafe;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
   const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
     ? ALONGSIDE_EXIT_RANGE
@@ -90,17 +90,21 @@ export function dynamicAiControl(
     }
   }
 
-  const laneBlockedRange = 38;
-  const attackRange = 16;
-  const followRange = 44;
+  const laneBlockedRange = 34;
+  const attackRange = 13;
+  const followRange = 40;
   const laneBlocked = ahead !== undefined
     && aheadGap < laneBlockedRange
     && aheadLateral < BLOCKING_LANE_WIDTH;
+  const ownPerformance = driver.skill * driver.tire.grip;
+  const hasPassingPace = ahead !== undefined
+    && (ownPerformance > ahead.performance * 0.997 || vehicle.speed > ahead.speed + 1.2);
   const canStartAttack = battleSafe
     && ahead !== undefined
     && aheadGap < attackRange
     && aheadLateral < committedLateralSearch
-    && driver.tire.wear < 0.94;
+    && driver.tire.wear < 0.94
+    && hasPassingPace;
   const canContinueAttack = driver.battleState === 'ATTACK'
     && battleContinuationSafe
     && ahead !== undefined
@@ -125,9 +129,10 @@ export function dynamicAiControl(
   const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // Move quickly enough to realize the baked cross-track trajectory, while
-  // remaining far below the unstable jump used in the rejected feed-forward
-  // experiment.
+  // Keep the proven closed-loop reference follower for clean-air pace. The
+  // visible weaving was primarily tactical side switching, not the reference
+  // path itself; replacing this loop made the car miss the final complex and
+  // lose the qualifying lap entirely.
   let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
@@ -136,28 +141,19 @@ export function dynamicAiControl(
     const negative = clamp(ahead.laneOffset - passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     const positiveRoom = Math.abs(positive - ahead.laneOffset);
     const negativeRoom = Math.abs(negative - ahead.laneOffset);
-    const relativeLane = projection.laneOffset - ahead.laneOffset;
 
+    // Deterministic side selection prevents ATTACK from oscillating left/right
+    // as the two cars cross the centreline. Only switch if the preferred side
+    // physically does not have enough road.
+    const preferredPositive = stableSide(driver.id) > 0;
     let desired: number;
-    if (positiveRoom < passOffset * 0.80) desired = negative;
-    else if (negativeRoom < passOffset * 0.80) desired = positive;
-    else if (Math.abs(relativeLane) > 2.0) {
-      desired = relativeLane > 0 ? positive : negative;
-    } else {
-      const positiveCost = Math.abs(positive - baseLane);
-      const negativeCost = Math.abs(negative - baseLane);
-      desired = Math.abs(positiveCost - negativeCost) < 0.25
-        ? (stableSide(driver.id) > 0 ? positive : negative)
-        : positiveCost < negativeCost ? positive : negative;
-    }
+    if (preferredPositive && positiveRoom >= passOffset * 0.80) desired = positive;
+    else if (!preferredPositive && negativeRoom >= passOffset * 0.80) desired = negative;
+    else desired = positiveRoom >= negativeRoom ? positive : negative;
     targetLane = approachLane(projection.laneOffset, desired, 3.2);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
 
-    // The car that is still marginally ahead owns its lane. Only the attacker
-    // coming from behind creates extra lateral room. Previously both cars fled
-    // from one another, turning a normal pass into a large road split and
-    // wasting the quicker car's longitudinal advantage.
     if (alongsideSignedGap < -0.75) {
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
