@@ -17,6 +17,7 @@ function cleanLap(overrides: Partial<EmpiricalLapEvidence> = {}): EmpiricalLapEv
     maxTow: 0,
     launchAffected: false,
     recovered: false,
+    pitted: false,
     ...overrides,
   };
 }
@@ -59,8 +60,9 @@ describe('empirical pace benchmark calibration', () => {
     expect(benchmark.seconds).toBe(26.691);
   });
 
-  it('rejects recovered or launch-affected laps even when the time is plausible', () => {
+  it('rejects recovered, pit, or launch-affected laps even when the time is plausible', () => {
     expect(assessEmpiricalLap(cleanLap({ recovered: true })).reasons).toContain('RECOVERY');
     expect(assessEmpiricalLap(cleanLap({ launchAffected: true })).reasons).toContain('LAUNCH_EFFECT');
+    expect(assessEmpiricalLap(cleanLap({ pitted: true })).reasons).toContain('PIT_LAP');
   });
 });
