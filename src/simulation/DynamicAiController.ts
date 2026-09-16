@@ -1,5 +1,4 @@
-import { nextPitwallReferenceApex } from './PitwallAiLine';
-import { competitiveCornerPaceMultiplier } from './PitwallAiPace';
+import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -17,15 +16,11 @@ export interface DynamicAiControl {
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
-const CLEAN_AIR_LANE_LIMIT = Math.min(14.5, AI_SAFE_LANE_LIMIT + 0.65);
-const CLEAN_AIR_CORRIDOR_LIMIT = Math.max(9.5, AI_SAFE_LANE_LIMIT - 0.35);
-const CLEAN_AIR_RECOVERY_LANE = Math.max(8.5, AI_SAFE_LANE_LIMIT - 2.0);
 const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
-const BRAKING_PREVIEW_DISTANCES = [24, 40, 56, 72] as const;
 
 /**
  * Physical AI for the race weekend.
@@ -36,9 +31,11 @@ const BRAKING_PREVIEW_DISTANCES = [24, 40, 56, 72] as const;
  * target. Traffic can move the car off the reference line, but once clear it
  * returns to the same trajectory a perfect reference driver would use.
  *
- * The compact Pitwall chicanes are driven apex-to-apex. That avoids the common
- * pure-pursuit failure where a fixed look-ahead point lands between two turns
- * and the car draws one slow, wide arc through the whole S.
+ * Pitwall's two tight direction-change complexes get a small predictive
+ * steering assist. It uses the shared arcade-car equations to begin rotation
+ * before the ordinary closed-loop follower accumulates a large lane error.
+ * The assist is deliberately bounded: road limits, speed targets, braking and
+ * all physical grip/power remain exactly the same as the stable main controller.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -55,6 +52,10 @@ export function dynamicAiControl(
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
 
+  // Do not begin a speculative pass in a technical complex. This is the main
+  // anti-weave rule: a professional waits for a real opening, picks one side,
+  // and commits. Already-side-by-side cars are still recognised everywhere on
+  // the usable road so they never ignore one another mid-corner.
   const battleSafe = battleSeverity < 0.40
     && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
   const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
@@ -127,50 +128,19 @@ export function dynamicAiControl(
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
-  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
-  const nearLineReference = referenceTarget(
-    trackId,
-    projection.progress + 24 / TRACK_LENGTH,
-    driver.tire.grip,
-  );
-  const farLineReference = referenceTarget(
-    trackId,
-    projection.progress + 48 / TRACK_LENGTH,
-    driver.tire.grip,
-  );
-
-  const laneSwing = Math.max(
-    Math.abs(nearLineReference.laneOffset - currentLineReference.laneOffset),
-    Math.abs(farLineReference.laneOffset - nearLineReference.laneOffset),
-  );
-  const rawChicaneDemand = clamp((laneSwing - 1.4) / 7.2, 0, 1);
-  const nextApex = battleState === 'CLEAR'
-    ? nextPitwallReferenceApex(trackId, projection.progress, driver.tire.grip)
-    : undefined;
-  const apexCommitment = nextApex
-    ? clamp(1 - (nextApex.distanceMetres - 11) / 51, 0.28, 1)
-    : 0;
-  const chicaneDemand = Math.max(rawChicaneDemand, apexCommitment * 0.86);
 
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
-  const genericLookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
-  const fallbackLookAheadMetres = Math.max(21, genericLookAheadMetres * (1 - chicaneDemand * 0.40));
-  const lookAheadMetres = nextApex?.distanceMetres ?? fallbackLookAheadMetres;
-  const targetProgress = nextApex?.progress
-    ?? projection.progress + lookAheadMetres / TRACK_LENGTH;
+  const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+  const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
-  const lineLimit = battleState === 'CLEAR' ? CLEAN_AIR_LANE_LIMIT : AI_SAFE_LANE_LIMIT;
-  const baseLane = clamp(lineReference.laneOffset, -lineLimit, lineLimit);
+  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // The generic follower keeps a modest target envelope. Only the middle
-  // complex, where an explicit next apex is locked, gets the extra reach needed
-  // to tell a late car to aim across the full S. Applying the same full-width
-  // commitment to the final complex made the car overshoot into recovery and
-  // lose several seconds even though the raw lane signal looked similar.
-  const cleanLaneReach = 3.2
-    + chicaneDemand * 5.6
-    + (nextApex ? chicaneDemand * 5.2 : 0);
-  let targetLane = approachLane(projection.laneOffset, baseLane, cleanLaneReach);
+  // Keep the proven closed-loop reference follower for clean-air pace. The
+  // visible weaving was primarily tactical side switching, not the reference
+  // path itself; replacing this loop made the car miss the final complex and
+  // lose the qualifying lap entirely.
+  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -178,6 +148,10 @@ export function dynamicAiControl(
     const negative = clamp(ahead.laneOffset - passOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     const positiveRoom = Math.abs(positive - ahead.laneOffset);
     const negativeRoom = Math.abs(negative - ahead.laneOffset);
+
+    // Deterministic side selection prevents ATTACK from oscillating left/right
+    // as the two cars cross the centreline. Only switch if the preferred side
+    // physically does not have enough road.
     const preferredPositive = stableSide(driver.id) > 0;
     let desired: number;
     if (preferredPositive && positiveRoom >= passOffset * 0.80) desired = positive;
@@ -201,24 +175,7 @@ export function dynamicAiControl(
       targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
-    targetLane = approachLane(projection.laneOffset, baseLane, 1.5 + chicaneDemand * 2.7);
-  }
-
-  const cleanAirState = battleState === 'CLEAR' || battleState === 'FOLLOW';
-  const corridorOverflow = cleanAirState
-    ? clamp((Math.abs(projection.laneOffset) - CLEAN_AIR_CORRIDOR_LIMIT) / 3.2, 0, 1)
-    : 0;
-  if (corridorOverflow > 0) {
-    const recoveryLane = clamp(
-      baseLane,
-      -CLEAN_AIR_RECOVERY_LANE,
-      CLEAN_AIR_RECOVERY_LANE,
-    );
-    targetLane = approachLane(
-      projection.laneOffset,
-      recoveryLane,
-      5.0 + corridorOverflow * 8.0,
-    );
+    targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
   }
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
@@ -233,74 +190,32 @@ export function dynamicAiControl(
     : lookAheadMetres;
   const steeringProgress = offRoad
     ? projection.progress + 18 / TRACK_LENGTH
-    : nextApex && !battleActive
-      ? nextApex.progress
-      : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
+    : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentDistance = battleActive ? 6 : nextApex ? 5 : 8;
+  const tangentDistance = battleActive ? 6 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
-  const cleanReferenceLimit = battleActive ? AI_SAFE_LANE_LIMIT : CLEAN_AIR_LANE_LIMIT;
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(
-        referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset,
-        -cleanReferenceLimit,
-        cleanReferenceLimit,
-      )
+      ? clamp(referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
   const bearingHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
-
-  const currentReferenceLane = clamp(
-    currentLineReference.laneOffset,
-    -cleanReferenceLimit,
-    cleanReferenceLimit,
-  );
-  const leadBlend = battleActive || offRoad
-    ? 0
-    : nextApex
-      ? clamp(0.52 + apexCommitment * 0.34, 0.52, 0.86)
-      : chicaneDemand * 0.80;
   const referenceLaneNow = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? currentReferenceLane + (targetLane - currentReferenceLane) * leadBlend
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
-  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 8.0, -1, 1);
-
+  const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
     : 0;
-  const battleOverflowCorrection = battleOverflow > 0
+  const overflowCorrection = battleOverflow > 0
     ? -Math.sign(projection.laneOffset) * battleOverflow * 0.65
     : 0;
-  const cleanOverflowCorrection = !battleActive && !offRoad && corridorOverflow > 0
-    ? -Math.sign(projection.laneOffset)
-      * corridorOverflow
-      * (0.78 + chicaneDemand * 0.34)
-    : 0;
-
-  const previewProgress = tangentProgress + 12 / TRACK_LENGTH;
-  const previewLane = battleActive
-    ? targetLane
-    : clamp(
-      referenceTarget(trackId, previewProgress, driver.tire.grip).laneOffset,
-      -CLEAN_AIR_LANE_LIMIT,
-      CLEAN_AIR_LANE_LIMIT,
-    );
-  const preview = sampleTrack(previewProgress, previewLane);
-  const previewHeading = Math.atan2(preview.y - tangent.y, preview.x - tangent.x);
-  const pathHeadingDelta = wrapAngle(previewHeading - pathHeading);
-  const desiredYawRate = battleActive || offRoad
-    ? 0
-    : clamp(pathHeadingDelta * speed / 12, -1.35, 1.35);
-  const yawGuide = desiredYawRate * (0.24 + chicaneDemand * 0.42);
-
-  const precisionGain = battleActive ? 0 : chicaneDemand;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
     : battleActive
@@ -308,63 +223,26 @@ export function dynamicAiControl(
         + bearingError * 1.02
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
-        + battleOverflowCorrection
-      : headingError * (2.15 + precisionGain * 0.18)
-        + bearingError * (0.82 + precisionGain * 0.16)
-        + lateralError * (0.52 + precisionGain * 0.25)
-        + yawGuide
-        + cleanOverflowCorrection
-        - vehicle.yawRate * (0.34 + precisionGain * 0.18);
-  const steeringLimit = corridorOverflow > 0 && !battleActive && !offRoad ? 1 : 0.98;
-  const steer = clamp(steerCommand, offRoad ? -1 : -steeringLimit, offRoad ? 1 : steeringLimit);
+        + overflowCorrection
+      : headingError * 2.15
+        + bearingError * 0.82
+        + lateralError * 0.52
+        - vehicle.yawRate * 0.38;
+  const baselineSteer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const predictionWeight = !offRoad && !battleActive && trackId === 'pitwall-gp'
+    ? pitwallPredictionWeight(projection.progress, profile.severity)
+    : 0;
+  const steer = predictiveAiSteer(
+    vehicle,
+    driver.tire.grip,
+    target,
+    tangent,
+    baselineSteer,
+    predictionWeight,
+  );
 
   const speedReference = currentLineReference;
-  const lineErrorMetres = Math.abs(referenceLaneNow - projection.laneOffset);
-  const linePrecision = 1 - clamp(lineErrorMetres / 8.0, 0, 1);
-  const cornerDemand = clamp((profile.severity - 0.18) / 0.70, 0, 1);
-  const trackingFeedForward = battleActive || offRoad
-    ? 0
-    : cornerDemand * linePrecision * (0.045 + chicaneDemand * 0.035);
-  const cleanAirPaceMultiplier = battleActive || offRoad
-    ? 1
-    : competitiveCornerPaceMultiplier(
-      trackId,
-      projection.progress,
-      profile.severity,
-      laneSwing,
-    );
-  let targetSpeed = speedReference.targetSpeed
-    * execution
-    * cleanAirPaceMultiplier
-    * (1 + trackingFeedForward * 0.45);
-
-  if (!battleActive && !offRoad) {
-    const brakingDeceleration = 28 + clamp((driver.tire.grip - 0.90) * 10, -2, 3.5);
-    let brakingPreviewCap = Number.POSITIVE_INFINITY;
-    for (const distance of BRAKING_PREVIEW_DISTANCES) {
-      const futureProgress = projection.progress + distance / TRACK_LENGTH;
-      const future = referenceTarget(trackId, futureProgress, driver.tire.grip);
-      const futureAfter = referenceTarget(
-        trackId,
-        futureProgress + 24 / TRACK_LENGTH,
-        driver.tire.grip,
-      );
-      const futureProfile = trackProfile(futureProgress, 1, driver.tire.grip);
-      const futureLaneSwing = Math.abs(futureAfter.laneOffset - future.laneOffset);
-      const futurePaceMultiplier = competitiveCornerPaceMultiplier(
-        trackId,
-        futureProgress,
-        futureProfile.severity,
-        futureLaneSwing,
-      );
-      const futureSpeed = future.targetSpeed * execution * futurePaceMultiplier;
-      const allowedNow = Math.sqrt(
-        Math.max(0, futureSpeed * futureSpeed + 2 * brakingDeceleration * distance),
-      );
-      brakingPreviewCap = Math.min(brakingPreviewCap, allowedNow);
-    }
-    targetSpeed = Math.min(targetSpeed, brakingPreviewCap);
-  }
+  let targetSpeed = speedReference.targetSpeed * execution;
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
@@ -392,10 +270,6 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (!battleActive && !offRoad && corridorOverflow > 0) {
-    targetSpeed *= 1 - corridorOverflow * 0.08;
-  }
-
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, 26, 136);
@@ -406,20 +280,7 @@ export function dynamicAiControl(
     ? clamp((overspeed - 0.20) / 9.4, 0.05, 1)
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
-  const brakeCommit = 1 - trackingFeedForward * 2.2;
-  const cornerAttackBrakeRelease = clamp(
-    1 - (cleanAirPaceMultiplier - 1) * 3.2,
-    0.30,
-    1,
-  );
-  let brake = Math.max(
-    feedbackBrake,
-    speedReference.brake
-      * 0.82
-      * clamp(brakeCommit, 0.78, 1)
-      * cornerAttackBrakeRelease
-      * plannedBrakeWeight,
-  );
+  let brake = Math.max(feedbackBrake, speedReference.brake * 0.82 * plannedBrakeWeight);
 
   let throttle: number;
   if (brake > 0.06) {
@@ -438,6 +299,37 @@ export function dynamicAiControl(
   }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
+}
+
+function pitwallPredictionWeight(progress: number, severity: number): number {
+  const p = wrap01(progress);
+  const technical = clamp((severity - 0.20) / 0.72, 0, 1);
+  const middle = windowWeight(p, 0.50, 0.67, 0.035);
+  const final = Math.max(
+    windowWeight(p, 0.855, 0.998, 0.025),
+    windowWeight(p, 0.000, 0.040, 0.020),
+  );
+  return technical * Math.max(middle * 0.24, final * 0.20);
+}
+
+function windowWeight(progress: number, start: number, end: number, feather: number): number {
+  if (progress >= start && progress <= end) return 1;
+  if (progress >= start - feather && progress < start) {
+    return smoothstep((progress - (start - feather)) / feather);
+  }
+  if (progress > end && progress <= end + feather) {
+    return 1 - smoothstep((progress - end) / feather);
+  }
+  return 0;
+}
+
+function smoothstep(value: number): number {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
