@@ -11,23 +11,32 @@ import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
 
+export interface MachineBrakeWindow {
+  center: number;
+  halfWidth: number;
+  scale: number;
+}
+
 export interface MachineLinePilotOptions {
   /** Brake multiplier through the 50-72% technical complex. */
   middleBrakeScale?: number;
   /** Brake multiplier through the wrapped 82-6% final/start complex. */
   finalBrakeScale?: number;
+  /** Local smooth brake-input modifications discovered by full-lap search. */
+  brakeWindows?: readonly MachineBrakeWindow[];
 }
 
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
  * evaluator while keeping the proven clean-air longitudinal controller as the
- * baseline. Optional brake scales are machine-search dimensions: they alter
- * only driver input, never power, grip, tire state, or chassis capability.
+ * baseline. Brake modifiers are machine-search dimensions: they alter only the
+ * driver's pedal input, never power, grip, tyre state, or chassis capability.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
   private readonly middleBrakeScale: number;
   private readonly finalBrakeScale: number;
+  private readonly brakeWindows: readonly MachineBrakeWindow[];
 
   constructor(
     private readonly trackId: TrackId,
@@ -36,6 +45,7 @@ export class MachineLinePilot {
   ) {
     this.middleBrakeScale = clamp(options.middleBrakeScale ?? 1, 0.35, 1.15);
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
+    this.brakeWindows = options.brakeWindows ?? [];
 
     this.driver = createAiField()[0];
     this.driver.id = 'machine-line';
@@ -113,14 +123,19 @@ export class MachineLinePilot {
       predictionWeight,
     );
 
-    const brakeScale = this.trackId === 'pitwall-gp'
+    let brakeScale = this.trackId === 'pitwall-gp'
       ? technicalBrakeScale(progress, this.middleBrakeScale, this.finalBrakeScale)
       : 1;
+    for (const window of this.brakeWindows) {
+      const distance = Math.abs(circularDelta(wrap01(progress), wrap01(window.center)));
+      if (distance >= window.halfWidth) continue;
+      const phase = distance / window.halfWidth;
+      const weight = 0.5 * (1 + Math.cos(Math.PI * phase));
+      brakeScale = lerp(brakeScale, clamp(window.scale, 0.25, 1.20), weight);
+    }
     const brake = base.brake * brakeScale;
 
     return {
-      // Preserve the baseline throttle request. Reduced braking therefore means
-      // later/softer deceleration, not hidden propulsion.
       throttle: brake > 0.06 ? 0 : base.throttle,
       brake,
       steer,
@@ -185,6 +200,13 @@ function windowWeight(progress: number, start: number, end: number, feather: num
 function smoothstep(value: number): number {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+function circularDelta(a: number, b: number): number {
+  let delta = a - b;
+  while (delta > 0.5) delta -= 1;
+  while (delta < -0.5) delta += 1;
+  return delta;
 }
 
 function lerp(a: number, b: number, t: number): number {
