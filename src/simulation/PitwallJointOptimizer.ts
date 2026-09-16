@@ -113,9 +113,9 @@ export function optimizePitwallJoint(
     }
   };
 
-  // First challenge the known steering boundary. The old one-axis search found
-  // faster candidates just outside the lane envelope; here they are allowed to
-  // seed a simultaneous trajectory repair instead of being discarded.
+  // First challenge the known steering boundary. A faster steering choice may
+  // be a few centimetres illegal by itself; keep it long enough to try a
+  // simultaneous trajectory repair instead of throwing the direction away.
   for (const predictionScale of [0.35, 0.25, 0.10, 0] as const) {
     if (evaluations >= maxEvaluations) break;
     const genome = cloneGenome(best.genome);
@@ -137,8 +137,6 @@ export function optimizePitwallJoint(
   let generation = 0;
   while (evaluations < maxEvaluations) {
     const temperature = Math.max(0.28, Math.pow(0.91, generation));
-    // Alternate between the best legal lap and the fastest near-boundary guide.
-    // This preserves a safe incumbent without trapping search behind legality.
     const parent = generation % 3 === 2 ? guide : best;
     const genome = cloneGenome(parent.genome);
     const mutationCount = 2 + Math.floor(random() * 4);
@@ -164,8 +162,6 @@ export function optimizePitwallJoint(
     evaluations += 1;
     consider(candidate, 'coupled');
 
-    // A coupled candidate that is fast but only narrowly illegal gets one
-    // deterministic trajectory repair around the actual maximum excursion.
     if (!candidate.legal
       && candidate.result.completed
       && laneOverflow(candidate.result) <= 0.9
@@ -183,20 +179,49 @@ export function optimizePitwallJoint(
   return { seed, best, guide, evaluations, accepted };
 }
 
+/**
+ * Best completely legal genome discovered by the deterministic 48-evaluation
+ * Pitwall joint search. It is a starting point, not a claimed machine limit.
+ * Keeping it explicit makes CI replay the known result instead of spending
+ * ~30 seconds rediscovering it on every commit.
+ */
 export function createPitwallJointSeed(): PitwallJointGenome {
   return {
-    lineDeltas: Array.from({ length: LINE_CONTROLS.length }, () => 0),
-    speedScales: Array.from({ length: SPEED_CENTERS.length }, () => 1),
+    lineDeltas: [
+      0,
+      0,
+      0.8889760259650835,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0.5249289011078276,
+      0,
+      -0.8060421455078985,
+    ],
+    speedScales: [
+      1,
+      1.025587692063313,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0.986788280788355,
+      1,
+      1,
+    ],
     brakeScales: [0.80, 0.90, 1, 1, 1],
-    predictionScale: 0.45,
+    predictionScale: 0.10,
     lookAheadScale: 1,
   };
 }
 
-export function evaluatePitwallJoint(
+export function createPitwallJointPilot(
   calibratedReference: readonly number[],
   genome: PitwallJointGenome,
-): PitwallJointEvaluation {
+): MachineLinePilot {
   const lanes = materializePitwallJointLine(calibratedReference, genome);
   const brakeWindows: MachineBrakeWindow[] = BRAKE_CENTERS.map((center, index) => ({
     center,
@@ -208,12 +233,19 @@ export function evaluatePitwallJoint(
     halfWidth: 0.022,
     scale: genome.speedScales[index] ?? 1,
   }));
-  const pilot = new MachineLinePilot('pitwall-gp', lanes, {
+  return new MachineLinePilot('pitwall-gp', lanes, {
     brakeWindows,
     speedWindows,
     predictionScale: genome.predictionScale,
     lookAheadScale: genome.lookAheadScale,
   });
+}
+
+export function evaluatePitwallJoint(
+  calibratedReference: readonly number[],
+  genome: PitwallJointGenome,
+): PitwallJointEvaluation {
+  const pilot = createPitwallJointPilot(calibratedReference, genome);
   const result = evaluateMachineFlyingLap({
     trackId: 'pitwall-gp',
     policy: (context) => pilot.control(context),
@@ -228,9 +260,6 @@ export function evaluatePitwallJoint(
   const overflow = laneOverflow(result);
   const illegalRatio = result.illegalSamples / Math.max(1, result.samples);
 
-  // Search score is intentionally softer than acceptance. It lets a 25.70 lap
-  // that misses the strict line by a few centimetres guide a compensating line
-  // mutation. The published `best` remains strictly legal.
   const score = result.completed && result.lapSeconds !== undefined
     ? result.lapSeconds + overflow * 0.03 + illegalRatio * 0.5
     : 100 + (result.lapSeconds ?? 60) + overflow;
