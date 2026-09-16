@@ -1,4 +1,5 @@
 import type { DriverState } from './RaceModel';
+import { sessionPaceBenchmarkSeconds } from './PaceBenchmarkRuntime';
 import { referenceExecutionForSkill, referenceLap } from './ReferenceDriverModel';
 import { compoundPeakGrip } from './TireModel';
 import type { TrackId } from './TrackModel';
@@ -14,13 +15,19 @@ export interface QualifyingEntry {
 const QUALIFYING_REFERENCE_GRIP = compoundPeakGrip('SOFT', 'PUSH');
 const IDENTITY_SPREAD_SECONDS = 0.10;
 
-/**
- * The benchmark is no longer a hand-authored km/h target or a player-derived
- * lap. It is the machine-limit reference lap generated from circuit geometry
- * and the same acceleration/braking/steering equations used by the car.
- */
-export function qualifyingBenchmarkSeconds(trackId: TrackId, _trackLengthMetres: number): number {
+/** Raw solver estimate before any verified runtime evidence is considered. */
+export function qualifyingPhysicsBenchmarkSeconds(trackId: TrackId, _trackLengthMetres: number): number {
   return referenceLap(trackId, QUALIFYING_REFERENCE_GRIP).lapSeconds;
+}
+
+/**
+ * Session-stable machine benchmark. The physics solver remains the default,
+ * but a faster previously verified clean runtime lap can challenge it. Current
+ * qualifying performance cannot change this value until a later session.
+ */
+export function qualifyingBenchmarkSeconds(trackId: TrackId, trackLengthMetres: number): number {
+  const physics = qualifyingPhysicsBenchmarkSeconds(trackId, trackLengthMetres);
+  return sessionPaceBenchmarkSeconds(trackId, physics);
 }
 
 export function aiQualifyingTime(
@@ -32,9 +39,8 @@ export function aiQualifyingTime(
   const execution = referenceExecutionForSkill(driver.skill);
   const identityOffset = stableOffset(driver.id) * IDENTITY_SPREAD_SECONDS;
 
-  // 100% is the generated reference. F1-level AI sits in the 98.2-99.5%
-  // execution band, so a human needs a genuinely near-limit lap to beat the
-  // field rather than merely exceeding a manually chosen target.
+  // 100% is the calibrated session reference. Driver skill changes execution,
+  // never engine power or tyre grip.
   return Math.max(10, reference / execution + identityOffset);
 }
 
