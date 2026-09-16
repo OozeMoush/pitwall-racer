@@ -69,7 +69,7 @@ describe('machine car integrator', () => {
   it('matches Rapier when worn tyres trigger the stateful rear-slide model', () => {
     const start = {
       ...createVehicle(5000, 5000, -0.21),
-      speed: 86,
+      speed: 100,
       yawRate: 0.05,
     };
     const physics = new RapierRacePhysics(start, []);
@@ -78,22 +78,27 @@ describe('machine car integrator', () => {
     let slideState = createMachineTyreSlideState(0.37);
     let machineTriggered = 0;
     let peakMachineSlide = 0;
+    let peakRapierSlide = 0;
 
+    // Deliberately unrealistic sustained load. This is not a handling test: it
+    // exists to guarantee the hidden slide state actually crosses its threshold
+    // quickly enough that both integrators exercise the same transient branch.
     const input = {
-      throttle: 0.86,
+      throttle: 1,
       brake: 0,
-      steer: 0.72,
+      steer: 1,
       tireGrip: 1.03,
       surfaceGrip: 1,
       powerBoost: 0.22,
       powerMultiplier: 1,
       rollingResistance: 0,
     };
-    const tireWear = 0.72;
+    const tireWear = 1;
 
-    for (let tick = 0; tick < 4 / MACHINE_PHYSICS_DT; tick++) {
+    for (let tick = 0; tick < 3 / MACHINE_PHYSICS_DT; tick++) {
       physics.drivePlayer({ ...input, tireWear }, MACHINE_PHYSICS_DT);
       physics.step(MACHINE_PHYSICS_DT);
+      peakRapierSlide = Math.max(peakRapierSlide, physics.playerSlideSeverity());
       const machineStep = stepMachineCarWithTyre(
         machine,
         slideState,
@@ -116,6 +121,7 @@ describe('machine car integrator', () => {
     console.log('MACHINE_TYRE_SLIDE_PARITY', JSON.stringify({
       machineTriggered,
       peakMachineSlide: Number(peakMachineSlide.toFixed(3)),
+      peakRapierSlide: Number(peakRapierSlide.toFixed(3)),
       positionError: Number(positionError.toFixed(4)),
       speedError: Number(speedError.toFixed(4)),
       headingError: Number(headingError.toFixed(5)),
@@ -124,6 +130,8 @@ describe('machine car integrator', () => {
 
     expect(machineTriggered).toBeGreaterThan(0);
     expect(peakMachineSlide).toBeGreaterThan(0.25);
+    expect(peakRapierSlide).toBeGreaterThan(0.25);
+    expect(Math.abs(peakMachineSlide - peakRapierSlide)).toBeLessThan(0.02);
     expect(positionError).toBeLessThan(1.5);
     expect(speedError).toBeLessThan(0.35);
     expect(headingError).toBeLessThan(0.025);
