@@ -1,8 +1,11 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
 import { runQualifyingSession } from './game/QualifyingGame';
+import { installPaceBenchmarkSession } from './simulation/PaceBenchmarkRuntime';
+import { loadPaceEvidence } from './simulation/PaceBenchmarkStore';
+import { qualifyingPhysicsBenchmarkSeconds } from './simulation/QualifyingModel';
 import { installReferenceLineCalibration } from './simulation/ReferenceLineCalibration';
-import { setActiveTrack } from './simulation/TrackModel';
+import { setActiveTrack, TRACK_LENGTH } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { installRacePauseController } from './ui/RacePauseController';
 import { showPreRaceMenu } from './ui/PreRaceMenu';
@@ -28,6 +31,17 @@ async function bootstrap(): Promise<void> {
 
   const setup = await showPreRaceMenu(hud);
   setActiveTrack(setup.trackId);
+
+  // Snapshot only evidence that existed before this weekend starts. A great lap
+  // driven in the qualifying session is saved for the next weekend rather than
+  // immediately moving the goalposts underneath the player.
+  const physicsBenchmark = qualifyingPhysicsBenchmarkSeconds(setup.trackId, TRACK_LENGTH);
+  const paceBenchmark = installPaceBenchmarkSession(
+    setup.trackId,
+    physicsBenchmark,
+    loadPaceEvidence(window.localStorage),
+  );
+  console.info('PACE_BENCHMARK_SESSION', paceBenchmark);
 
   const qualifying = await runQualifyingSession(game, hud, setup);
   const raceSetup = {
