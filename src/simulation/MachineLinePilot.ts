@@ -17,6 +17,12 @@ export interface MachineBrakeWindow {
   scale: number;
 }
 
+export interface MachineSpeedWindow {
+  center: number;
+  halfWidth: number;
+  scale: number;
+}
+
 export interface MachineSteeringTuning {
   lookAheadScale?: number;
   headingGainScale?: number;
@@ -34,19 +40,22 @@ export interface MachineLinePilotOptions extends MachineSteeringTuning {
   finalBrakeScale?: number;
   /** Local smooth brake-input modifications discovered by full-lap search. */
   brakeWindows?: readonly MachineBrakeWindow[];
+  /** Local target-speed multipliers used by course-specific joint optimization. */
+  speedWindows?: readonly MachineSpeedWindow[];
 }
 
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
- * evaluator while keeping the proven clean-air longitudinal controller as the
- * baseline. Tuning dimensions alter only driver inputs/targets; power, grip,
- * tyre state and chassis capability stay identical to the player car.
+ * evaluator while keeping the proven clean-air controller as the seed. Tuning
+ * dimensions alter only driver inputs/targets; power, grip, tyre state and
+ * chassis capability stay identical to the player car.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
   private readonly middleBrakeScale: number;
   private readonly finalBrakeScale: number;
   private readonly brakeWindows: readonly MachineBrakeWindow[];
+  private readonly speedWindows: readonly MachineSpeedWindow[];
   private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
@@ -57,6 +66,7 @@ export class MachineLinePilot {
     this.middleBrakeScale = clamp(options.middleBrakeScale ?? 1, 0.35, 1.15);
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
     this.brakeWindows = options.brakeWindows ?? [];
+    this.speedWindows = options.speedWindows ?? [];
     this.steering = {
       lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
       headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
@@ -70,7 +80,7 @@ export class MachineLinePilot {
     this.driver = createAiField()[0];
     this.driver.id = 'machine-line';
     this.driver.name = 'MACHINE';
-    this.driver.skill = 1.25; // reference execution clamps to exactly 100%
+    this.driver.skill = 1.25;
     this.driver.progress = 0.08;
     this.driver.lap = 0;
     this.driver.laneOffset = 0;
@@ -149,16 +159,34 @@ export class MachineLinePilot {
       ? technicalBrakeScale(progress, this.middleBrakeScale, this.finalBrakeScale)
       : 1;
     for (const window of this.brakeWindows) {
-      const distance = Math.abs(circularDelta(wrap01(progress), wrap01(window.center)));
-      if (distance >= window.halfWidth) continue;
-      const phase = distance / window.halfWidth;
-      const weight = 0.5 * (1 + Math.cos(Math.PI * phase));
+      const weight = circularWindowWeight(progress, window.center, window.halfWidth);
+      if (weight <= 0) continue;
       brakeScale = lerp(brakeScale, clamp(window.scale, 0.25, 1.20), weight);
     }
-    const brake = base.brake * brakeScale;
+
+    let targetSpeed = base.targetSpeed;
+    for (const window of this.speedWindows) {
+      const weight = circularWindowWeight(progress, window.center, window.halfWidth);
+      if (weight <= 0) continue;
+      targetSpeed *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
+    }
+
+    const speedError = targetSpeed - speed;
+    let brake = base.brake * brakeScale;
+    if (speedError < -0.45) {
+      brake = Math.max(brake, clamp((-speedError - 0.45) / 8.5, 0, 1));
+    } else if (speedError > 0.65) {
+      const release = clamp(speedError / 5.0, 0, 0.72);
+      brake *= 1 - release;
+    }
+
+    let throttle = base.throttle;
+    if (brake > 0.06) throttle = 0;
+    else if (speedError > 0.45) throttle = 1;
+    else if (speedError < -0.55) throttle *= clamp(1 + speedError / 3.5, 0, 1);
 
     return {
-      throttle: brake > 0.06 ? 0 : base.throttle,
+      throttle,
       brake,
       steer,
       tireGrip: GRIP,
@@ -206,6 +234,13 @@ function sampleCircular(values: readonly number[], progress: number): number {
   const next = (index + 1) % values.length;
   const t = scaled - Math.floor(scaled);
   return values[index] + (values[next] - values[index]) * t;
+}
+
+function circularWindowWeight(progress: number, center: number, halfWidth: number): number {
+  const distance = Math.abs(circularDelta(wrap01(progress), wrap01(center)));
+  if (distance >= halfWidth) return 0;
+  const phase = distance / halfWidth;
+  return 0.5 * (1 + Math.cos(Math.PI * phase));
 }
 
 function windowWeight(progress: number, start: number, end: number, feather: number): number {
