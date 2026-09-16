@@ -7,7 +7,6 @@ import {
   stepMachineCar,
 } from './MachineCarIntegrator';
 import { RapierRacePhysics } from './RapierRacePhysics';
-import { sampleTrack } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 describe('machine car integrator', () => {
@@ -16,9 +15,12 @@ describe('machine car integrator', () => {
   });
 
   it('tracks the clean Rapier chassis under identical open-loop inputs', () => {
-    const pose = sampleTrack(0.18, 0);
+    // Keep this comparison far outside the circuit. The purpose is to compare
+    // chassis integration only; putting a fixed-steer car on the real track can
+    // make the Rapier copy hit a safety barrier while the lightweight optimiser
+    // (which intentionally has no collision world) keeps travelling freely.
     const start = {
-      ...createVehicle(pose.x, pose.y, pose.heading),
+      ...createVehicle(4000, 4000, 0.37),
       speed: 62,
       yawRate: 0.08,
     };
