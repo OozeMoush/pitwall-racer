@@ -1,4 +1,9 @@
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
+import {
+  createTyreSlideState,
+  stepTyreSlide,
+  type TyreSlideState,
+} from './TyrePerformanceModel';
 import type { VehicleState } from './VehicleModel';
 
 export const MACHINE_PHYSICS_DT = 1 / 120;
@@ -24,6 +29,13 @@ export interface MachineCarState {
   yawRate: number;
 }
 
+export interface MachineCarTyreStep {
+  state: MachineCarState;
+  slideState: TyreSlideState;
+  slideSeverity: number;
+  slideTriggered: boolean;
+}
+
 export function machineStateFromVehicle(vehicle: VehicleState): MachineCarState {
   return {
     x: vehicle.x,
@@ -37,6 +49,10 @@ export function machineStateFromVehicle(vehicle: VehicleState): MachineCarState 
 
 export function machineStateSpeed(state: MachineCarState): number {
   return Math.hypot(state.vx, state.vy);
+}
+
+export function createMachineTyreSlideState(seed = 0.37): TyreSlideState {
+  return createTyreSlideState(seed);
 }
 
 /**
@@ -83,6 +99,38 @@ export function stepMachineCar(
     vx,
     vy,
     yawRate,
+  };
+}
+
+/**
+ * Mirror RapierRacePhysics.driveBody(), including the stateful tyre instability
+ * update that runs before controlArcadeCar. Fresh tyres normally never trigger
+ * a slide in one qualifying lap, but carrying the state here prevents the
+ * optimiser from silently using a simpler vehicle than the runtime car.
+ */
+export function stepMachineCarWithTyre(
+  state: MachineCarState,
+  slideState: TyreSlideState,
+  input: ArcadeCarInput,
+  tireWear = 0,
+  dt = MACHINE_PHYSICS_DT,
+): MachineCarTyreStep {
+  const slide = stepTyreSlide(slideState, {
+    wear: tireWear,
+    speed: machineStateSpeed(state),
+    steer: input.steer,
+    throttle: input.throttle,
+  }, dt);
+  const next = stepMachineCar(state, {
+    ...input,
+    slideSeverity: slide.severity,
+    slideDirection: slide.direction,
+  }, dt);
+  return {
+    state: next,
+    slideState: slide.state,
+    slideSeverity: slide.severity,
+    slideTriggered: slide.triggered,
   };
 }
 
