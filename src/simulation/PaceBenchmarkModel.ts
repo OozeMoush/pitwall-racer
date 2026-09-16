@@ -6,9 +6,9 @@ import type { TrackId } from './TrackModel';
  *
  * This is deliberately stricter than ordinary lap timing. A lap can count in
  * the race results while still being unsuitable as proof of the car's clean
- * machine capability (for example after a deep cut, tow, recovery, or with a
- * heavily worn tyre). Keeping those concepts separate prevents a personal best
- * from silently turning into rubber-band difficulty.
+ * machine capability (for example after a deep cut, tow, recovery, pit stop,
+ * or with a heavily worn tyre). Keeping those concepts separate prevents a
+ * personal best from silently turning into rubber-band difficulty.
  */
 export interface EmpiricalLapEvidence {
   trackId: TrackId;
@@ -21,6 +21,7 @@ export interface EmpiricalLapEvidence {
   maxTow: number;
   launchAffected: boolean;
   recovered: boolean;
+  pitted: boolean;
 }
 
 export type EmpiricalLapRejectionReason =
@@ -31,7 +32,8 @@ export type EmpiricalLapRejectionReason =
   | 'GRASS'
   | 'TOW'
   | 'LAUNCH_EFFECT'
-  | 'RECOVERY';
+  | 'RECOVERY'
+  | 'PIT_LAP';
 
 export interface EmpiricalLapAssessment {
   eligibleForMachineLimit: boolean;
@@ -71,6 +73,7 @@ export function assessEmpiricalLap(evidence: EmpiricalLapEvidence): EmpiricalLap
   if (evidence.maxTow > MAX_TOW) reasons.push('TOW');
   if (evidence.launchAffected) reasons.push('LAUNCH_EFFECT');
   if (evidence.recovered) reasons.push('RECOVERY');
+  if (evidence.pitted) reasons.push('PIT_LAP');
 
   return {
     eligibleForMachineLimit: reasons.length === 0,
