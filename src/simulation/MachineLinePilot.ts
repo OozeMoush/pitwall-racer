@@ -87,6 +87,9 @@ export class MachineLinePilot {
       -0.98,
       0.98,
     );
+    const predictionWeight = this.trackId === 'pitwall-gp'
+      ? pitwallPredictionWeight(progress, profile.severity)
+      : 0;
     const steer = predictiveAiSteer(
       {
         x: context.state.x,
@@ -99,7 +102,7 @@ export class MachineLinePilot {
       target,
       tangent,
       baselineSteer,
-      pitwallPredictionWeight(progress, profile.severity),
+      predictionWeight,
     );
 
     return {
@@ -120,7 +123,6 @@ export function sampleMachineLine(lanes: readonly number[], progress: number): n
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {
-  if (thisTrackIsNotPitwallGuard(progress)) return 0;
   const technical = clamp((severity - 0.18) / 0.74, 0, 1);
   const p = wrap01(progress);
   const middle = windowWeight(p, 0.50, 0.68, 0.035);
@@ -129,12 +131,6 @@ function pitwallPredictionWeight(progress: number, severity: number): number {
     windowWeight(p, 0.000, 0.045, 0.022),
   );
   return technical * Math.max(middle * 0.32, final * 0.34);
-}
-
-// Kept as a tiny function so this experimental pilot remains track-safe when
-// reused later; Pitwall is the only track whose predictor has been calibrated.
-function thisTrackIsNotPitwallGuard(_progress: number): boolean {
-  return false;
 }
 
 function sampleCircular(values: readonly number[], progress: number): number {
