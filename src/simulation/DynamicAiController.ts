@@ -1,3 +1,4 @@
+import { sessionPaceSpeedScale } from './PaceBenchmarkRuntime';
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
@@ -25,18 +26,14 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
 /**
  * Physical AI for the race weekend.
  *
- * Clean-air pace is defined by the generated machine-limit reference lap.
- * Driver skill is only an execution percentage of that reference; it never
- * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
- * target. Traffic can move the car off the reference line, but once clear it
- * returns to the same trajectory a perfect reference driver would use.
+ * Clean-air pace starts from the generated reference lap, but a previously
+ * verified runtime benchmark may request a bounded faster speed envelope for
+ * the whole session. That calibration changes no engine power, tyre grip or
+ * surface physics: the same rigid-body car still has to realize the speed.
  *
  * Pitwall's two tight direction-change complexes get a small predictive
  * steering assist. It uses the shared arcade-car equations to begin rotation
  * before the ordinary closed-loop follower accumulates a large lane error.
- * A small clean-air corner attack is allowed only while the car is already
- * tracking the reference well; it asks the same physical chassis to carry a
- * little more speed and disappears immediately when line error grows.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -128,6 +125,7 @@ export function dynamicAiControl(
 
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
+  const paceScale = sessionPaceSpeedScale(trackId);
   const speed = vehicle.speed;
 
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
@@ -243,7 +241,7 @@ export function dynamicAiControl(
   );
 
   const speedReference = currentLineReference;
-  let targetSpeed = speedReference.targetSpeed * execution;
+  let targetSpeed = speedReference.targetSpeed * execution * paceScale;
   let cornerAttackConfidence = 0;
 
   // The generated reference is intentionally conservative about transient
@@ -261,16 +259,16 @@ export function dynamicAiControl(
   }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
+    targetSpeed = speedReference.targetSpeed * paceScale * Math.min(1, execution + 0.010);
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
       const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
-      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
+      targetSpeed = speedReference.targetSpeed * paceScale * Math.min(1, execution + advantage);
     } else if (performanceDelta < -0.002) {
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
-      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
+      targetSpeed = speedReference.targetSpeed * paceScale * Math.max(0.972, execution - compromise);
     }
   }
 
