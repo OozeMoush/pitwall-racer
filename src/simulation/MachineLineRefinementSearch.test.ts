@@ -1,65 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateMachineFlyingLap, type MachineLapResult } from './MachineLapEvaluator';
-import { MachineLinePilot } from './MachineLinePilot';
+import {
+  MachineLinePilot,
+  type MachineSteeringTuning,
+} from './MachineLinePilot';
 import { PITWALL_MACHINE_BRAKE_WINDOWS } from './MachineOptimalControl';
 import { buildMachineOptimalPitwallLine } from './MachineOptimalLine';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
-const CENTERS = [0.46, 0.49, 0.52, 0.55, 0.58, 0.61, 0.64, 0.67, 0.70, 0.73] as const;
-const DELTAS = [-0.80, 0.80, -0.40, 0.40] as const;
-const HALF_WIDTH = 0.022;
+type TuningKey = keyof MachineSteeringTuning;
+
+const SEARCHES: readonly [TuningKey, readonly number[]][] = [
+  ['lookAheadScale', [0.82, 0.90, 1.00, 1.10, 1.18]],
+  ['headingGainScale', [0.80, 0.90, 1.00, 1.10, 1.20]],
+  ['bearingGainScale', [0.70, 0.85, 1.00, 1.15, 1.30]],
+  ['lateralGainScale', [0.70, 0.85, 1.00, 1.15, 1.30]],
+  ['yawDampingScale', [0.75, 0.90, 1.00, 1.10, 1.25]],
+  ['predictionScale', [0.50, 0.75, 1.00, 1.25, 1.50]],
+  ['tangentScale', [0.75, 0.90, 1.00, 1.10, 1.25]],
+] as const;
 
 interface Candidate {
-  lanes: number[];
+  tuning: MachineSteeringTuning;
   result: MachineLapResult;
 }
 
-describe('machine trajectory refinement search', () => {
-  it('coordinate-searches the middle complex with executable full laps', () => {
+describe('machine steering optimization', () => {
+  it('coordinate-searches the line follower by executable legal lap time', () => {
     installReferenceLineCalibration();
-    const seed = buildMachineOptimalPitwallLine(OPTIMIZED_REFERENCE_LANES['pitwall-gp']);
-    let incumbent = evaluate(seed);
+    const lanes = buildMachineOptimalPitwallLine(OPTIMIZED_REFERENCE_LANES['pitwall-gp']);
+    let incumbent = evaluate(lanes, {});
     const baselineSeconds = incumbent.result.lapSeconds!;
     const accepted: Array<{
-      center: number;
-      delta: number;
+      parameter: TuningKey;
+      value: number;
       seconds: number;
       maxLaneDistance: number;
     }> = [];
 
     expect(isLegal(incumbent.result)).toBe(true);
 
-    for (const center of CENTERS) {
+    for (const [parameter, values] of SEARCHES) {
       let best = incumbent;
-      let bestDelta = 0;
-      for (const delta of DELTAS) {
-        const lanes = applyBump(incumbent.lanes, center, HALF_WIDTH, delta);
-        const candidate = evaluate(lanes);
+      let bestValue: number | undefined;
+      for (const value of values) {
+        const tuning = { ...incumbent.tuning, [parameter]: value };
+        const candidate = evaluate(lanes, tuning);
         if (!isLegal(candidate.result)) continue;
         if (candidate.result.lapSeconds! + 0.002 < best.result.lapSeconds!) {
           best = candidate;
-          bestDelta = delta;
+          bestValue = value;
         }
       }
       if (best !== incumbent) {
         incumbent = best;
         accepted.push({
-          center,
-          delta: bestDelta,
+          parameter,
+          value: bestValue!,
           seconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
           maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
         });
       }
     }
 
-    console.log('MACHINE_MIDDLE_LINE_REFINEMENT', JSON.stringify({
+    console.log('MACHINE_STEERING_SEARCH', JSON.stringify({
       baselineSeconds: Number(baselineSeconds.toFixed(3)),
       optimizedSeconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
       gainSeconds: Number((baselineSeconds - incumbent.result.lapSeconds!).toFixed(3)),
       maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
       maxLaneProgress: Number(incumbent.result.maxLaneProgress.toFixed(4)),
+      tuning: incumbent.tuning,
       accepted,
     }));
 
@@ -67,16 +79,17 @@ describe('machine trajectory refinement search', () => {
   }, 55_000);
 });
 
-function evaluate(lanes: readonly number[]): Candidate {
+function evaluate(lanes: readonly number[], tuning: MachineSteeringTuning): Candidate {
   const pilot = new MachineLinePilot('pitwall-gp', lanes, {
     brakeWindows: PITWALL_MACHINE_BRAKE_WINDOWS,
+    ...tuning,
   });
   const result = evaluateMachineFlyingLap({
     trackId: 'pitwall-gp',
     policy: (context) => pilot.control(context),
     maximumSeconds: 60,
   });
-  return { lanes: [...lanes], result };
+  return { tuning: { ...tuning }, result };
 }
 
 function isLegal(result: MachineLapResult): boolean {
@@ -84,27 +97,4 @@ function isLegal(result: MachineLapResult): boolean {
     && result.lapSeconds !== undefined
     && result.illegalSamples === 0
     && result.maxLaneDistance <= REFERENCE_LANE_LIMIT;
-}
-
-function applyBump(source: readonly number[], center: number, halfWidth: number, delta: number): number[] {
-  const limit = REFERENCE_LANE_LIMIT - 0.25;
-  return source.map((lane, index) => {
-    const progress = index / source.length;
-    const distance = Math.abs(circularDelta(progress, center));
-    if (distance >= halfWidth) return lane;
-    const phase = distance / halfWidth;
-    const weight = 0.5 * (1 + Math.cos(Math.PI * phase));
-    return clamp(lane + delta * weight, -limit, limit);
-  });
-}
-
-function circularDelta(a: number, b: number): number {
-  let delta = a - b;
-  while (delta > 0.5) delta -= 1;
-  while (delta < -0.5) delta += 1;
-  return delta;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }
