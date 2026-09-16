@@ -4,11 +4,11 @@ import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 describe('Pitwall course-specific joint optimizer', () => {
-  it('searches trajectory, speed and controls against one executable lap objective', () => {
+  it('searches trajectory, speed and controls together against one executable lap objective', () => {
     installReferenceLineCalibration();
     const optimized = optimizePitwallJoint(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-      { maxEvaluations: 18, passes: 1 },
+      { maxEvaluations: 32, randomSeed: 0x51a7c0de },
     );
 
     console.log('PITWALL_JOINT_OPTIMIZER', JSON.stringify({
@@ -18,7 +18,12 @@ describe('Pitwall course-specific joint optimizer', () => {
       bestSeconds: optimized.best.result.lapSeconds === undefined
         ? null
         : Number(optimized.best.result.lapSeconds.toFixed(3)),
-      bestMaxLaneDistance: Number(optimized.best.result.maxLaneDistance.toFixed(2)),
+      bestMaxLaneDistance: Number(optimized.best.result.maxLaneDistance.toFixed(3)),
+      guideSeconds: optimized.guide.result.lapSeconds === undefined
+        ? null
+        : Number(optimized.guide.result.lapSeconds.toFixed(3)),
+      guideLegal: optimized.guide.legal,
+      guideMaxLaneDistance: Number(optimized.guide.result.maxLaneDistance.toFixed(3)),
       evaluations: optimized.evaluations,
       accepted: optimized.accepted,
       genome: optimized.best.genome,
@@ -26,7 +31,8 @@ describe('Pitwall course-specific joint optimizer', () => {
 
     expect(optimized.seed.legal).toBe(true);
     expect(optimized.best.legal).toBe(true);
-    expect(optimized.best.score).toBeLessThanOrEqual(optimized.seed.score + 1e-9);
-    expect(optimized.evaluations).toBeGreaterThan(1);
-  }, 35_000);
+    expect(optimized.best.result.lapSeconds).toBeDefined();
+    expect(optimized.best.result.lapSeconds!).toBeLessThanOrEqual(optimized.seed.result.lapSeconds! + 1e-9);
+    expect(optimized.evaluations).toBe(32);
+  }, 45_000);
 });
