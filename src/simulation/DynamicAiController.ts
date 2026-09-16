@@ -246,15 +246,16 @@ export function dynamicAiControl(
   let targetSpeed = speedReference.targetSpeed * execution;
 
   // The generated reference is intentionally conservative about transient
-  // rotation. Once the real car is demonstrably on the line, allow a very small
-  // speed carry through the same two complexes. This changes no grip or power;
-  // poor tracking smoothly removes the allowance before it can become a cut.
+  // rotation. Once the real car is demonstrably on the line, allow a small
+  // speed carry through the same two complexes. The better predictive follower
+  // now has enough line margin to use more of the physical chassis while poor
+  // tracking still removes the allowance before it can become a cut.
   if (battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
     const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
     const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
     const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);
     const attackWindow = pitwallAttackWindow(projection.progress);
-    const extraPace = attackWindow * technical * lineConfidence * 0.052;
+    const extraPace = attackWindow * technical * lineConfidence * 0.09;
     targetSpeed *= 1 + extraPace;
   }
 
