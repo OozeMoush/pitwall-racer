@@ -31,6 +31,8 @@ export interface MachineLapResult {
   lapSeconds?: number;
   warmupSeconds?: number;
   maxLaneDistance: number;
+  maxLaneProgress: number;
+  maxLaneOffset: number;
   illegalSamples: number;
   samples: number;
   maxSpeed: number;
@@ -78,6 +80,8 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
   let firstCrossingSeconds: number | undefined;
   let lapSeconds: number | undefined;
   let maxLaneDistance = projection.distance;
+  let maxLaneProgress = projection.progress;
+  let maxLaneOffset = projection.laneOffset;
   let illegalSamples = 0;
   let samples = 0;
   let speedSum = 0;
@@ -91,7 +95,11 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
     projection = projectTrackNear(state.x, state.y, previousProgress);
     const speed = machineStateSpeed(state);
 
-    maxLaneDistance = Math.max(maxLaneDistance, projection.distance);
+    if (projection.distance > maxLaneDistance) {
+      maxLaneDistance = projection.distance;
+      maxLaneProgress = projection.progress;
+      maxLaneOffset = projection.laneOffset;
+    }
     maxSpeed = Math.max(maxSpeed, speed);
     speedSum += speed;
     samples += 1;
@@ -118,6 +126,8 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
     lapSeconds,
     warmupSeconds: firstCrossingSeconds,
     maxLaneDistance,
+    maxLaneProgress,
+    maxLaneOffset,
     illegalSamples,
     samples,
     maxSpeed,
