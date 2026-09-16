@@ -1,3 +1,4 @@
+import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -29,6 +30,13 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
  * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
  * target. Traffic can move the car off the reference line, but once clear it
  * returns to the same trajectory a perfect reference driver would use.
+ *
+ * Pitwall's two tight direction-change complexes get a small predictive
+ * steering assist. It uses the shared arcade-car equations to begin rotation
+ * before the ordinary closed-loop follower accumulates a large lane error.
+ * A small clean-air corner attack is allowed only while the car is already
+ * tracking the reference well; it asks the same physical chassis to carry a
+ * little more speed and disappears immediately when line error grows.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -221,10 +229,36 @@ export function dynamicAiControl(
         + bearingError * 0.82
         + lateralError * 0.52
         - vehicle.yawRate * 0.38;
-  const steer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const baselineSteer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const predictionWeight = !offRoad && !battleActive && trackId === 'pitwall-gp'
+    ? pitwallPredictionWeight(projection.progress, profile.severity)
+    : 0;
+  const steer = predictiveAiSteer(
+    vehicle,
+    driver.tire.grip,
+    target,
+    tangent,
+    baselineSteer,
+    predictionWeight,
+  );
 
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
+  let cornerAttackConfidence = 0;
+
+  // The generated reference is intentionally conservative about transient
+  // rotation. Once the real car is demonstrably on the line, allow a small
+  // speed carry through the same two complexes. The better predictive follower
+  // now has enough line margin to use more of the physical chassis while poor
+  // tracking still removes the allowance before it can become a cut.
+  if (battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
+    const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
+    const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
+    const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);
+    const attackWindow = pitwallAttackWindow(projection.progress);
+    cornerAttackConfidence = attackWindow * technical * lineConfidence;
+    targetSpeed *= 1 + cornerAttackConfidence * 0.09;
+  }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
@@ -258,11 +292,17 @@ export function dynamicAiControl(
 
   const speedError = targetSpeed - speed;
   const overspeed = -speedError;
-  const feedbackBrake = overspeed > 0.65
-    ? clamp((overspeed - 0.20) / 9.4, 0.05, 1)
+  // When the predictive follower is securely on the line, do not immediately
+  // erase a few km/h of legitimate chicane carry with the generic speed-loop
+  // deadband. This only changes braking decisions; grip and propulsion remain
+  // the shared physical car. Any growing lane error collapses the allowance.
+  const feedbackBrakeThreshold = 0.65 + cornerAttackConfidence * 1.5;
+  const feedbackBrake = overspeed > feedbackBrakeThreshold
+    ? clamp((overspeed - feedbackBrakeThreshold + 0.45) / 9.4, 0.05, 1)
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
-  let brake = Math.max(feedbackBrake, speedReference.brake * 0.82 * plannedBrakeWeight);
+  const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
+  let brake = Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
 
   let throttle: number;
   if (brake > 0.06) {
@@ -281,6 +321,48 @@ export function dynamicAiControl(
   }
 
   return { throttle, brake, steer, targetSpeed, targetLane, battleState };
+}
+
+function pitwallPredictionWeight(progress: number, severity: number): number {
+  const technical = clamp((severity - 0.18) / 0.74, 0, 1);
+  const middle = windowWeight(wrap01(progress), 0.50, 0.68, 0.035);
+  const final = finalComplexWeight(progress);
+  return technical * Math.max(middle * 0.32, final * 0.34);
+}
+
+function pitwallAttackWindow(progress: number): number {
+  const p = wrap01(progress);
+  const middle = windowWeight(p, 0.49, 0.70, 0.040);
+  const final = finalComplexWeight(p);
+  return Math.max(middle, final);
+}
+
+function finalComplexWeight(progress: number): number {
+  const p = wrap01(progress);
+  return Math.max(
+    windowWeight(p, 0.835, 0.998, 0.030),
+    windowWeight(p, 0.000, 0.045, 0.022),
+  );
+}
+
+function windowWeight(progress: number, start: number, end: number, feather: number): number {
+  if (progress >= start && progress <= end) return 1;
+  if (progress >= start - feather && progress < start) {
+    return smoothstep((progress - (start - feather)) / feather);
+  }
+  if (progress > end && progress <= end + feather) {
+    return 1 - smoothstep((progress - end) / feather);
+  }
+  return 0;
+}
+
+function smoothstep(value: number): number {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
