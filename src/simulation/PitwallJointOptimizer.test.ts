@@ -8,7 +8,7 @@ describe('Pitwall course-specific joint optimizer', () => {
     installReferenceLineCalibration();
     const optimized = optimizePitwallJoint(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-      { maxEvaluations: 32, randomSeed: 0x51a7c0de },
+      { maxEvaluations: 48, randomSeed: 0x51a7c0de },
     );
 
     console.log('PITWALL_JOINT_OPTIMIZER', JSON.stringify({
@@ -33,6 +33,6 @@ describe('Pitwall course-specific joint optimizer', () => {
     expect(optimized.best.legal).toBe(true);
     expect(optimized.best.result.lapSeconds).toBeDefined();
     expect(optimized.best.result.lapSeconds!).toBeLessThanOrEqual(optimized.seed.result.lapSeconds! + 1e-9);
-    expect(optimized.evaluations).toBe(32);
-  }, 45_000);
+    expect(optimized.evaluations).toBe(48);
+  }, 55_000);
 });
