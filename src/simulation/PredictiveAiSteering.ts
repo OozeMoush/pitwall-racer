@@ -5,21 +5,18 @@ import type { VehicleState } from './VehicleModel';
 const CANDIDATES = [-1, -0.78, -0.56, -0.34, -0.14, 0, 0.14, 0.34, 0.56, 0.78, 1] as const;
 const LINEAR_DAMPING = 0.018;
 const ANGULAR_DAMPING = 1.05;
-const POWER_BOOST = 0.22;
 
 /**
  * Pick a steering command by asking the same arcade chassis a small question:
  * "if I held this steering input for the next few tenths, where would I be?"
  *
  * Humans are naturally predictive through a chicane: they start the second
- * rotation before the current lateral error becomes large. The old controller
- * was almost entirely reactive, so it could have a correct reference line and
- * still arrive at every second apex late. This helper evaluates a tiny set of
- * steering candidates with the real controlArcadeCar equations and chooses the
- * one that best reaches the already-planned target point/tangent.
+ * rotation before the current lateral error becomes large. The ordinary AI
+ * controller is mostly reactive, so this helper can provide a small early hint
+ * without changing the actual car's grip, power, speed or braking targets.
  *
- * This is controller intelligence only. It does not add grip, power or speed,
- * and the command still goes through the shared Rapier chassis afterwards.
+ * The horizon and final blend are intentionally short/conservative. This is a
+ * steering tie-breaker, not a replacement racing-line controller.
  */
 export function predictiveAiSteer(
   vehicle: VehicleState,
@@ -34,7 +31,7 @@ export function predictiveAiSteer(
 
   const targetHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
   const targetDistance = Math.hypot(target.x - vehicle.x, target.y - vehicle.y);
-  const horizon = clamp(targetDistance / Math.max(34, vehicle.speed), 0.18, 0.48);
+  const horizon = clamp(targetDistance / Math.max(42, vehicle.speed), 0.14, 0.34);
   const steps = 6;
   const dt = horizon / steps;
 
@@ -85,7 +82,7 @@ function scoreCandidate(
         brake: 0,
         steer,
         tireGrip,
-        powerBoost: POWER_BOOST,
+        powerBoost: 0,
       },
       dt,
     );
@@ -106,13 +103,12 @@ function scoreCandidate(
   const bearingError = Math.abs(wrapAngle(targetBearing - heading));
   const steeringChange = Math.abs(steer - baselineSteer);
 
-  // Position is the primary objective. Heading/bearing make two candidates that
-  // arrive similarly prefer the one already rotated for the exit, while a tiny
-  // continuity term prevents candidate quantisation from creating visible saw.
+  // Position is primary. Heading/bearing prefer a candidate already rotated for
+  // the exit, while continuity prevents the discrete candidate set from sawing.
   return positionError
     + headingError * 8.5
     + bearingError * 3.2
-    + steeringChange * 0.38;
+    + steeringChange * 0.72;
 }
 
 function lerp(a: number, b: number, t: number): number {
