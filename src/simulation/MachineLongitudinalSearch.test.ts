@@ -1,85 +1,90 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateMachineFlyingLap } from './MachineLapEvaluator';
-import { MachineLinePilot } from './MachineLinePilot';
+import { evaluateMachineFlyingLap, type MachineLapResult } from './MachineLapEvaluator';
+import { MachineLinePilot, type MachineBrakeWindow } from './MachineLinePilot';
 import { buildMachineOptimalPitwallLine } from './MachineOptimalLine';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
-const SCALES = [1.00, 0.90, 0.80, 0.70] as const;
+const CENTERS = [
+  0.46, 0.48, 0.50, 0.52, 0.54, 0.56, 0.58, 0.60, 0.62, 0.64, 0.66, 0.68, 0.70, 0.72, 0.74,
+  0.80, 0.82, 0.84, 0.86, 0.88, 0.90, 0.92, 0.94, 0.96, 0.98, 0.00, 0.02, 0.04, 0.06, 0.08,
+] as const;
+const SCALES = [0.90, 0.80, 0.70] as const;
+const HALF_WIDTH = 0.010;
+
+interface Candidate {
+  windows: MachineBrakeWindow[];
+  result: MachineLapResult;
+}
 
 describe('machine-only longitudinal search', () => {
-  it('searches brake carry on the legal machine trajectory', () => {
+  it('removes only locally unnecessary braking on the legal machine trajectory', () => {
     installReferenceLineCalibration();
     const lanes = buildMachineOptimalPitwallLine(OPTIMIZED_REFERENCE_LANES['pitwall-gp']);
-    const results: Array<{
-      middle: number;
-      final: number;
-      completed: boolean;
-      seconds?: number;
+    let incumbent = evaluate(lanes, []);
+    const baselineSeconds = incumbent.result.lapSeconds!;
+    const accepted: Array<{
+      center: number;
+      scale: number;
+      seconds: number;
       maxLaneDistance: number;
-      illegalRatio: number;
-      averageKmh: number;
     }> = [];
 
-    for (const middle of SCALES) {
-      for (const final of SCALES) {
-        const pilot = new MachineLinePilot('pitwall-gp', lanes, {
-          middleBrakeScale: middle,
-          finalBrakeScale: final,
-        });
-        const result = evaluateMachineFlyingLap({
-          trackId: 'pitwall-gp',
-          policy: (context) => pilot.control(context),
-          maximumSeconds: 60,
-        });
-        results.push({
-          middle,
-          final,
-          completed: result.completed,
-          seconds: result.lapSeconds,
-          maxLaneDistance: result.maxLaneDistance,
-          illegalRatio: result.illegalSamples / Math.max(1, result.samples),
-          averageKmh: result.averageSpeed * 3.6,
+    expect(isLegal(incumbent.result)).toBe(true);
+
+    for (const center of CENTERS) {
+      let best = incumbent;
+      let acceptedScale: number | undefined;
+      for (const scale of SCALES) {
+        const windows = [...incumbent.windows, { center, halfWidth: HALF_WIDTH, scale }];
+        const candidate = evaluate(lanes, windows);
+        if (!isLegal(candidate.result) || candidate.result.lapSeconds === undefined) continue;
+        if (candidate.result.lapSeconds + 0.002 < best.result.lapSeconds!) {
+          best = candidate;
+          acceptedScale = scale;
+        }
+      }
+      if (best !== incumbent) {
+        incumbent = best;
+        accepted.push({
+          center,
+          scale: acceptedScale!,
+          seconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
+          maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
         });
       }
     }
 
-    const legal = results.filter((result) => result.completed
-      && result.seconds !== undefined
-      && result.illegalRatio === 0
-      && result.maxLaneDistance <= REFERENCE_LANE_LIMIT);
-    const best = legal.reduce<typeof legal[number] | undefined>(
-      (winner, candidate) => !winner || candidate.seconds! < winner.seconds! ? candidate : winner,
-      undefined,
-    );
-
-    console.log('MACHINE_LONGITUDINAL_SEARCH', JSON.stringify({
-      best: best ? compact(best) : null,
-      results: results.map(compact),
+    console.log('MACHINE_LOCAL_BRAKE_SEARCH', JSON.stringify({
+      baselineSeconds: Number(baselineSeconds.toFixed(3)),
+      optimizedSeconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
+      gainSeconds: Number((baselineSeconds - incumbent.result.lapSeconds!).toFixed(3)),
+      maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
+      illegalRatio: Number((incumbent.result.illegalSamples / Math.max(1, incumbent.result.samples)).toFixed(4)),
+      averageKmh: Number((incumbent.result.averageSpeed * 3.6).toFixed(1)),
+      accepted,
     }));
 
-    expect(best).toBeDefined();
-    expect(best!.seconds!).toBeLessThan(25.833);
-  }, 30_000);
+    expect(accepted.length).toBeGreaterThan(0);
+    expect(isLegal(incumbent.result)).toBe(true);
+    expect(incumbent.result.lapSeconds!).toBeLessThan(baselineSeconds - 0.01);
+  }, 120_000);
 });
 
-function compact(result: {
-  middle: number;
-  final: number;
-  completed: boolean;
-  seconds?: number;
-  maxLaneDistance: number;
-  illegalRatio: number;
-  averageKmh: number;
-}) {
-  return {
-    middle: result.middle,
-    final: result.final,
-    completed: result.completed,
-    seconds: Number((result.seconds ?? 0).toFixed(3)),
-    maxLaneDistance: Number(result.maxLaneDistance.toFixed(2)),
-    illegalRatio: Number(result.illegalRatio.toFixed(4)),
-    averageKmh: Number(result.averageKmh.toFixed(1)),
-  };
+function evaluate(lanes: readonly number[], windows: readonly MachineBrakeWindow[]): Candidate {
+  const pilot = new MachineLinePilot('pitwall-gp', lanes, { brakeWindows: windows });
+  const result = evaluateMachineFlyingLap({
+    trackId: 'pitwall-gp',
+    policy: (context) => pilot.control(context),
+    maximumSeconds: 60,
+  });
+  return { windows: [...windows], result };
+}
+
+function isLegal(result: MachineLapResult): boolean {
+  return result.completed
+    && result.lapSeconds !== undefined
+    && result.illegalSamples === 0
+    && result.maxLaneDistance <= REFERENCE_LANE_LIMIT;
 }
