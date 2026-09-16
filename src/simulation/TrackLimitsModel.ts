@@ -12,8 +12,11 @@ export const FREE_KERB_DISTANCE = TRACK_ROAD_HALF_WIDTH + 0.95;
 export const DEEP_CUT_DISTANCE = TRACK_ROAD_HALF_WIDTH + 1.90;
 export const FULL_GRASS_DISTANCE = TRACK_RUNOFF_HALF_WIDTH;
 
-// AI target centres need room for the ~2.15 m half-width physical collider.
-export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
+// The physical car is 2.15 m wide from centre to collider edge. Let clean-air
+// reference following use the same 14.5 m lane envelope as the calibrated
+// trajectory while retaining 0.35 m of asphalt margin at the white line.
+// Battle code has its own narrower 11.8 m cap for side-by-side safety.
+export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 2.5;
 
 // This game does not use time penalties for cutting, so the legal circuit must
 // be enforced physically. Keep the continuous wall just beyond the kerb rather
