@@ -40,6 +40,7 @@ export interface PitwallJointGenome {
 export interface PitwallJointEvaluation {
   genome: PitwallJointGenome;
   result: MachineLapResult;
+  /** Search score may keep a slightly illegal but fast candidate as a parent. */
   score: number;
   legal: boolean;
 }
@@ -47,13 +48,19 @@ export interface PitwallJointEvaluation {
 export interface PitwallJointOptimizationResult {
   seed: PitwallJointEvaluation;
   best: PitwallJointEvaluation;
+  guide: PitwallJointEvaluation;
   evaluations: number;
-  accepted: Array<{ parameter: string; value: number; seconds: number }>;
+  accepted: Array<{
+    source: 'structured' | 'repair' | 'coupled';
+    seconds: number;
+    maxLaneDistance: number;
+  }>;
 }
 
 export interface PitwallJointOptimizerOptions {
   maxEvaluations?: number;
-  passes?: number;
+  /** Deterministic RNG seed so a discovered reference is reproducible. */
+  randomSeed?: number;
 }
 
 interface Dimension {
@@ -73,52 +80,107 @@ interface Dimension {
  * own line control points, speed windows and brake windows live here and are
  * optimized together against one objective: fastest completely legal full-state
  * flying lap. Human laps and target times are never inputs.
+ *
+ * Search is deliberately coupled rather than one-axis coordinate descent. A
+ * faster steering or speed choice may be a few centimetres illegal by itself
+ * but become the best legal solution when the trajectory moves with it. We keep
+ * one soft-constrained guide for that purpose while `best` is legal at all times.
  */
 export function optimizePitwallJoint(
   calibratedReference: readonly number[],
   options: PitwallJointOptimizerOptions = {},
 ): PitwallJointOptimizationResult {
-  const maxEvaluations = Math.max(1, options.maxEvaluations ?? 48);
-  const passes = Math.max(1, options.passes ?? 2);
-  const seedGenome = createPitwallJointSeed();
-  const seed = evaluatePitwallJoint(calibratedReference, seedGenome);
+  const maxEvaluations = Math.max(1, options.maxEvaluations ?? 40);
+  const random = mulberry32(options.randomSeed ?? 0x51a7c0de);
+  const seed = evaluatePitwallJoint(calibratedReference, createPitwallJointSeed());
   let best = seed;
+  let guide = seed;
   let evaluations = 1;
   const accepted: PitwallJointOptimizationResult['accepted'] = [];
-  const dimensions = buildDimensions();
 
-  for (let pass = 0; pass < passes && evaluations < maxEvaluations; pass++) {
-    const stepScale = Math.pow(0.58, pass);
-    for (const dimension of dimensions) {
-      if (evaluations >= maxEvaluations) break;
-      let localBest = best;
-      let acceptedValue: number | undefined;
-      for (const direction of [-1, 1] as const) {
-        if (evaluations >= maxEvaluations) break;
-        const candidateGenome = cloneGenome(best.genome);
-        const current = dimension.get(candidateGenome);
-        const next = clamp(current + dimension.step * stepScale * direction, dimension.min, dimension.max);
-        if (Math.abs(next - current) < 1e-9) continue;
-        dimension.set(candidateGenome, next);
-        const candidate = evaluatePitwallJoint(calibratedReference, candidateGenome);
+  const consider = (candidate: PitwallJointEvaluation, source: 'structured' | 'repair' | 'coupled') => {
+    if (candidate.score < guide.score) guide = candidate;
+    if (candidate.legal
+      && candidate.result.lapSeconds !== undefined
+      && best.result.lapSeconds !== undefined
+      && candidate.result.lapSeconds + 0.001 < best.result.lapSeconds) {
+      best = candidate;
+      accepted.push({
+        source,
+        seconds: Number(candidate.result.lapSeconds.toFixed(3)),
+        maxLaneDistance: Number(candidate.result.maxLaneDistance.toFixed(3)),
+      });
+    }
+  };
+
+  // First challenge the known steering boundary. The old one-axis search found
+  // faster candidates just outside the lane envelope; here they are allowed to
+  // seed a simultaneous trajectory repair instead of being discarded.
+  for (const predictionScale of [0.35, 0.25, 0.10, 0] as const) {
+    if (evaluations >= maxEvaluations) break;
+    const genome = cloneGenome(best.genome);
+    genome.predictionScale = predictionScale;
+    const candidate = evaluatePitwallJoint(calibratedReference, genome);
+    evaluations += 1;
+    consider(candidate, 'structured');
+    if (!candidate.legal && candidate.result.completed && evaluations < maxEvaluations) {
+      const repaired = repairLaneOverflow(candidate.genome, candidate.result);
+      if (repaired) {
+        const repairCandidate = evaluatePitwallJoint(calibratedReference, repaired);
         evaluations += 1;
-        if (candidate.score + 0.001 < localBest.score) {
-          localBest = candidate;
-          acceptedValue = next;
-        }
-      }
-      if (localBest !== best) {
-        best = localBest;
-        accepted.push({
-          parameter: dimension.name,
-          value: Number(acceptedValue!.toFixed(4)),
-          seconds: Number(best.result.lapSeconds!.toFixed(3)),
-        });
+        consider(repairCandidate, 'repair');
       }
     }
   }
 
-  return { seed, best, evaluations, accepted };
+  const dimensions = buildDimensions();
+  let generation = 0;
+  while (evaluations < maxEvaluations) {
+    const temperature = Math.max(0.28, Math.pow(0.91, generation));
+    // Alternate between the best legal lap and the fastest near-boundary guide.
+    // This preserves a safe incumbent without trapping search behind legality.
+    const parent = generation % 3 === 2 ? guide : best;
+    const genome = cloneGenome(parent.genome);
+    const mutationCount = 2 + Math.floor(random() * 4);
+    const used = new Set<number>();
+    for (let mutation = 0; mutation < mutationCount; mutation++) {
+      let dimensionIndex = Math.floor(random() * dimensions.length);
+      for (let retry = 0; retry < 5 && used.has(dimensionIndex); retry++) {
+        dimensionIndex = Math.floor(random() * dimensions.length);
+      }
+      used.add(dimensionIndex);
+      const dimension = dimensions[dimensionIndex];
+      const current = dimension.get(genome);
+      const gaussian = normal(random);
+      const next = clamp(
+        current + gaussian * dimension.step * temperature,
+        dimension.min,
+        dimension.max,
+      );
+      dimension.set(genome, next);
+    }
+
+    const candidate = evaluatePitwallJoint(calibratedReference, genome);
+    evaluations += 1;
+    consider(candidate, 'coupled');
+
+    // A coupled candidate that is fast but only narrowly illegal gets one
+    // deterministic trajectory repair around the actual maximum excursion.
+    if (!candidate.legal
+      && candidate.result.completed
+      && laneOverflow(candidate.result) <= 0.9
+      && evaluations < maxEvaluations) {
+      const repaired = repairLaneOverflow(candidate.genome, candidate.result);
+      if (repaired) {
+        const repairCandidate = evaluatePitwallJoint(calibratedReference, repaired);
+        evaluations += 1;
+        consider(repairCandidate, 'repair');
+      }
+    }
+    generation += 1;
+  }
+
+  return { seed, best, guide, evaluations, accepted };
 }
 
 export function createPitwallJointSeed(): PitwallJointGenome {
@@ -156,18 +218,22 @@ export function evaluatePitwallJoint(
     trackId: 'pitwall-gp',
     policy: (context) => pilot.control(context),
     maximumSeconds: 60,
+    tireWear: 0,
+    tyreSlideSeed: 0.37,
   });
   const legal = result.completed
     && result.lapSeconds !== undefined
     && result.illegalSamples === 0
     && result.maxLaneDistance <= REFERENCE_LANE_LIMIT;
-  const overflow = Math.max(0, result.maxLaneDistance - REFERENCE_LANE_LIMIT);
-  const score = legal
-    ? result.lapSeconds!
-    : 1_000
-      + (result.lapSeconds ?? 60)
-      + result.illegalSamples * 0.02
-      + overflow * 4;
+  const overflow = laneOverflow(result);
+  const illegalRatio = result.illegalSamples / Math.max(1, result.samples);
+
+  // Search score is intentionally softer than acceptance. It lets a 25.70 lap
+  // that misses the strict line by a few centimetres guide a compensating line
+  // mutation. The published `best` remains strictly legal.
+  const score = result.completed && result.lapSeconds !== undefined
+    ? result.lapSeconds + overflow * 0.03 + illegalRatio * 0.5
+    : 100 + (result.lapSeconds ?? 60) + overflow;
 
   return {
     genome: cloneGenome(genome),
@@ -190,24 +256,44 @@ export function materializePitwallJointLine(
   return lanes;
 }
 
+function repairLaneOverflow(genome: PitwallJointGenome, result: MachineLapResult): PitwallJointGenome | undefined {
+  const overflow = laneOverflow(result);
+  if (overflow <= 0 || overflow > 1.5) return undefined;
+  let nearestIndex = -1;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  LINE_CONTROLS.forEach((control, index) => {
+    const distance = Math.abs(circularDelta(control.center, result.maxLaneProgress));
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  if (nearestIndex < 0 || nearestDistance > 0.07) return undefined;
+
+  const repaired = cloneGenome(genome);
+  const direction = result.maxLaneOffset === 0 ? 0 : -Math.sign(result.maxLaneOffset);
+  const magnitude = clamp(0.22 + overflow * 1.8, 0.22, 0.85);
+  repaired.lineDeltas[nearestIndex] = clamp(
+    repaired.lineDeltas[nearestIndex] + direction * magnitude,
+    -1.6,
+    1.6,
+  );
+  return repaired;
+}
+
 function buildDimensions(): Dimension[] {
   const dimensions: Dimension[] = [];
-  const count = Math.max(LINE_CONTROLS.length, SPEED_CENTERS.length, BRAKE_CENTERS.length);
-  for (let index = 0; index < count; index++) {
-    if (index < SPEED_CENTERS.length) {
-      dimensions.push(arrayDimension(`speed[${index}]`, 'speedScales', index, 0.015, 0.93, 1.07));
-    }
-    if (index < LINE_CONTROLS.length) {
-      dimensions.push(arrayDimension(`line[${index}]`, 'lineDeltas', index, 0.35, -1.6, 1.6));
-    }
-    if (index < BRAKE_CENTERS.length) {
-      dimensions.push(arrayDimension(`brake[${index}]`, 'brakeScales', index, 0.05, 0.60, 1.08));
-    }
-    if (index === 0) {
-      dimensions.push(scalarDimension('predictionScale', 'predictionScale', 0.04, 0.20, 0.70));
-      dimensions.push(scalarDimension('lookAheadScale', 'lookAheadScale', 0.04, 0.82, 1.18));
-    }
+  for (let index = 0; index < LINE_CONTROLS.length; index++) {
+    dimensions.push(arrayDimension(`line[${index}]`, 'lineDeltas', index, 0.55, -1.6, 1.6));
   }
+  for (let index = 0; index < SPEED_CENTERS.length; index++) {
+    dimensions.push(arrayDimension(`speed[${index}]`, 'speedScales', index, 0.030, 0.90, 1.10));
+  }
+  for (let index = 0; index < BRAKE_CENTERS.length; index++) {
+    dimensions.push(arrayDimension(`brake[${index}]`, 'brakeScales', index, 0.08, 0.55, 1.10));
+  }
+  dimensions.push(scalarDimension('predictionScale', 'predictionScale', 0.10, 0, 0.75));
+  dimensions.push(scalarDimension('lookAheadScale', 'lookAheadScale', 0.08, 0.78, 1.22));
   return dimensions;
 }
 
@@ -258,6 +344,10 @@ function applyBump(source: readonly number[], center: number, halfWidth: number,
   });
 }
 
+function laneOverflow(result: MachineLapResult): number {
+  return Math.max(0, result.maxLaneDistance - REFERENCE_LANE_LIMIT);
+}
+
 function cloneGenome(genome: PitwallJointGenome): PitwallJointGenome {
   return {
     lineDeltas: [...genome.lineDeltas],
@@ -266,6 +356,23 @@ function cloneGenome(genome: PitwallJointGenome): PitwallJointGenome {
     predictionScale: genome.predictionScale,
     lookAheadScale: genome.lookAheadScale,
   };
+}
+
+function mulberry32(seed: number): () => number {
+  let value = seed >>> 0;
+  return () => {
+    value += 0x6d2b79f5;
+    let t = value;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function normal(random: () => number): number {
+  const u = Math.max(1e-9, random());
+  const v = Math.max(1e-9, random());
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 function circularDelta(a: number, b: number): number {
