@@ -17,7 +17,17 @@ export interface MachineBrakeWindow {
   scale: number;
 }
 
-export interface MachineLinePilotOptions {
+export interface MachineSteeringTuning {
+  lookAheadScale?: number;
+  headingGainScale?: number;
+  bearingGainScale?: number;
+  lateralGainScale?: number;
+  yawDampingScale?: number;
+  predictionScale?: number;
+  tangentScale?: number;
+}
+
+export interface MachineLinePilotOptions extends MachineSteeringTuning {
   /** Brake multiplier through the 50-72% technical complex. */
   middleBrakeScale?: number;
   /** Brake multiplier through the wrapped 82-6% final/start complex. */
@@ -29,14 +39,15 @@ export interface MachineLinePilotOptions {
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
  * evaluator while keeping the proven clean-air longitudinal controller as the
- * baseline. Brake modifiers are machine-search dimensions: they alter only the
- * driver's pedal input, never power, grip, tyre state, or chassis capability.
+ * baseline. Tuning dimensions alter only driver inputs/targets; power, grip,
+ * tyre state and chassis capability stay identical to the player car.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
   private readonly middleBrakeScale: number;
   private readonly finalBrakeScale: number;
   private readonly brakeWindows: readonly MachineBrakeWindow[];
+  private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
     private readonly trackId: TrackId,
@@ -46,6 +57,15 @@ export class MachineLinePilot {
     this.middleBrakeScale = clamp(options.middleBrakeScale ?? 1, 0.35, 1.15);
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
     this.brakeWindows = options.brakeWindows ?? [];
+    this.steering = {
+      lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
+      headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
+      bearingGainScale: clamp(options.bearingGainScale ?? 1, 0.40, 1.75),
+      lateralGainScale: clamp(options.lateralGainScale ?? 1, 0.35, 1.85),
+      yawDampingScale: clamp(options.yawDampingScale ?? 1, 0.45, 1.70),
+      predictionScale: clamp(options.predictionScale ?? 1, 0, 2.0),
+      tangentScale: clamp(options.tangentScale ?? 1, 0.60, 1.60),
+    };
 
     this.driver = createAiField()[0];
     this.driver.id = 'machine-line';
@@ -83,12 +103,14 @@ export class MachineLinePilot {
     const progress = context.projection.progress;
     const profile = trackProfile(progress, 1, GRIP);
     const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
-    const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+    const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60)
+      * technicalLookahead
+      * this.steering.lookAheadScale;
     const targetProgress = progress + lookAheadMetres / TRACK_LENGTH;
     const targetLane = clamp(sampleCircular(this.lanes, targetProgress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
     const currentLane = clamp(sampleCircular(this.lanes, progress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
     const target = sampleTrack(targetProgress, targetLane);
-    const tangentProgress = targetProgress + 8 / TRACK_LENGTH;
+    const tangentProgress = targetProgress + 8 * this.steering.tangentScale / TRACK_LENGTH;
     const tangentLane = clamp(sampleCircular(this.lanes, tangentProgress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
     const tangent = sampleTrack(tangentProgress, tangentLane);
 
@@ -98,15 +120,15 @@ export class MachineLinePilot {
     const bearingError = wrapAngle(bearingHeading - context.state.heading);
     const lateralError = clamp((currentLane - context.projection.laneOffset) / 9.0, -1, 1);
     const baselineSteer = clamp(
-      headingError * 2.15
-        + bearingError * 0.82
-        + lateralError * 0.52
-        - context.state.yawRate * 0.38,
+      headingError * 2.15 * this.steering.headingGainScale
+        + bearingError * 0.82 * this.steering.bearingGainScale
+        + lateralError * 0.52 * this.steering.lateralGainScale
+        - context.state.yawRate * 0.38 * this.steering.yawDampingScale,
       -0.98,
       0.98,
     );
     const predictionWeight = this.trackId === 'pitwall-gp'
-      ? pitwallPredictionWeight(progress, profile.severity)
+      ? pitwallPredictionWeight(progress, profile.severity) * this.steering.predictionScale
       : 0;
     const steer = predictiveAiSteer(
       {
