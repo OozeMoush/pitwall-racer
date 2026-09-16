@@ -244,6 +244,7 @@ export function dynamicAiControl(
 
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
+  let cornerAttackConfidence = 0;
 
   // The generated reference is intentionally conservative about transient
   // rotation. Once the real car is demonstrably on the line, allow a small
@@ -255,8 +256,8 @@ export function dynamicAiControl(
     const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
     const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);
     const attackWindow = pitwallAttackWindow(projection.progress);
-    const extraPace = attackWindow * technical * lineConfidence * 0.09;
-    targetSpeed *= 1 + extraPace;
+    cornerAttackConfidence = attackWindow * technical * lineConfidence;
+    targetSpeed *= 1 + cornerAttackConfidence * 0.09;
   }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
@@ -291,11 +292,17 @@ export function dynamicAiControl(
 
   const speedError = targetSpeed - speed;
   const overspeed = -speedError;
-  const feedbackBrake = overspeed > 0.65
-    ? clamp((overspeed - 0.20) / 9.4, 0.05, 1)
+  // When the predictive follower is securely on the line, do not immediately
+  // erase a few km/h of legitimate chicane carry with the generic speed-loop
+  // deadband. This only changes braking decisions; grip and propulsion remain
+  // the shared physical car. Any growing lane error collapses the allowance.
+  const feedbackBrakeThreshold = 0.65 + cornerAttackConfidence * 1.5;
+  const feedbackBrake = overspeed > feedbackBrakeThreshold
+    ? clamp((overspeed - feedbackBrakeThreshold + 0.45) / 9.4, 0.05, 1)
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
-  let brake = Math.max(feedbackBrake, speedReference.brake * 0.82 * plannedBrakeWeight);
+  const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
+  let brake = Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
 
   let throttle: number;
   if (brake > 0.06) {
