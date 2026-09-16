@@ -34,8 +34,9 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
  * Pitwall's two tight direction-change complexes get a small predictive
  * steering assist. It uses the shared arcade-car equations to begin rotation
  * before the ordinary closed-loop follower accumulates a large lane error.
- * The assist is deliberately bounded: road limits, speed targets, braking and
- * all physical grip/power remain exactly the same as the stable main controller.
+ * A small clean-air corner attack is allowed only while the car is already
+ * tracking the reference well; it asks the same physical chassis to carry a
+ * little more speed and disappears immediately when line error grows.
  */
 export function dynamicAiControl(
   driver: DriverState,
@@ -244,6 +245,19 @@ export function dynamicAiControl(
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
 
+  // The generated reference is intentionally conservative about transient
+  // rotation. Once the real car is demonstrably on the line, allow a very small
+  // speed carry through the same two complexes. This changes no grip or power;
+  // poor tracking smoothly removes the allowance before it can become a cut.
+  if (battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
+    const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
+    const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
+    const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);
+    const attackWindow = pitwallAttackWindow(projection.progress);
+    const extraPace = attackWindow * technical * lineConfidence * 0.052;
+    targetSpeed *= 1 + extraPace;
+  }
+
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
   }
@@ -302,14 +316,25 @@ export function dynamicAiControl(
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {
+  const technical = clamp((severity - 0.18) / 0.74, 0, 1);
+  const middle = windowWeight(wrap01(progress), 0.50, 0.68, 0.035);
+  const final = finalComplexWeight(progress);
+  return technical * Math.max(middle * 0.32, final * 0.34);
+}
+
+function pitwallAttackWindow(progress: number): number {
   const p = wrap01(progress);
-  const technical = clamp((severity - 0.20) / 0.72, 0, 1);
-  const middle = windowWeight(p, 0.50, 0.67, 0.035);
-  const final = Math.max(
-    windowWeight(p, 0.855, 0.998, 0.025),
-    windowWeight(p, 0.000, 0.040, 0.020),
+  const middle = windowWeight(p, 0.49, 0.70, 0.040);
+  const final = finalComplexWeight(p);
+  return Math.max(middle, final);
+}
+
+function finalComplexWeight(progress: number): number {
+  const p = wrap01(progress);
+  return Math.max(
+    windowWeight(p, 0.835, 0.998, 0.030),
+    windowWeight(p, 0.000, 0.045, 0.022),
   );
-  return technical * Math.max(middle * 0.24, final * 0.20);
 }
 
 function windowWeight(progress: number, start: number, end: number, feather: number): number {
