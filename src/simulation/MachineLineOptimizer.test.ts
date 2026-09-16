@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { evaluateMachineFlyingLap, type MachineLapResult } from './MachineLapEvaluator';
 import { MachineLinePilot } from './MachineLinePilot';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
+import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 const CENTERS = [0.50, 0.54, 0.58, 0.62, 0.66, 0.70, 0.84, 0.88, 0.92, 0.96, 0.00, 0.04] as const;
@@ -17,9 +18,21 @@ interface ScoredLine {
 
 describe('full-state machine line optimization', () => {
   it('improves the generated Pitwall line using only executable machine laps', () => {
+    // Production installs this calibration before any reference lap is used.
+    // Optimisation must therefore start from the same physically reachable line,
+    // not the older raw analytical bake that the live game never drives.
+    installReferenceLineCalibration();
     const seed = [...OPTIMIZED_REFERENCE_LANES['pitwall-gp']];
     let incumbent = scoreLine(seed);
     const baselineSeconds = incumbent.result.lapSeconds;
+
+    console.log('MACHINE_LINE_BASELINE', JSON.stringify({
+      completed: incumbent.result.completed,
+      seconds: Number((baselineSeconds ?? 0).toFixed(3)),
+      maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
+      illegalRatio: Number((incumbent.result.illegalSamples / Math.max(1, incumbent.result.samples)).toFixed(4)),
+    }));
+
     expect(incumbent.result.completed).toBe(true);
     expect(isLegal(incumbent.result)).toBe(true);
     expect(baselineSeconds).toBeDefined();
