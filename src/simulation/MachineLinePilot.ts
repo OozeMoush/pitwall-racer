@@ -10,6 +10,7 @@ import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
+const SPEED_OVERRIDE_EPSILON = 1e-4;
 
 export interface MachineBrakeWindow {
   center: number;
@@ -164,26 +165,33 @@ export class MachineLinePilot {
       brakeScale = lerp(brakeScale, clamp(window.scale, 0.25, 1.20), weight);
     }
 
-    let targetSpeed = base.targetSpeed;
+    let speedScale = 1;
     for (const window of this.speedWindows) {
       const weight = circularWindowWeight(progress, window.center, window.halfWidth);
       if (weight <= 0) continue;
-      targetSpeed *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
+      speedScale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
     }
 
-    const speedError = targetSpeed - speed;
+    // Preserve the proven longitudinal seed exactly unless the course-specific
+    // optimizer actually asks for a different target speed at this progress.
+    // This keeps a neutral speed genome from silently changing the baseline.
     let brake = base.brake * brakeScale;
-    if (speedError < -0.45) {
-      brake = Math.max(brake, clamp((-speedError - 0.45) / 8.5, 0, 1));
-    } else if (speedError > 0.65) {
-      const release = clamp(speedError / 5.0, 0, 0.72);
-      brake *= 1 - release;
-    }
+    let throttle = brake > 0.06 ? 0 : base.throttle;
 
-    let throttle = base.throttle;
-    if (brake > 0.06) throttle = 0;
-    else if (speedError > 0.45) throttle = 1;
-    else if (speedError < -0.55) throttle *= clamp(1 + speedError / 3.5, 0, 1);
+    if (Math.abs(speedScale - 1) > SPEED_OVERRIDE_EPSILON) {
+      const targetSpeed = base.targetSpeed * speedScale;
+      const speedError = targetSpeed - speed;
+      if (speedError < -0.45) {
+        brake = Math.max(brake, clamp((-speedError - 0.45) / 8.5, 0, 1));
+      } else if (speedError > 0.65) {
+        const release = clamp(speedError / 5.0, 0, 0.72);
+        brake *= 1 - release;
+      }
+
+      if (brake > 0.06) throttle = 0;
+      else if (speedError > 0.45) throttle = 1;
+      else if (speedError < -0.55) throttle *= clamp(1 + speedError / 3.5, 0, 1);
+    }
 
     return {
       throttle,
