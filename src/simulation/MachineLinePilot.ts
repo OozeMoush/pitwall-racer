@@ -11,23 +11,32 @@ import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
 
+export interface MachineLinePilotOptions {
+  /** Brake multiplier through the 50-72% technical complex. */
+  middleBrakeScale?: number;
+  /** Brake multiplier through the wrapped 82-6% final/start complex. */
+  finalBrakeScale?: number;
+}
+
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
- * evaluator while keeping the proven clean-air longitudinal controller.
- *
- * This isolates trajectory quality. Throttle/brake still come from the existing
- * reference controller, but steering targets `lanes` directly and never reads
- * human telemetry. Once trajectory search opens physical headroom, the same
- * evaluator can jointly optimise longitudinal controls instead of relying on
- * the old speed envelope.
+ * evaluator while keeping the proven clean-air longitudinal controller as the
+ * baseline. Optional brake scales are machine-search dimensions: they alter
+ * only driver input, never power, grip, tire state, or chassis capability.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
+  private readonly middleBrakeScale: number;
+  private readonly finalBrakeScale: number;
 
   constructor(
     private readonly trackId: TrackId,
     private readonly lanes: readonly number[],
+    options: MachineLinePilotOptions = {},
   ) {
+    this.middleBrakeScale = clamp(options.middleBrakeScale ?? 1, 0.35, 1.15);
+    this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
+
     this.driver = createAiField()[0];
     this.driver.id = 'machine-line';
     this.driver.name = 'MACHINE';
@@ -53,7 +62,6 @@ export class MachineLinePilot {
     this.driver.lap = context.completedLaps;
     this.driver.battleState = 'CLEAR';
 
-    // Keep longitudinal behaviour identical while evaluating candidate lines.
     const base = dynamicAiControl(this.driver, {
       x: context.state.x,
       y: context.state.y,
@@ -105,9 +113,16 @@ export class MachineLinePilot {
       predictionWeight,
     );
 
+    const brakeScale = this.trackId === 'pitwall-gp'
+      ? technicalBrakeScale(progress, this.middleBrakeScale, this.finalBrakeScale)
+      : 1;
+    const brake = base.brake * brakeScale;
+
     return {
-      throttle: base.throttle,
-      brake: base.brake,
+      // Preserve the baseline throttle request. Reduced braking therefore means
+      // later/softer deceleration, not hidden propulsion.
+      throttle: brake > 0.06 ? 0 : base.throttle,
+      brake,
       steer,
       tireGrip: GRIP,
       surfaceGrip: 1,
@@ -120,6 +135,19 @@ export class MachineLinePilot {
 
 export function sampleMachineLine(lanes: readonly number[], progress: number): number {
   return sampleCircular(lanes, progress);
+}
+
+function technicalBrakeScale(progress: number, middleScale: number, finalScale: number): number {
+  const p = wrap01(progress);
+  const middle = windowWeight(p, 0.48, 0.73, 0.035);
+  const final = Math.max(
+    windowWeight(p, 0.82, 1.0, 0.030),
+    windowWeight(p, 0.0, 0.065, 0.025),
+  );
+  let scale = 1;
+  scale = lerp(scale, middleScale, middle);
+  scale = lerp(scale, finalScale, final);
+  return clamp(scale, 0.35, 1.15);
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {
@@ -157,6 +185,10 @@ function windowWeight(progress: number, start: number, end: number, feather: num
 function smoothstep(value: number): number {
   const t = clamp(value, 0, 1);
   return t * t * (3 - 2 * t);
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
 }
 
 function wrap01(value: number): number {
