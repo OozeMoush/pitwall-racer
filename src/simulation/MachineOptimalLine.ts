@@ -9,7 +9,7 @@ interface LineBump {
 }
 
 /**
- * First executable trajectory found by full-state machine search on Pitwall GP.
+ * Executable trajectory found by full-state machine search on Pitwall GP.
  *
  * The search started from the runtime-calibrated machine reference and scored
  * every candidate by actually driving the same 120 Hz chassis recurrence. No
@@ -47,6 +47,8 @@ const PITWALL_EXECUTABLE_BUMPS: readonly LineBump[] = [
   { center: 0.5800, delta: -0.65, halfWidth: 0.042 },
   { center: 0.6200, delta: -0.65, halfWidth: 0.042 },
   { center: 0.7000, delta:  0.65, halfWidth: 0.042 },
+  // Narrow final-complex refinement discovered after local brake optimization.
+  { center: 0.9000, delta:  0.80, halfWidth: 0.022 },
 ] as const;
 
 export function buildMachineOptimalPitwallLine(seed: readonly number[]): number[] {
