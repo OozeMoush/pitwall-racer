@@ -1,38 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { optimizePitwallJoint } from './PitwallJointOptimizer';
+import {
+  createPitwallJointSeed,
+  evaluatePitwallJoint,
+  optimizePitwallJoint,
+} from './PitwallJointOptimizer';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 describe('Pitwall course-specific joint optimizer', () => {
-  it('searches trajectory, speed and controls together against one executable lap objective', () => {
+  it('replays the discovered legal joint seed without rediscovering it in CI', () => {
+    installReferenceLineCalibration();
+    const result = evaluatePitwallJoint(
+      OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
+      createPitwallJointSeed(),
+    );
+
+    console.log('PITWALL_JOINT_SEED', JSON.stringify({
+      seconds: result.result.lapSeconds === undefined
+        ? null
+        : Number(result.result.lapSeconds.toFixed(3)),
+      maxLaneDistance: Number(result.result.maxLaneDistance.toFixed(3)),
+      illegalSamples: result.result.illegalSamples,
+      slideEvents: result.result.slideEvents,
+    }));
+
+    expect(result.legal).toBe(true);
+    expect(result.result.lapSeconds).toBeDefined();
+    expect(result.result.lapSeconds!).toBeLessThanOrEqual(25.72);
+    expect(result.result.slideEvents).toBe(0);
+  });
+
+  it('keeps a small deterministic search as an optimizer smoke test', () => {
     installReferenceLineCalibration();
     const optimized = optimizePitwallJoint(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-      { maxEvaluations: 48, randomSeed: 0x51a7c0de },
+      { maxEvaluations: 8, randomSeed: 0x51a7c0de },
     );
-
-    console.log('PITWALL_JOINT_OPTIMIZER', JSON.stringify({
-      seedSeconds: optimized.seed.result.lapSeconds === undefined
-        ? null
-        : Number(optimized.seed.result.lapSeconds.toFixed(3)),
-      bestSeconds: optimized.best.result.lapSeconds === undefined
-        ? null
-        : Number(optimized.best.result.lapSeconds.toFixed(3)),
-      bestMaxLaneDistance: Number(optimized.best.result.maxLaneDistance.toFixed(3)),
-      guideSeconds: optimized.guide.result.lapSeconds === undefined
-        ? null
-        : Number(optimized.guide.result.lapSeconds.toFixed(3)),
-      guideLegal: optimized.guide.legal,
-      guideMaxLaneDistance: Number(optimized.guide.result.maxLaneDistance.toFixed(3)),
-      evaluations: optimized.evaluations,
-      accepted: optimized.accepted,
-      genome: optimized.best.genome,
-    }));
 
     expect(optimized.seed.legal).toBe(true);
     expect(optimized.best.legal).toBe(true);
     expect(optimized.best.result.lapSeconds).toBeDefined();
     expect(optimized.best.result.lapSeconds!).toBeLessThanOrEqual(optimized.seed.result.lapSeconds! + 1e-9);
-    expect(optimized.evaluations).toBe(48);
-  }, 55_000);
+    expect(optimized.evaluations).toBe(8);
+  }, 15_000);
 });
