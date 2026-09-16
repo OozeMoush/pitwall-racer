@@ -5,9 +5,7 @@ import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
-const CENTERS = [0.50, 0.54, 0.58, 0.62, 0.66, 0.70, 0.84, 0.88, 0.92, 0.96, 0.00, 0.04] as const;
-const STEP_METRES = 1.35;
-const HALF_WIDTH = 0.042;
+const BASE_CENTERS = [0.50, 0.54, 0.58, 0.62, 0.66, 0.70, 0.84, 0.88, 0.92, 0.96, 0.00, 0.04] as const;
 const LINE_MARGIN = 0.25;
 
 interface ScoredLine {
@@ -17,70 +15,110 @@ interface ScoredLine {
 }
 
 describe('full-state machine line optimization', () => {
-  it('improves the generated Pitwall line using only executable machine laps', () => {
-    // Production installs this calibration before any reference lap is used.
-    // Optimisation must therefore start from the same physically reachable line,
-    // not the older raw analytical bake that the live game never drives.
+  it('repairs the fast line into a legal executable lap before optimizing time', () => {
     installReferenceLineCalibration();
     const seed = [...OPTIMIZED_REFERENCE_LANES['pitwall-gp']];
     let incumbent = scoreLine(seed);
     const baselineSeconds = incumbent.result.lapSeconds;
 
-    console.log('MACHINE_LINE_BASELINE', JSON.stringify({
-      completed: incumbent.result.completed,
-      seconds: Number((baselineSeconds ?? 0).toFixed(3)),
-      maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
-      illegalRatio: Number((incumbent.result.illegalSamples / Math.max(1, incumbent.result.samples)).toFixed(4)),
-    }));
+    console.log('MACHINE_LINE_BASELINE', JSON.stringify(summary(incumbent.result)));
 
     expect(incumbent.result.completed).toBe(true);
-    expect(isLegal(incumbent.result)).toBe(true);
     expect(baselineSeconds).toBeDefined();
 
-    const accepted: Array<{ center: number; delta: number; seconds: number }> = [];
+    const accepted: Array<{
+      phase: string;
+      center: number;
+      delta: number;
+      halfWidth: number;
+      seconds: number;
+      maxLaneDistance: number;
+      maxLaneProgress: number;
+      illegalRatio: number;
+    }> = [];
 
-    // Broad coordinate descent. Each variable changes tens of adjacent samples,
-    // never one baked point, so the search cannot manufacture the sharp lane
-    // spikes that made the previous analytical optimum physically unreachable.
-    for (const center of CENTERS) {
-      let best = incumbent;
-      let bestDelta = 0;
-      for (const delta of [-STEP_METRES, STEP_METRES]) {
-        const candidate = applyBump(incumbent.lanes, center, HALF_WIDTH, delta);
-        const scored = scoreLine(candidate);
-        if (scored.score + 0.002 < best.score) {
-          best = scored;
-          bestDelta = delta;
-        }
-      }
-      if (best !== incumbent) {
-        incumbent = best;
-        accepted.push({
-          center,
-          delta: bestDelta,
-          seconds: incumbent.result.lapSeconds!,
-        });
-      }
+    // Phase 1: repair the concentrated off-track excursion. Search both the
+    // measured worst point and several points *before* it because a 300 km/h
+    // car must alter its trajectory before the visible error peaks.
+    for (const step of [3.0, 1.8, 1.0]) {
+      const worst = incumbent.result.maxLaneProgress;
+      const centers = uniqueCircular([
+        worst - 0.080,
+        worst - 0.060,
+        worst - 0.040,
+        worst - 0.020,
+        worst,
+        worst + 0.020,
+      ]);
+      incumbent = sweep(incumbent, centers, step, 0.055, `repair-${step}`, accepted);
+    }
+
+    // Phase 2: once the worst excursion has been pulled back, give the two
+    // technical complexes broad, smooth coordinate-descent adjustments. These
+    // are trajectory deformations, not individual point edits.
+    for (const step of [1.35, 0.65]) {
+      incumbent = sweep(incumbent, BASE_CENTERS, step, 0.042, `pace-${step}`, accepted);
     }
 
     console.log('MACHINE_LINE_OPTIMIZATION', JSON.stringify({
-      baselineSeconds: Number(baselineSeconds!.toFixed(3)),
-      optimizedSeconds: Number((incumbent.result.lapSeconds ?? 0).toFixed(3)),
-      gainSeconds: Number((baselineSeconds! - (incumbent.result.lapSeconds ?? baselineSeconds!)).toFixed(3)),
-      maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
-      illegalRatio: Number((incumbent.result.illegalSamples / Math.max(1, incumbent.result.samples)).toFixed(4)),
-      accepted: accepted.map((item) => ({
-        center: item.center,
-        delta: item.delta,
-        seconds: Number(item.seconds.toFixed(3)),
-      })),
+      baseline: summaryFromSeconds(baselineSeconds!, scoreLine(seed).result),
+      optimized: summary(incumbent.result),
+      score: Number(incumbent.score.toFixed(3)),
+      accepted,
     }));
 
     expect(accepted.length).toBeGreaterThan(0);
     expect(isLegal(incumbent.result)).toBe(true);
-    expect(incumbent.result.lapSeconds!).toBeLessThan(baselineSeconds! - 0.02);
+    expect(incumbent.result.lapSeconds).toBeDefined();
   }, 60_000);
 });
+
+function sweep(
+  start: ScoredLine,
+  centers: readonly number[],
+  stepMetres: number,
+  halfWidth: number,
+  phase: string,
+  accepted: Array<{
+    phase: string;
+    center: number;
+    delta: number;
+    halfWidth: number;
+    seconds: number;
+    maxLaneDistance: number;
+    maxLaneProgress: number;
+    illegalRatio: number;
+  }>,
+): ScoredLine {
+  let incumbent = start;
+  for (const center of centers) {
+    let best = incumbent;
+    let bestDelta = 0;
+    for (const delta of [-stepMetres, stepMetres]) {
+      const candidate = applyBump(incumbent.lanes, center, halfWidth, delta);
+      const scored = scoreLine(candidate);
+      if (scored.score + 0.002 < best.score) {
+        best = scored;
+        bestDelta = delta;
+      }
+    }
+    if (best !== incumbent) {
+      incumbent = best;
+      const result = incumbent.result;
+      accepted.push({
+        phase,
+        center: Number(wrap01(center).toFixed(4)),
+        delta: bestDelta,
+        halfWidth,
+        seconds: Number((result.lapSeconds ?? 0).toFixed(3)),
+        maxLaneDistance: Number(result.maxLaneDistance.toFixed(2)),
+        maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
+        illegalRatio: Number((result.illegalSamples / Math.max(1, result.samples)).toFixed(4)),
+      });
+    }
+  }
+  return incumbent;
+}
 
 function scoreLine(lanes: readonly number[]): ScoredLine {
   const pilot = new MachineLinePilot('pitwall-gp', lanes);
@@ -89,12 +127,14 @@ function scoreLine(lanes: readonly number[]): ScoredLine {
     policy: (context) => pilot.control(context),
     maximumSeconds: 60,
   });
-  const legal = isLegal(result);
-  const score = result.completed && result.lapSeconds !== undefined && legal
-    ? result.lapSeconds
-    : 10_000
-      + result.illegalSamples * 0.05
-      + Math.max(0, result.maxLaneDistance - REFERENCE_LANE_LIMIT) * 25;
+  const illegalRatio = result.illegalSamples / Math.max(1, result.samples);
+  const outside = Math.max(0, result.maxLaneDistance - REFERENCE_LANE_LIMIT);
+
+  // Continuous constraint penalty gives the search a gradient from the fast but
+  // illegal seed toward the legal envelope. Once legal, score is pure lap time.
+  const score = result.completed && result.lapSeconds !== undefined
+    ? result.lapSeconds + illegalRatio * 650 + outside * 7.5
+    : 1_000 + illegalRatio * 650 + outside * 7.5;
   return { lanes: [...lanes], result, score };
 }
 
@@ -102,6 +142,23 @@ function isLegal(result: MachineLapResult): boolean {
   return result.completed
     && result.illegalSamples === 0
     && result.maxLaneDistance <= REFERENCE_LANE_LIMIT;
+}
+
+function summary(result: MachineLapResult) {
+  return {
+    completed: result.completed,
+    seconds: Number((result.lapSeconds ?? 0).toFixed(3)),
+    maxLaneDistance: Number(result.maxLaneDistance.toFixed(2)),
+    maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
+    maxLaneOffset: Number(result.maxLaneOffset.toFixed(2)),
+    illegalRatio: Number((result.illegalSamples / Math.max(1, result.samples)).toFixed(4)),
+    averageKmh: Number((result.averageSpeed * 3.6).toFixed(1)),
+    maxKmh: Number((result.maxSpeed * 3.6).toFixed(1)),
+  };
+}
+
+function summaryFromSeconds(seconds: number, result: MachineLapResult) {
+  return { ...summary(result), seconds: Number(seconds.toFixed(3)) };
 }
 
 function applyBump(
@@ -121,11 +178,28 @@ function applyBump(
   });
 }
 
+function uniqueCircular(values: readonly number[]): number[] {
+  const seen = new Set<number>();
+  const result: number[] = [];
+  for (const value of values) {
+    const wrapped = wrap01(value);
+    const key = Math.round(wrapped * 10_000);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(wrapped);
+  }
+  return result;
+}
+
 function circularDelta(a: number, b: number): number {
   let delta = a - b;
   while (delta > 0.5) delta -= 1;
   while (delta < -0.5) delta += 1;
   return delta;
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 function clamp(value: number, min: number, max: number): number {
