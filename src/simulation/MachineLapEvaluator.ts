@@ -1,9 +1,10 @@
 import type { ArcadeCarInput } from './ArcadeCarController';
 import {
   MACHINE_PHYSICS_DT,
+  createMachineTyreSlideState,
   machineStateFromVehicle,
   machineStateSpeed,
-  stepMachineCar,
+  stepMachineCarWithTyre,
   type MachineCarState,
 } from './MachineCarIntegrator';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
@@ -37,6 +38,8 @@ export interface MachineLapResult {
   samples: number;
   maxSpeed: number;
   averageSpeed: number;
+  slideEvents: number;
+  maxSlideSeverity: number;
   finalState: MachineCarState;
 }
 
@@ -49,15 +52,17 @@ export interface MachineLapOptions {
   maximumSeconds?: number;
   dt?: number;
   legalLaneLimit?: number;
+  tireWear?: number;
+  tyreSlideSeed?: number;
 }
 
 /**
  * Execute a policy through a warm-up crossing and one complete flying lap.
  *
  * This is deliberately not a curvature/time-envelope estimator. Every control
- * command advances x/y, heading, lateral velocity and yaw through the same
- * 120 Hz chassis recurrence as the clean Rapier car. Optimisers can call this
- * cheaply and are judged on the lap the virtual car actually completes.
+ * command advances x/y, heading, lateral velocity, yaw and the same tyre-slide
+ * state used by the physical Rapier car. Optimisers are judged on the lap the
+ * virtual car actually completes, not on a local speed envelope.
  */
 export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLapResult {
   const previousTrack = getActiveTrack().id;
@@ -69,11 +74,13 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
   const startSpeed = options.startSpeed ?? 52;
   const maximumSeconds = options.maximumSeconds ?? 90;
   const legalLaneLimit = options.legalLaneLimit ?? REFERENCE_LANE_LIMIT;
+  const tireWear = options.tireWear ?? 0;
   const pose = sampleTrack(startProgress, startLane);
   let state = machineStateFromVehicle({
     ...createVehicle(pose.x, pose.y, pose.heading),
     speed: startSpeed,
   });
+  let tyreSlide = createMachineTyreSlideState(options.tyreSlideSeed ?? 0.37);
   let projection = projectTrackNear(state.x, state.y, startProgress);
   let previousProgress = projection.progress;
   let completedLaps = 0;
@@ -86,12 +93,18 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
   let samples = 0;
   let speedSum = 0;
   let maxSpeed = machineStateSpeed(state);
+  let slideEvents = 0;
+  let maxSlideSeverity = 0;
 
   const maximumTicks = Math.ceil(maximumSeconds / dt);
   for (let tick = 0; tick < maximumTicks; tick++) {
     const elapsedSeconds = tick * dt;
     const input = options.policy({ state, projection, elapsedSeconds, completedLaps });
-    state = stepMachineCar(state, input, dt);
+    const step = stepMachineCarWithTyre(state, tyreSlide, input, tireWear, dt);
+    state = step.state;
+    tyreSlide = step.slideState;
+    if (step.slideTriggered) slideEvents += 1;
+    maxSlideSeverity = Math.max(maxSlideSeverity, step.slideSeverity);
     projection = projectTrackNear(state.x, state.y, previousProgress);
     const speed = machineStateSpeed(state);
 
@@ -132,6 +145,8 @@ export function evaluateMachineFlyingLap(options: MachineLapOptions): MachineLap
     samples,
     maxSpeed,
     averageSpeed: speedSum / Math.max(1, samples),
+    slideEvents,
+    maxSlideSeverity,
     finalState: state,
   };
 }
