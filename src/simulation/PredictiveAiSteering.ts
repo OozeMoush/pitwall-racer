@@ -12,11 +12,13 @@ const ANGULAR_DAMPING = 1.05;
  *
  * Humans are naturally predictive through a chicane: they start the second
  * rotation before the current lateral error becomes large. The ordinary AI
- * controller is mostly reactive, so this helper can provide a small early hint
+ * controller is mostly reactive, so this helper can provide an early hint
  * without changing the actual car's grip, power, speed or braking targets.
  *
- * The horizon and final blend are intentionally short/conservative. This is a
- * steering tie-breaker, not a replacement racing-line controller.
+ * This remains a tie-breaker around the stable closed-loop controller. A
+ * slightly longer horizon lets it see the second half of Pitwall's compact
+ * direction changes, while the steering-continuity cost and hard blend cap
+ * prevent it from becoming the old unstable apex-to-apex controller.
  */
 export function predictiveAiSteer(
   vehicle: VehicleState,
@@ -26,13 +28,13 @@ export function predictiveAiSteer(
   baselineSteer: number,
   weight: number,
 ): number {
-  const blend = clamp(weight, 0, 1);
+  const blend = clamp(weight * 1.45, 0, 0.52);
   if (blend <= 0.001 || vehicle.speed < 18) return baselineSteer;
 
   const targetHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
   const targetDistance = Math.hypot(target.x - vehicle.x, target.y - vehicle.y);
-  const horizon = clamp(targetDistance / Math.max(42, vehicle.speed), 0.14, 0.34);
-  const steps = 6;
+  const horizon = clamp(targetDistance / Math.max(38, vehicle.speed), 0.16, 0.42);
+  const steps = 8;
   const dt = horizon / steps;
 
   let bestSteer = baselineSteer;
@@ -104,11 +106,11 @@ function scoreCandidate(
   const steeringChange = Math.abs(steer - baselineSteer);
 
   // Position is primary. Heading/bearing prefer a candidate already rotated for
-  // the exit, while continuity prevents the discrete candidate set from sawing.
+  // the exit, while continuity keeps the discrete candidate set from sawing.
   return positionError
-    + headingError * 8.5
-    + bearingError * 3.2
-    + steeringChange * 0.72;
+    + headingError * 9.4
+    + bearingError * 3.4
+    + steeringChange * 0.92;
 }
 
 function lerp(a: number, b: number, t: number): number {
