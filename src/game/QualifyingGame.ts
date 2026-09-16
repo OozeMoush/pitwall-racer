@@ -5,7 +5,11 @@ import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { stepSteering } from '../simulation/InputModel';
+import { assessEmpiricalLap, calibratedPaceBenchmark } from '../simulation/PaceBenchmarkModel';
+import { PaceEvidenceAccumulator } from '../simulation/PaceEvidenceAccumulator';
+import { loadPaceEvidence, savePaceEvidence } from '../simulation/PaceBenchmarkStore';
 import {
+  qualifyingBenchmarkSeconds,
   qualifyingClassification,
   qualifyingGridOrder,
   type QualifyingEntry,
@@ -59,6 +63,7 @@ class QualifyingGame {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly audio = new RaceAudio();
   private readonly physics: RapierRacePhysics;
+  private readonly paceEvidence = new PaceEvidenceAccumulator();
 
   private vehicle: VehicleState;
   private tire: TireState = createTire('SOFT');
@@ -223,6 +228,8 @@ class QualifyingGame {
     );
     this.tire = stepTire(this.tire, 'PUSH', load, dt);
 
+    if (this.phase === 'FLYING') this.paceEvidence.sample(before.distance, 0, false);
+
     this.physics.drivePlayer({
       throttle,
       brake,
@@ -247,6 +254,7 @@ class QualifyingGame {
         this.phase = 'FLYING';
         this.lapTime = 0;
         this.nextCheckpoint = 1;
+        this.paceEvidence.begin(this.tire.compound, this.tire.wear);
       }
       return;
     }
@@ -265,6 +273,19 @@ class QualifyingGame {
   private completeLap(): void {
     this.physics.stopPlayer();
     this.vehicle = this.physics.playerState();
+
+    const evidence = this.paceEvidence.finish(this.setup.trackId, this.lapTime, this.tire.wear);
+    const storedEvidence = savePaceEvidence(window.localStorage, evidence);
+    const physicsBenchmark = qualifyingBenchmarkSeconds(this.setup.trackId, TRACK_LENGTH);
+    const calibratedBenchmark = calibratedPaceBenchmark(this.setup.trackId, physicsBenchmark, storedEvidence);
+    const assessment = assessEmpiricalLap(evidence);
+    console.info('PACE_BENCHMARK_EVIDENCE', {
+      lap: evidence,
+      eligible: assessment.eligibleForMachineLimit,
+      rejectionReasons: assessment.reasons,
+      benchmark: calibratedBenchmark,
+    });
+
     const ai = createAiField();
     const classification = qualifyingClassification(
       this.lapTime,
@@ -284,6 +305,7 @@ class QualifyingGame {
   }
 
   private recover(): void {
+    if (this.phase === 'FLYING') this.paceEvidence.markRecovered();
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const p = sampleTrack(projection.progress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
