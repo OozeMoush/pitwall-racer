@@ -1,95 +1,57 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateMachineFlyingLap, type MachineLapResult } from './MachineLapEvaluator';
-import {
-  MachineLinePilot,
-  type MachineSteeringTuning,
-} from './MachineLinePilot';
+import { MachineLinePilot } from './MachineLinePilot';
 import { PITWALL_MACHINE_BRAKE_WINDOWS } from './MachineOptimalControl';
 import { buildMachineOptimalPitwallLine } from './MachineOptimalLine';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
-type TuningKey = keyof MachineSteeringTuning;
-
-const SEARCHES: readonly [TuningKey, readonly number[]][] = [
-  ['lookAheadScale', [0.82, 0.90, 1.00, 1.10, 1.18]],
-  ['headingGainScale', [0.80, 0.90, 1.00, 1.10, 1.20]],
-  ['bearingGainScale', [0.70, 0.85, 1.00, 1.15, 1.30]],
-  ['lateralGainScale', [0.70, 0.85, 1.00, 1.15, 1.30]],
-  ['yawDampingScale', [0.75, 0.90, 1.00, 1.10, 1.25]],
-  ['predictionScale', [0.50, 0.75, 1.00, 1.25, 1.50]],
-  ['tangentScale', [0.75, 0.90, 1.00, 1.10, 1.25]],
-] as const;
-
-interface Candidate {
-  tuning: MachineSteeringTuning;
-  result: MachineLapResult;
-}
+const PREDICTION_SCALES = [0, 0.20, 0.35, 0.45, 0.50, 0.55, 0.65] as const;
 
 describe('machine steering optimization', () => {
-  it('coordinate-searches the line follower by executable legal lap time', () => {
+  it('refines the predictive steering contribution by executable legal lap time', () => {
     installReferenceLineCalibration();
     const lanes = buildMachineOptimalPitwallLine(OPTIMIZED_REFERENCE_LANES['pitwall-gp']);
-    let incumbent = evaluate(lanes, {});
-    const baselineSeconds = incumbent.result.lapSeconds!;
-    const accepted: Array<{
-      parameter: TuningKey;
-      value: number;
-      seconds: number;
-      maxLaneDistance: number;
-    }> = [];
+    const results = PREDICTION_SCALES.map((predictionScale) => {
+      const pilot = new MachineLinePilot('pitwall-gp', lanes, {
+        brakeWindows: PITWALL_MACHINE_BRAKE_WINDOWS,
+        predictionScale,
+      });
+      const result = evaluateMachineFlyingLap({
+        trackId: 'pitwall-gp',
+        policy: (context) => pilot.control(context),
+        maximumSeconds: 60,
+      });
+      return { predictionScale, result };
+    });
 
-    expect(isLegal(incumbent.result)).toBe(true);
+    const legal = results.filter(({ result }) => isLegal(result));
+    const best = legal.reduce<typeof legal[number] | undefined>(
+      (winner, candidate) => !winner || candidate.result.lapSeconds! < winner.result.lapSeconds!
+        ? candidate
+        : winner,
+      undefined,
+    );
 
-    for (const [parameter, values] of SEARCHES) {
-      let best = incumbent;
-      let bestValue: number | undefined;
-      for (const value of values) {
-        const tuning = { ...incumbent.tuning, [parameter]: value };
-        const candidate = evaluate(lanes, tuning);
-        if (!isLegal(candidate.result)) continue;
-        if (candidate.result.lapSeconds! + 0.002 < best.result.lapSeconds!) {
-          best = candidate;
-          bestValue = value;
-        }
-      }
-      if (best !== incumbent) {
-        incumbent = best;
-        accepted.push({
-          parameter,
-          value: bestValue!,
-          seconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
-          maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
-        });
-      }
-    }
-
-    console.log('MACHINE_STEERING_SEARCH', JSON.stringify({
-      baselineSeconds: Number(baselineSeconds.toFixed(3)),
-      optimizedSeconds: Number(incumbent.result.lapSeconds!.toFixed(3)),
-      gainSeconds: Number((baselineSeconds - incumbent.result.lapSeconds!).toFixed(3)),
-      maxLaneDistance: Number(incumbent.result.maxLaneDistance.toFixed(2)),
-      maxLaneProgress: Number(incumbent.result.maxLaneProgress.toFixed(4)),
-      tuning: incumbent.tuning,
-      accepted,
+    console.log('MACHINE_PREDICTION_SCALE_SEARCH', JSON.stringify({
+      best: best ? compact(best.predictionScale, best.result) : null,
+      results: results.map(({ predictionScale, result }) => compact(predictionScale, result)),
     }));
 
-    expect(isLegal(incumbent.result)).toBe(true);
-  }, 55_000);
+    expect(best).toBeDefined();
+    expect(best!.result.lapSeconds!).toBeLessThan(25.80);
+  }, 15_000);
 });
 
-function evaluate(lanes: readonly number[], tuning: MachineSteeringTuning): Candidate {
-  const pilot = new MachineLinePilot('pitwall-gp', lanes, {
-    brakeWindows: PITWALL_MACHINE_BRAKE_WINDOWS,
-    ...tuning,
-  });
-  const result = evaluateMachineFlyingLap({
-    trackId: 'pitwall-gp',
-    policy: (context) => pilot.control(context),
-    maximumSeconds: 60,
-  });
-  return { tuning: { ...tuning }, result };
+function compact(predictionScale: number, result: MachineLapResult) {
+  return {
+    predictionScale,
+    completed: result.completed,
+    seconds: Number((result.lapSeconds ?? 0).toFixed(3)),
+    maxLaneDistance: Number(result.maxLaneDistance.toFixed(2)),
+    illegalRatio: Number((result.illegalSamples / Math.max(1, result.samples)).toFixed(4)),
+  };
 }
 
 function isLegal(result: MachineLapResult): boolean {
