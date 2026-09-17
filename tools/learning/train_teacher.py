@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 OBSERVATION_SIZE = 12
 HIDDEN_SIZES = (16, 16)
-ACTION_SIZE = 2
+ACTION_SIZE = 3
 
 
 class PitwallPolicy(nn.Module):
@@ -101,7 +101,11 @@ def load_teacher(path: Path) -> tuple[torch.Tensor, torch.Tensor]:
             if not all(math.isfinite(value) for value in observation + action):
                 raise ValueError(f"line {line_number}: non-finite training value")
             observations.append(observation)
-            actions.append(action)
+            # The TS policy maps tanh outputs 1/2 from [-1, 1] onto physical
+            # throttle/brake [0, 1]. Train against that inverse mapping so
+            # zero/full actuator commands remain smooth instead of depending on
+            # a post-network clamp.
+            actions.append([action[0], action[1] * 2.0 - 1.0, action[2] * 2.0 - 1.0])
 
     if len(observations) < 100:
         raise ValueError(f"teacher dataset is unexpectedly small: {len(observations)} rows")
@@ -216,6 +220,7 @@ def main() -> None:
         "seed": args.seed,
         "device": str(device),
         "cudaDevice": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
+        "actionSpace": ["steer", "throttle", "brake"],
         "humanTelemetryUsed": False,
     }
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
