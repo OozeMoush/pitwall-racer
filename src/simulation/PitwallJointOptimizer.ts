@@ -29,8 +29,53 @@ const LINE_CONTROLS: readonly LineControlPoint[] = [
 const SPEED_CENTERS = [0.48, 0.52, 0.56, 0.60, 0.64, 0.88, 0.92, 0.96, 0.00, 0.04] as const;
 const BRAKE_CENTERS = [0.50, 0.56, 0.88, 0.94, 0.01] as const;
 
+/**
+ * 32-node circular speed profile, metres/second. This is not human telemetry
+ * and it is not the legacy analytical reference envelope. It is the measured
+ * speed trace of the 25.692 s legal machine lap replayed through Rapier, shifted
+ * from bin centres onto evenly spaced circular nodes. It is only the initial
+ * condition for the absolute-speed search below.
+ */
+const PITWALL_ABSOLUTE_SPEED_SEED = [
+  63.691,
+  71.811,
+  78.305,
+  83.447,
+  87.613,
+  91.025,
+  93.837,
+  96.180,
+  98.100,
+  99.399,
+  98.689,
+  94.382,
+  89.345,
+  88.720,
+  91.433,
+  94.046,
+  91.048,
+  71.044,
+  52.416,
+  54.355,
+  63.517,
+  71.519,
+  77.225,
+  81.040,
+  83.708,
+  85.012,
+  86.287,
+  83.309,
+  71.188,
+  56.940,
+  49.429,
+  53.602,
+] as const;
+
 export interface PitwallJointGenome {
   lineDeltas: number[];
+  /** Additive m/s changes to the absolute 32-node Pitwall speed profile. */
+  speedProfileDeltas: number[];
+  /** Fine local multipliers retained for coupled repair around technical nodes. */
   speedScales: number[];
   brakeScales: number[];
   predictionScale: number;
@@ -75,11 +120,9 @@ interface Dimension {
 /**
  * Course-specific optimizer for Pitwall GP.
  *
- * This intentionally does not try to solve every circuit with one universal
- * trajectory. What is shared is only the evaluator/search machinery. Pitwall's
- * own line control points, speed windows and brake windows live here and are
- * optimized together against one objective: fastest completely legal full-state
- * flying lap. Human laps and target times are never inputs.
+ * The shared harness supplies only executable physics, legality and search. The
+ * Pitwall trajectory, absolute speed profile, brake windows and steering are
+ * optimized together. Human laps and target times are never inputs.
  *
  * Search is deliberately coupled rather than one-axis coordinate descent. A
  * faster steering or speed choice may be a few centimetres illegal by itself
@@ -180,10 +223,9 @@ export function optimizePitwallJoint(
 }
 
 /**
- * Best completely legal genome discovered by the deterministic 48-evaluation
- * Pitwall joint search. It is a starting point, not a claimed machine limit.
- * Keeping it explicit makes CI replay the known result instead of spending
- * ~30 seconds rediscovering it on every commit.
+ * Best legal line/control seed discovered before switching longitudinal control
+ * to the absolute profile. The measured Rapier speed trace from that lap is now
+ * the speed seed; all speed deltas start at zero and are optimized directly.
  */
 export function createPitwallJointSeed(): PitwallJointGenome {
   return {
@@ -200,6 +242,7 @@ export function createPitwallJointSeed(): PitwallJointGenome {
       0,
       -0.8060421455078985,
     ],
+    speedProfileDeltas: Array.from({ length: PITWALL_ABSOLUTE_SPEED_SEED.length }, () => 0),
     speedScales: [
       1,
       1.025587692063313,
@@ -233,9 +276,15 @@ export function createPitwallJointPilot(
     halfWidth: 0.022,
     scale: genome.speedScales[index] ?? 1,
   }));
+  const absoluteSpeedProfile = PITWALL_ABSOLUTE_SPEED_SEED.map((speed, index) => clamp(
+    speed + (genome.speedProfileDeltas[index] ?? 0),
+    34,
+    112,
+  ));
   return new MachineLinePilot('pitwall-gp', lanes, {
     brakeWindows,
     speedWindows,
+    absoluteSpeedProfile,
     predictionScale: genome.predictionScale,
     lookAheadScale: genome.lookAheadScale,
   });
@@ -315,8 +364,11 @@ function buildDimensions(): Dimension[] {
   for (let index = 0; index < LINE_CONTROLS.length; index++) {
     dimensions.push(arrayDimension(`line[${index}]`, 'lineDeltas', index, 0.55, -1.6, 1.6));
   }
+  for (let index = 0; index < PITWALL_ABSOLUTE_SPEED_SEED.length; index++) {
+    dimensions.push(arrayDimension(`speedProfile[${index}]`, 'speedProfileDeltas', index, 1.8, -12, 12));
+  }
   for (let index = 0; index < SPEED_CENTERS.length; index++) {
-    dimensions.push(arrayDimension(`speed[${index}]`, 'speedScales', index, 0.030, 0.90, 1.10));
+    dimensions.push(arrayDimension(`speedScale[${index}]`, 'speedScales', index, 0.030, 0.90, 1.10));
   }
   for (let index = 0; index < BRAKE_CENTERS.length; index++) {
     dimensions.push(arrayDimension(`brake[${index}]`, 'brakeScales', index, 0.08, 0.55, 1.10));
@@ -328,7 +380,7 @@ function buildDimensions(): Dimension[] {
 
 function arrayDimension(
   name: string,
-  key: 'lineDeltas' | 'speedScales' | 'brakeScales',
+  key: 'lineDeltas' | 'speedProfileDeltas' | 'speedScales' | 'brakeScales',
   index: number,
   step: number,
   min: number,
@@ -380,6 +432,7 @@ function laneOverflow(result: MachineLapResult): number {
 function cloneGenome(genome: PitwallJointGenome): PitwallJointGenome {
   return {
     lineDeltas: [...genome.lineDeltas],
+    speedProfileDeltas: [...genome.speedProfileDeltas],
     speedScales: [...genome.speedScales],
     brakeScales: [...genome.brakeScales],
     predictionScale: genome.predictionScale,
