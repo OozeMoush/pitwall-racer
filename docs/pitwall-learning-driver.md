@@ -4,8 +4,9 @@ This is an experimental machine-only driver for discovering the fastest valid
 Pitwall GP lap without hand-authoring a racing line or target-speed profile.
 
 The learned policy sees only normalized vehicle/track observations and directly
-outputs steering plus one signed longitudinal command. Positive longitudinal
-output is throttle; negative output is brake.
+outputs the game's real three actuator channels: steering, throttle and brake.
+Throttle and brake remain independent so learning does not discard transient
+control strategies that the physical car can actually execute.
 
 ## Rule model
 
@@ -28,7 +29,7 @@ The current policy is a tiny deterministic MLP:
 
 - 12 observations
 - hidden layers: 16, 16
-- 2 actions: steer, signed longitudinal
+- 3 actions: steer, throttle, brake
 
 Observations contain speed, yaw rate, lateral position, heading error, Pitwall
 progress encoding, and signed track-heading changes at 12/25/45/70/100 m ahead.
@@ -47,6 +48,14 @@ Install/update Node dependencies first:
 npm install
 ```
 
+The complete pipeline can then be started with one command:
+
+```bash
+npm run learn:local
+```
+
+The individual stages are below if you want to inspect or tune them separately.
+
 ### 1. Export the current machine-only teacher
 
 ```bash
@@ -61,7 +70,7 @@ artifacts/pitwall-learning/teacher.meta.json
 ```
 
 The teacher is the current machine-only absolute controller. Human telemetry is
-not included.
+not included. Each sample preserves exact `steer`, `throttle`, and `brake`.
 
 ### 2. Behavior-clone the teacher with PyTorch
 
@@ -125,6 +134,13 @@ Useful evolution controls:
 --seed N
 --input FILE
 --output FILE
+```
+
+The one-command pipeline accepts environment variables for the main evolution
+settings, for example:
+
+```bash
+GENERATIONS=120 POPULATION=32 npm run learn:local
 ```
 
 ## CPU vs GPU
