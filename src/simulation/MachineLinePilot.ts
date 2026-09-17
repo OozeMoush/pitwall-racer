@@ -1,4 +1,4 @@
-import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
+import type { ArcadeCarInput } from './ArcadeCarController';
 import { dynamicAiControl } from './DynamicAiController';
 import type { MachineLapPolicyContext } from './MachineLapEvaluator';
 import { predictiveAiSteer } from './PredictiveAiSteering';
@@ -11,11 +11,6 @@ import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
 const SPEED_OVERRIDE_EPSILON = 1e-4;
-const CONTROL_DT = 1 / 120;
-// RapierRacePhysics uses 0.018 linear damping after the arcade controller has
-// written velocity. Add its first-order loss to the requested controller
-// acceleration so the absolute profile is solved against the complete chassis.
-const RAPIER_LINEAR_DAMPING = 0.018;
 
 export interface MachineBrakeWindow {
   center: number;
@@ -48,19 +43,13 @@ export interface MachineLinePilotOptions extends MachineSteeringTuning {
   brakeWindows?: readonly MachineBrakeWindow[];
   /** Local target-speed multipliers used by course-specific joint optimization. */
   speedWindows?: readonly MachineSpeedWindow[];
-  /**
-   * Circular absolute speed profile in metres/second. When present, longitudinal
-   * control is derived only from this profile and the physical car state; the
-   * legacy ReferenceDriver target-speed / planned-brake trace is not consulted.
-   */
-  absoluteSpeedProfile?: readonly number[];
 }
 
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
- * evaluator while keeping the proven clean-air controller as the fallback seed.
- * Tuning dimensions alter only driver inputs/targets; power, grip, tyre state
- * and chassis capability stay identical to the player car.
+ * evaluator while keeping the proven clean-air controller as the seed. Tuning
+ * dimensions alter only driver inputs/targets; power, grip, tyre state and
+ * chassis capability stay identical to the player car.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
@@ -68,7 +57,6 @@ export class MachineLinePilot {
   private readonly finalBrakeScale: number;
   private readonly brakeWindows: readonly MachineBrakeWindow[];
   private readonly speedWindows: readonly MachineSpeedWindow[];
-  private readonly absoluteSpeedProfile?: readonly number[];
   private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
@@ -80,9 +68,6 @@ export class MachineLinePilot {
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
     this.brakeWindows = options.brakeWindows ?? [];
     this.speedWindows = options.speedWindows ?? [];
-    this.absoluteSpeedProfile = options.absoluteSpeedProfile && options.absoluteSpeedProfile.length > 1
-      ? [...options.absoluteSpeedProfile]
-      : undefined;
     this.steering = {
       lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
       headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
@@ -118,18 +103,13 @@ export class MachineLinePilot {
     this.driver.lap = context.completedLaps;
     this.driver.battleState = 'CLEAR';
 
-    // The absolute-profile path intentionally skips dynamicAiControl so it has
-    // no longitudinal dependency on ReferenceDriverModel. The legacy controller
-    // remains as a fallback for older search/regression slices.
-    const base = this.absoluteSpeedProfile === undefined
-      ? dynamicAiControl(this.driver, {
-        x: context.state.x,
-        y: context.state.y,
-        heading: context.state.heading,
-        speed,
-        yawRate: context.state.yawRate,
-      }, [])
-      : undefined;
+    const base = dynamicAiControl(this.driver, {
+      x: context.state.x,
+      y: context.state.y,
+      heading: context.state.heading,
+      speed,
+      yawRate: context.state.yawRate,
+    }, []);
 
     const progress = context.projection.progress;
     const profile = trackProfile(progress, 1, GRIP);
@@ -185,94 +165,12 @@ export class MachineLinePilot {
       brakeScale = lerp(brakeScale, clamp(window.scale, 0.25, 1.20), weight);
     }
 
-    const speedScale = speedWindowScale(this.speedWindows, progress);
-
-    if (this.absoluteSpeedProfile !== undefined) {
-      // The absolute seed was measured from a lap that already contained the
-      // legacy local speed/brake modifiers. Reapplying those windows here would
-      // double-count them. Absolute-profile optimization changes the nodes
-      // themselves; local legacy windows are intentionally neutral on this path.
-      const targetSpeed = clamp(sampleCircular(this.absoluteSpeedProfile, progress), 18, 136);
-      const profileStep = 1 / this.absoluteSpeedProfile.length;
-      const nextProgress = progress + profileStep;
-      const nextTargetSpeed = clamp(
-        sampleCircular(this.absoluteSpeedProfile, nextProgress),
-        18,
-        136,
-      );
-      const nodeDistance = TRACK_LENGTH * profileStep;
-      const profileAcceleration = (
-        nextTargetSpeed * nextTargetSpeed - targetSpeed * targetSpeed
-      ) / Math.max(1, 2 * nodeDistance);
-      const feedbackAcceleration = clamp((targetSpeed - speed) * 1.75, -9.0, 9.0);
-      // controlArcadeCar reports acceleration before Rapier damping. Compensate
-      // for that known post-step loss so the requested *net* acceleration follows
-      // the measured executable speed profile rather than a hand-tuned preview.
-      const desiredControllerAcceleration = profileAcceleration
-        + feedbackAcceleration
-        + speed * RAPIER_LINEAR_DAMPING;
-
-      const motion = {
-        vx: context.state.vx,
-        vy: context.state.vy,
-        heading: context.state.heading,
-        angularVelocity: context.state.yawRate,
-      };
-      const common = {
-        steer,
-        tireGrip: GRIP,
-        surfaceGrip: 1,
-        powerBoost: POWER_BOOST,
-        powerMultiplier: 1,
-        rollingResistance: 0,
-      };
-      const coastAcceleration = controlArcadeCar(
-        motion,
-        { ...common, throttle: 0, brake: 0 },
-        CONTROL_DT,
-      ).acceleration;
-      const fullThrottleAcceleration = controlArcadeCar(
-        motion,
-        { ...common, throttle: 1, brake: 0 },
-        CONTROL_DT,
-      ).acceleration;
-      const fullBrakeAcceleration = controlArcadeCar(
-        motion,
-        { ...common, throttle: 0, brake: 1 },
-        CONTROL_DT,
-      ).acceleration;
-
-      let throttle = 0;
-      let brake = 0;
-      if (desiredControllerAcceleration >= coastAcceleration) {
-        throttle = clamp(
-          (desiredControllerAcceleration - coastAcceleration)
-            / Math.max(0.001, fullThrottleAcceleration - coastAcceleration),
-          0,
-          1,
-        );
-      } else {
-        brake = clamp(
-          (coastAcceleration - desiredControllerAcceleration)
-            / Math.max(0.001, coastAcceleration - fullBrakeAcceleration),
-          0,
-          1,
-        );
-      }
-
-      return {
-        throttle,
-        brake,
-        steer,
-        tireGrip: GRIP,
-        surfaceGrip: 1,
-        powerBoost: POWER_BOOST,
-        powerMultiplier: 1,
-        rollingResistance: 0,
-      };
+    let speedScale = 1;
+    for (const window of this.speedWindows) {
+      const weight = circularWindowWeight(progress, window.center, window.halfWidth);
+      if (weight <= 0) continue;
+      speedScale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
     }
-
-    if (!base) throw new Error('legacy machine pilot requires a base controller');
 
     // Preserve the proven longitudinal seed exactly unless the course-specific
     // optimizer actually asks for a different target speed at this progress.
@@ -334,16 +232,6 @@ function pitwallPredictionWeight(progress: number, severity: number): number {
     windowWeight(p, 0.000, 0.045, 0.022),
   );
   return technical * Math.max(middle * 0.32, final * 0.34);
-}
-
-function speedWindowScale(windows: readonly MachineSpeedWindow[], progress: number): number {
-  let scale = 1;
-  for (const window of windows) {
-    const weight = circularWindowWeight(progress, window.center, window.halfWidth);
-    if (weight <= 0) continue;
-    scale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
-  }
-  return scale;
 }
 
 function sampleCircular(values: readonly number[], progress: number): number {
