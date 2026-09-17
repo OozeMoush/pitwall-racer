@@ -36,7 +36,8 @@ const result = evaluatePitwallLearningPolicy((context) => {
   });
   return {
     steer: control.steer,
-    longitudinal: control.throttle - control.brake,
+    throttle: control.throttle,
+    brake: control.brake,
   };
 }, { captureFlyingLap: true });
 
@@ -46,7 +47,7 @@ if (result.status !== 'COMPLETED' || result.lapSeconds === undefined) {
 
 const rows = result.trace.map((sample) => JSON.stringify({
   observation: sample.observation,
-  action: [sample.action.steer, sample.action.longitudinal],
+  action: [sample.action.steer, sample.action.throttle, sample.action.brake],
   progress: sample.progress,
   laneOffset: sample.laneOffset,
   speed: sample.speed,
@@ -58,6 +59,7 @@ const metaPath = extname(output) === '.jsonl'
   : `${output}.meta.json`;
 await writeFile(metaPath, `${JSON.stringify({
   source: 'machine-only-pitwall-absolute-seed',
+  actionSpace: ['steer', 'throttle', 'brake'],
   samples: result.trace.length,
   lapSeconds: result.lapSeconds,
   maxLaneDistance: result.maxLaneDistance,
