@@ -27,12 +27,17 @@ small amount of kerb/runoff is physically faster, the learner is free to use it.
 
 The current policy is a tiny deterministic MLP:
 
-- 12 observations
+- 18 observations
 - hidden layers: 16, 16
 - 3 actions: steer, throttle, brake
 
-Observations contain speed, yaw rate, lateral position, heading error, Pitwall
-progress encoding, and signed track-heading changes at 12/25/45/70/100 m ahead.
+Observations contain forward and lateral velocity, yaw rate, lateral track
+position, heading error, several Fourier features of Pitwall progress, signed
+track-heading changes at 12/25/45/70/100 m ahead, and current tyre-slide
+severity. The lateral-velocity input is important because a direct-control
+policy otherwise cannot distinguish two states with the same scalar speed but
+opposite sideslip.
+
 The policy does **not** receive the old reference line, target speed, human PB,
 or human telemetry.
 
@@ -111,13 +116,19 @@ by itself: closed-loop Rapier execution is the authority.
 ### 4. Evolve the neural policy directly against Rapier
 
 ```bash
-npm run learn:evolve -- --generations 80 --population 20
+npm run learn:evolve -- --generations 80 --population 24
 ```
 
-The first implementation uses mirrored sparse Gaussian mutations around the
-best valid policy. Each candidate is driven through the real Rapier world and
-ranked lexicographically by validity/completion/lap time rather than by a
-weighted reward formula.
+The optimizer is a rank-based evolution strategy with antithetic Gaussian
+perturbations and an Adam update of the policy-weight mean. Crucially, its
+utilities come from **rank only**. The ordering is the same rule ordering used by
+the environment: valid completed laps first, then lap time; progress only helps
+order lower-tier incomplete/invalid candidates. It never converts grass,
+runoff, or invalidity into an arbitrary number of penalty seconds.
+
+The best physically verified checkpoint is preserved even if the search mean
+moves into a worse basin, and the search recenters on that checkpoint after
+extended stagnation.
 
 The best checkpoint is written to:
 
@@ -138,17 +149,18 @@ Useful evolution controls:
 --generations N
 --population N
 --sigma X
---mutation-rate X
+--learning-rate X
+--sigma-decay X
 --seed N
 --input FILE
 --output FILE
 ```
 
-The one-command pipeline accepts environment variables for the main evolution
-settings, for example:
+The one-command pipeline accepts corresponding environment variables, for
+example:
 
 ```bash
-GENERATIONS=120 POPULATION=32 npm run learn:local
+GENERATIONS=120 POPULATION=32 EVOLUTION_LR=0.005 npm run learn:local
 ```
 
 ## CPU vs GPU
