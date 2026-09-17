@@ -53,9 +53,17 @@ export type PitwallLearningInvalidReason =
 export interface PitwallLearningTraceSample {
   observation: number[];
   action: PitwallLearningAction;
+  elapsedSeconds: number;
   progress: number;
   laneOffset: number;
+  x: number;
+  y: number;
+  heading: number;
   speed: number;
+  yawRate: number;
+  vx: number;
+  vy: number;
+  slideSeverity: number;
 }
 
 export interface PitwallLearningEpisodeResult {
@@ -122,11 +130,12 @@ export function evaluatePitwallLearningPolicy(
       const elapsedSeconds = ticks * MACHINE_PHYSICS_DT;
       const state = physics.playerState();
       const velocity = physics.playerVelocity();
+      const slideSeverity = physics.playerSlideSeverity();
       const observation = pitwallLearningObservation(
         state,
         projection,
         velocity,
-        physics.playerSlideSeverity(),
+        slideSeverity,
       );
       const action = sanitizeAction(policy({
         observation,
@@ -140,9 +149,17 @@ export function evaluatePitwallLearningPolicy(
         trace.push({
           observation: [...observation],
           action: { ...action },
+          elapsedSeconds,
           progress: projection.progress,
           laneOffset: projection.laneOffset,
+          x: state.x,
+          y: state.y,
+          heading: state.heading,
           speed: state.speed,
+          yawRate: state.yawRate,
+          vx: velocity.vx,
+          vy: velocity.vy,
+          slideSeverity,
         });
       }
 
