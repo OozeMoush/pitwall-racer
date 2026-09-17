@@ -188,12 +188,15 @@ export class MachineLinePilot {
     const speedScale = speedWindowScale(this.speedWindows, progress);
 
     if (this.absoluteSpeedProfile !== undefined) {
-      const targetSpeed = clamp(sampleCircular(this.absoluteSpeedProfile, progress) * speedScale, 18, 136);
+      // The absolute seed was measured from a lap that already contained the
+      // legacy local speed/brake modifiers. Reapplying those windows here would
+      // double-count them. Absolute-profile optimization changes the nodes
+      // themselves; local legacy windows are intentionally neutral on this path.
+      const targetSpeed = clamp(sampleCircular(this.absoluteSpeedProfile, progress), 18, 136);
       const profileStep = 1 / this.absoluteSpeedProfile.length;
       const nextProgress = progress + profileStep;
-      const nextScale = speedWindowScale(this.speedWindows, nextProgress);
       const nextTargetSpeed = clamp(
-        sampleCircular(this.absoluteSpeedProfile, nextProgress) * nextScale,
+        sampleCircular(this.absoluteSpeedProfile, nextProgress),
         18,
         136,
       );
@@ -254,7 +257,7 @@ export class MachineLinePilot {
             / Math.max(0.001, coastAcceleration - fullBrakeAcceleration),
           0,
           1,
-        ) * brakeScale;
+        );
       }
 
       return {
