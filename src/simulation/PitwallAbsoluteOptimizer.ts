@@ -8,7 +8,11 @@ import {
 } from './PitwallJointOptimizer';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 
-const SPEED_CENTERS = [0.515, 0.545, 0.575, 0.605, 0.855, 0.885, 0.915, 0.945] as const;
+// These are Pitwall-specific progress controls, not a universal circuit model.
+// The final-complex centres match the legal executable headroom discovered by
+// the local speed-window probe instead of rounding them onto a generic grid.
+const SPEED_CENTERS = [0.515, 0.545, 0.575, 0.605, 0.875, 0.905, 0.925, 0.945] as const;
+const SPEED_HALF_WIDTH = 0.018;
 const LINE_INDICES = [2, 6, 7, 8] as const;
 
 export interface PitwallAbsoluteGenome {
@@ -87,10 +91,11 @@ export function optimizePitwallAbsolute(
     }
   };
 
-  // First probe each local speed dimension independently. This cheaply exposes
-  // useful longitudinal directions before the coupled stochastic phase.
+  // First challenge each local speed dimension independently. +1.5 m/s is
+  // included because the executable probe found legal islands at that value
+  // that +0.5/+1.0 alone would miss.
   for (let index = 0; index < SPEED_CENTERS.length && evaluations < maxEvaluations; index++) {
-    for (const delta of [0.5, 1.0] as const) {
+    for (const delta of [0.5, 1.0, 1.5] as const) {
       if (evaluations >= maxEvaluations) break;
       const genome = cloneGenome(best.genome);
       genome.speedDeltas[index] += delta;
@@ -159,7 +164,7 @@ export function evaluatePitwallAbsolute(
     centralSpeedLift: genome.centralSpeedLift,
     speedWindows: SPEED_CENTERS.map((center, index) => ({
       center,
-      halfWidth: 0.022,
+      halfWidth: SPEED_HALF_WIDTH,
       delta: genome.speedDeltas[index] ?? 0,
     })),
   });
