@@ -10,6 +10,7 @@ import { compoundPeakGrip } from './TireModel';
 
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
+const LEGAL_BASELINE_SPEED_FEEDBACK = 1.5;
 
 export interface PitwallAbsolutePilotOptions {
   profile?: readonly PitwallAbsoluteProfileSample[];
@@ -40,7 +41,14 @@ export class PitwallAbsolutePilot {
     this.profile = options.profile && options.profile.length > 1
       ? [...options.profile]
       : PITWALL_ABSOLUTE_PROFILE;
-    this.speedFeedback = clamp(options.speedFeedback ?? 1, 0, 2);
+    // 1.5 is the lowest tested gain with clear legal margin in the executable
+    // evaluator (25.850 s, zero illegal samples). It is a tracking gain, not a
+    // target lap-time calibration and it never changes available grip or power.
+    this.speedFeedback = clamp(
+      options.speedFeedback ?? LEGAL_BASELINE_SPEED_FEEDBACK,
+      0,
+      2,
+    );
     this.steeringPilot = new MachineLinePilot('pitwall-gp', lanes, {
       predictionScale: options.predictionScale ?? 0.10,
       lookAheadScale: options.lookAheadScale ?? 1,
