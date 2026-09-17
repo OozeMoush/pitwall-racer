@@ -60,10 +60,10 @@ interface Dimension {
 }
 
 /**
- * Pitwall-specific executable optimizer for the ReferenceDriver-independent
- * longitudinal controller. Human traces and target lap times are never inputs.
- * Every candidate is judged by a complete 120 Hz full-state flying lap using
- * the shared player-car grip, power and chassis model.
+ * Pitwall-specific lightweight proposal optimizer for the
+ * ReferenceDriver-independent longitudinal controller. Human traces and target
+ * lap times are never inputs. Near a closed-loop stability boundary, a candidate
+ * that is legal here must still be revalidated through Rapier before promotion.
  */
 export function optimizePitwallAbsolute(
   calibratedReference: readonly number[],
@@ -139,10 +139,10 @@ export function optimizePitwallAbsolute(
 }
 
 /**
- * Fastest completely legal ReferenceDriver-independent lightweight seed found
- * so far. Repeated executable search reduced it to 25.458 s by raising the
- * 54.5% local speed window to +2.0 m/s while preserving the legal trajectory.
- * The values are machine-discovered and are not derived from player telemetry.
+ * Fastest seed promoted so far after real Rapier validation. Lightweight search
+ * reports 25.475 s and the same exact genome runs 25.458 s in Rapier with zero
+ * illegal samples and zero tyre-slide events. Faster lightweight-only genomes
+ * are not promoted until they pass the same Rapier gate.
  */
 export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   const lineSeed = createPitwallJointSeed();
@@ -150,7 +150,7 @@ export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   lineDeltas[6] -= 0.30;
   return {
     centralSpeedLift: 4.0,
-    speedDeltas: [0, 2.0, 0, 0, 0, 1.5, 1.5, 2.5],
+    speedDeltas: [0, 1.0, 0, 0, 0, 1.5, 1.5, 2.5],
     lineDeltas,
     predictionScale: 0.10,
     lookAheadScale: 1,
