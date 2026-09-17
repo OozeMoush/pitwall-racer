@@ -1,26 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateMachineFlyingLap } from './MachineLapEvaluator';
 import { PitwallAbsolutePilot } from './PitwallAbsolutePilot';
-import { PITWALL_ABSOLUTE_PROFILE } from './PitwallAbsoluteProfile';
+import { materializePitwallAbsoluteProfile } from './PitwallAbsoluteProfileTuning';
 import { createPitwallJointSeed, materializePitwallJointLine } from './PitwallJointOptimizer';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 describe('Pitwall absolute profile search probe', () => {
-  it('measures legal central-complex speed headroom without changing physics', () => {
+  it('measures the upper legal central-complex speed margin without changing physics', () => {
     installReferenceLineCalibration();
     const lanes = materializePitwallJointLine(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
       createPitwallJointSeed(),
     );
-    const lifts = [0, 0.5, 1.0, 1.5, 2.0, 2.5] as const;
-    const results = lifts.map((lift) => {
-      const profile = PITWALL_ABSOLUTE_PROFILE.map((sample, index) => {
-        const progress = index / PITWALL_ABSOLUTE_PROFILE.length;
-        const weight = windowWeight(progress, 0.485, 0.635, 0.035);
-        return { ...sample, speed: sample.speed + lift * weight };
-      });
+    const lifts = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0] as const;
+    const results = lifts.map((centralSpeedLift) => {
+      const profile = materializePitwallAbsoluteProfile({ centralSpeedLift });
       const pilot = new PitwallAbsolutePilot(lanes, { profile });
       const result = evaluateMachineFlyingLap({
         trackId: 'pitwall-gp',
@@ -29,16 +25,17 @@ describe('Pitwall absolute profile search probe', () => {
         tireWear: 0,
         tyreSlideSeed: 0.37,
       });
-      return { lift, result };
+      return { centralSpeedLift, result };
     });
 
-    console.log('PITWALL_ABSOLUTE_CENTRAL_SPEED_SWEEP', JSON.stringify(results.map(({ lift, result }) => ({
-      lift,
+    console.log('PITWALL_ABSOLUTE_CENTRAL_SPEED_SWEEP', JSON.stringify(results.map(({ centralSpeedLift, result }) => ({
+      centralSpeedLift,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
       illegalSamples: result.illegalSamples,
       slideEvents: result.slideEvents,
+      maxSlideSeverity: Number(result.maxSlideSeverity.toFixed(3)),
     }))));
 
     const legal = results
@@ -50,22 +47,6 @@ describe('Pitwall absolute profile search probe', () => {
       .sort((a, b) => a.result.lapSeconds! - b.result.lapSeconds!);
 
     expect(legal.length).toBeGreaterThan(0);
-    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.85 + 1e-9);
+    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.683 + 1e-9);
   }, 15_000);
 });
-
-function windowWeight(progress: number, start: number, end: number, feather: number): number {
-  if (progress >= start && progress <= end) return 1;
-  if (progress >= start - feather && progress < start) {
-    return smoothstep((progress - (start - feather)) / feather);
-  }
-  if (progress > end && progress <= end + feather) {
-    return 1 - smoothstep((progress - end) / feather);
-  }
-  return 0;
-}
-
-function smoothstep(value: number): number {
-  const t = Math.max(0, Math.min(1, value));
-  return t * t * (3 - 2 * t);
-}
