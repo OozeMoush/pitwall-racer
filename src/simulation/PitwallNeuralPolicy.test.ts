@@ -22,7 +22,10 @@ describe('Pitwall neural policy', () => {
     const second = new PitwallNeuralPolicy(policy.data).act(observation);
     expect(second).toEqual(first);
     expect(Math.abs(first.steer)).toBeLessThanOrEqual(1);
-    expect(Math.abs(first.longitudinal)).toBeLessThanOrEqual(1);
+    expect(first.throttle).toBeGreaterThanOrEqual(0);
+    expect(first.throttle).toBeLessThanOrEqual(1);
+    expect(first.brake).toBeGreaterThanOrEqual(0);
+    expect(first.brake).toBeLessThanOrEqual(1);
   });
 
   it('rejects malformed exported policies', () => {
