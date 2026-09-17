@@ -26,7 +26,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-OBSERVATION_SIZE = 12
+OBSERVATION_SIZE = 18
 HIDDEN_SIZES = (16, 16)
 ACTION_SIZE = 3
 
@@ -220,6 +220,7 @@ def main() -> None:
         "seed": args.seed,
         "device": str(device),
         "cudaDevice": torch.cuda.get_device_name(0) if device.type == "cuda" else None,
+        "observationSize": OBSERVATION_SIZE,
         "actionSpace": ["steer", "throttle", "brake"],
         "humanTelemetryUsed": False,
     }
