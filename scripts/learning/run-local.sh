@@ -2,9 +2,10 @@
 set -euo pipefail
 
 GENERATIONS="${GENERATIONS:-80}"
-POPULATION="${POPULATION:-20}"
-SIGMA="${SIGMA:-0.015}"
-MUTATION_RATE="${MUTATION_RATE:-0.18}"
+POPULATION="${POPULATION:-24}"
+SIGMA="${SIGMA:-0.018}"
+EVOLUTION_LR="${EVOLUTION_LR:-0.006}"
+SIGMA_DECAY="${SIGMA_DECAY:-0.995}"
 TRAIN_DEVICE="${TRAIN_DEVICE:-cuda}"
 
 TEACHER="artifacts/pitwall-learning/teacher.jsonl"
@@ -22,17 +23,18 @@ uv run tools/learning/train_teacher.py \
 
 echo "[3/5] Verify cloned policy in authoritative Rapier environment"
 if ! npm run learn:evaluate -- "$CLONE"; then
-  echo "Clone did not complete a valid lap. Evolution can still use progress curriculum, but this usually means BC needs improvement." >&2
+  echo "Clone did not complete a valid lap. Rank evolution can still use progress curriculum, but this usually means BC needs improvement." >&2
 fi
 
-echo "[4/5] Evolve direct-control policy in Rapier"
+echo "[4/5] Rank-based neuroevolution directly in Rapier"
 npm run learn:evolve -- \
   --input "$CLONE" \
   --output "$EVOLVED" \
   --generations "$GENERATIONS" \
   --population "$POPULATION" \
   --sigma "$SIGMA" \
-  --mutation-rate "$MUTATION_RATE"
+  --learning-rate "$EVOLUTION_LR" \
+  --sigma-decay "$SIGMA_DECAY"
 
 echo "[5/5] Verify best evolved checkpoint"
 npm run learn:evaluate -- "$EVOLVED"
