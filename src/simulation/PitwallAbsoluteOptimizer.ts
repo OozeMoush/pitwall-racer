@@ -9,8 +9,8 @@ import {
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 
 // These are Pitwall-specific progress controls, not a universal circuit model.
-// The final-complex centres match the legal executable headroom discovered by
-// the local speed-window probe instead of rounding them onto a generic grid.
+// The final-complex centres match legal executable headroom discovered by the
+// local speed-window probe instead of rounding them onto a generic grid.
 const SPEED_CENTERS = [0.515, 0.545, 0.575, 0.605, 0.875, 0.905, 0.925, 0.945] as const;
 const SPEED_HALF_WIDTH = 0.018;
 const LINE_INDICES = [2, 6, 7, 8] as const;
@@ -92,8 +92,8 @@ export function optimizePitwallAbsolute(
   };
 
   // First challenge each local speed dimension independently. +1.5 m/s is
-  // included because the executable probe found legal islands at that value
-  // that +0.5/+1.0 alone would miss.
+  // included because executable probing found legal islands at that value that
+  // +0.5/+1.0 alone would miss.
   for (let index = 0; index < SPEED_CENTERS.length && evaluations < maxEvaluations; index++) {
     for (const delta of [0.5, 1.0, 1.5] as const) {
       if (evaluations >= maxEvaluations) break;
@@ -138,15 +138,19 @@ export function optimizePitwallAbsolute(
   return { seed, best, guide, evaluations, accepted };
 }
 
+/**
+ * Fastest completely legal ReferenceDriver-independent lightweight seed found
+ * so far. The three +1.5 m/s final-complex windows were discovered by machine
+ * executable search and compose to 25.517 s in the lightweight evaluator.
+ * They are not derived from the player's lap trace or target time.
+ */
 export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   const lineSeed = createPitwallJointSeed();
   const lineDeltas = [...lineSeed.lineDeltas];
-  // The current absolute-profile baseline has a small final-entry geometry
-  // adjustment discovered by executable search. It changes line only, not grip.
   lineDeltas[6] -= 0.30;
   return {
     centralSpeedLift: 4.0,
-    speedDeltas: SPEED_CENTERS.map(() => 0),
+    speedDeltas: [0, 0, 0, 0, 0, 1.5, 1.5, 1.5],
     lineDeltas,
     predictionScale: 0.10,
     lookAheadScale: 1,
@@ -154,10 +158,11 @@ export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   };
 }
 
-export function evaluatePitwallAbsolute(
+/** Build the exact pilot represented by an absolute genome for either evaluator. */
+export function createPitwallAbsolutePilot(
   calibratedReference: readonly number[],
   genome: PitwallAbsoluteGenome,
-): PitwallAbsoluteEvaluation {
+): PitwallAbsolutePilot {
   const lineGenome = lineGenomeFromAbsolute(genome);
   const lanes = materializePitwallJointLine(calibratedReference, lineGenome);
   const profile = materializePitwallAbsoluteProfile({
@@ -168,12 +173,19 @@ export function evaluatePitwallAbsolute(
       delta: genome.speedDeltas[index] ?? 0,
     })),
   });
-  const pilot = new PitwallAbsolutePilot(lanes, {
+  return new PitwallAbsolutePilot(lanes, {
     profile,
     predictionScale: genome.predictionScale,
     lookAheadScale: genome.lookAheadScale,
     speedFeedback: genome.speedFeedback,
   });
+}
+
+export function evaluatePitwallAbsolute(
+  calibratedReference: readonly number[],
+  genome: PitwallAbsoluteGenome,
+): PitwallAbsoluteEvaluation {
+  const pilot = createPitwallAbsolutePilot(calibratedReference, genome);
   const result = evaluateMachineFlyingLap({
     trackId: 'pitwall-gp',
     policy: (context) => pilot.control(context),
@@ -217,7 +229,7 @@ function buildDimensions(): Dimension[] {
     scalarDimension('speedFeedback', 0.10, 1.15, 1.85),
   ];
   for (let index = 0; index < SPEED_CENTERS.length; index++) {
-    dimensions.push(arrayDimension('speedDeltas', index, 0.55, -0.5, 2.5));
+    dimensions.push(arrayDimension('speedDeltas', index, 0.55, -0.5, 3.0));
   }
   for (const index of LINE_INDICES) {
     dimensions.push(arrayDimension('lineDeltas', index, 0.22, -1.6, 1.6));
