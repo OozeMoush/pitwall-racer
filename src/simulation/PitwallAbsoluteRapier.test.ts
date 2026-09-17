@@ -16,7 +16,7 @@ import {
 } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
-const CENTRAL_SPEED_LIFT = 2.5;
+const CENTRAL_SPEED_LIFT = 4.0;
 
 describe('Pitwall absolute machine pilot in Rapier', () => {
   beforeAll(async () => {
