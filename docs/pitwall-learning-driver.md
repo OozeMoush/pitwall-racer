@@ -54,6 +54,14 @@ The complete pipeline can then be started with one command:
 npm run learn:local
 ```
 
+`learn:local` requests CUDA by default. On the intended RTX-equipped WSL setup,
+that is useful because a broken CUDA/PyTorch setup should fail visibly instead
+of silently running behavior cloning on CPU. To deliberately use CPU training:
+
+```bash
+TRAIN_DEVICE=cpu npm run learn:local
+```
+
 The individual stages are below if you want to inspect or tune them separately.
 
 ### 1. Export the current machine-only teacher
@@ -78,11 +86,11 @@ The trainer uses PEP 723 metadata, so `uv` creates an isolated Python
 environment automatically:
 
 ```bash
-uv run tools/learning/train_teacher.py
+uv run tools/learning/train_teacher.py --device cuda
 ```
 
-It selects CUDA automatically when `torch.cuda.is_available()` is true and
-prints the GPU name. Override with `--device cpu` or `--device cuda`.
+The standalone trainer also supports `--device auto` and `--device cpu`. It
+prints the selected CUDA device name in its final metadata.
 
 Output:
 
@@ -145,8 +153,9 @@ GENERATIONS=120 POPULATION=32 npm run learn:local
 
 ## CPU vs GPU
 
-The PyTorch behavior-cloning phase can use the RTX 4070 through CUDA. It is a
-small network, so this phase is not computationally demanding.
+The PyTorch behavior-cloning phase uses the RTX 4070 through CUDA in the default
+local pipeline. The network is small, so this phase is not computationally
+demanding even though CUDA is enabled.
 
 The expensive part is evolutionary rollout: every candidate must execute the
 Rapier physics loop. Rapier currently runs on CPU, so GPU utilization will be
