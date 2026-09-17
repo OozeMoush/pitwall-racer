@@ -137,8 +137,8 @@ export function evaluatePitwallLearningPolicy(
 
       const surface = surfaceEffect(projection.distance);
       physics.drivePlayer({
-        throttle: Math.max(0, action.longitudinal),
-        brake: Math.max(0, -action.longitudinal),
+        throttle: action.throttle,
+        brake: action.brake,
         steer: action.steer,
         tireGrip: GRIP,
         tireWear: 0,
@@ -273,7 +273,8 @@ function signedProgressDelta(previous: number, next: number): number {
 function sanitizeAction(action: PitwallLearningAction): PitwallLearningAction {
   return {
     steer: clamp(Number.isFinite(action.steer) ? action.steer : 0, -1, 1),
-    longitudinal: clamp(Number.isFinite(action.longitudinal) ? action.longitudinal : 0, -1, 1),
+    throttle: clamp(Number.isFinite(action.throttle) ? action.throttle : 0, 0, 1),
+    brake: clamp(Number.isFinite(action.brake) ? action.brake : 0, 0, 1),
   };
 }
 
