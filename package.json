@@ -10,7 +10,8 @@
     "test": "vitest run",
     "learn:teacher": "tsx scripts/learning/export-teacher.ts",
     "learn:evaluate": "tsx scripts/learning/evaluate-policy.ts",
-    "learn:evolve": "tsx scripts/learning/evolve-policy.ts"
+    "learn:evolve": "tsx scripts/learning/evolve-policy.ts",
+    "learn:local": "bash scripts/learning/run-local.sh"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
