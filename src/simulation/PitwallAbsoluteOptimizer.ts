@@ -140,9 +140,9 @@ export function optimizePitwallAbsolute(
 
 /**
  * Fastest completely legal ReferenceDriver-independent lightweight seed found
- * so far. The three +1.5 m/s final-complex windows were discovered by machine
- * executable search and compose to 25.517 s in the lightweight evaluator.
- * They are not derived from the player's lap trace or target time.
+ * so far. Executable search improved the 25.517 s seed to 25.475 s by adding
+ * +1.0 m/s around 54.5% progress and raising the 94.5% window to +2.5 m/s.
+ * The values are machine-discovered and are not derived from player telemetry.
  */
 export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   const lineSeed = createPitwallJointSeed();
@@ -150,7 +150,7 @@ export function createPitwallAbsoluteSeed(): PitwallAbsoluteGenome {
   lineDeltas[6] -= 0.30;
   return {
     centralSpeedLift: 4.0,
-    speedDeltas: [0, 0, 0, 0, 0, 1.5, 1.5, 1.5],
+    speedDeltas: [0, 1.0, 0, 0, 0, 1.5, 1.5, 2.5],
     lineDeltas,
     predictionScale: 0.10,
     lookAheadScale: 1,
