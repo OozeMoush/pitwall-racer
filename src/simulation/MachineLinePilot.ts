@@ -43,13 +43,19 @@ export interface MachineLinePilotOptions extends MachineSteeringTuning {
   brakeWindows?: readonly MachineBrakeWindow[];
   /** Local target-speed multipliers used by course-specific joint optimization. */
   speedWindows?: readonly MachineSpeedWindow[];
+  /**
+   * Circular absolute speed profile in metres/second. When present, longitudinal
+   * control is derived only from this profile and the physical car state; the
+   * legacy ReferenceDriver target-speed / planned-brake trace is not consulted.
+   */
+  absoluteSpeedProfile?: readonly number[];
 }
 
 /**
  * Execute an arbitrary smooth machine-generated lane through the full-state
- * evaluator while keeping the proven clean-air controller as the seed. Tuning
- * dimensions alter only driver inputs/targets; power, grip, tyre state and
- * chassis capability stay identical to the player car.
+ * evaluator while keeping the proven clean-air controller as the fallback seed.
+ * Tuning dimensions alter only driver inputs/targets; power, grip, tyre state
+ * and chassis capability stay identical to the player car.
  */
 export class MachineLinePilot {
   private readonly driver: DriverState;
@@ -57,6 +63,7 @@ export class MachineLinePilot {
   private readonly finalBrakeScale: number;
   private readonly brakeWindows: readonly MachineBrakeWindow[];
   private readonly speedWindows: readonly MachineSpeedWindow[];
+  private readonly absoluteSpeedProfile?: readonly number[];
   private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
@@ -68,6 +75,9 @@ export class MachineLinePilot {
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
     this.brakeWindows = options.brakeWindows ?? [];
     this.speedWindows = options.speedWindows ?? [];
+    this.absoluteSpeedProfile = options.absoluteSpeedProfile && options.absoluteSpeedProfile.length > 1
+      ? [...options.absoluteSpeedProfile]
+      : undefined;
     this.steering = {
       lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
       headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
@@ -103,13 +113,18 @@ export class MachineLinePilot {
     this.driver.lap = context.completedLaps;
     this.driver.battleState = 'CLEAR';
 
-    const base = dynamicAiControl(this.driver, {
-      x: context.state.x,
-      y: context.state.y,
-      heading: context.state.heading,
-      speed,
-      yawRate: context.state.yawRate,
-    }, []);
+    // The absolute-profile path intentionally skips dynamicAiControl so it has
+    // no longitudinal dependency on ReferenceDriverModel. The legacy controller
+    // remains as a fallback for older search/regression slices.
+    const base = this.absoluteSpeedProfile === undefined
+      ? dynamicAiControl(this.driver, {
+        x: context.state.x,
+        y: context.state.y,
+        heading: context.state.heading,
+        speed,
+        yawRate: context.state.yawRate,
+      }, [])
+      : undefined;
 
     const progress = context.projection.progress;
     const profile = trackProfile(progress, 1, GRIP);
@@ -171,6 +186,49 @@ export class MachineLinePilot {
       if (weight <= 0) continue;
       speedScale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
     }
+
+    if (this.absoluteSpeedProfile !== undefined) {
+      const targetSpeed = clamp(sampleCircular(this.absoluteSpeedProfile, progress) * speedScale, 18, 136);
+      // A short preview of the same absolute profile supplies braking anticipation
+      // without importing a separately generated brake trace. This remains a
+      // closed-loop command on the same shared chassis, not hidden grip/power.
+      const previewMetres = clamp(speed * 0.22, 12, 24);
+      const previewProgress = progress + previewMetres / TRACK_LENGTH;
+      const previewTarget = clamp(
+        sampleCircular(this.absoluteSpeedProfile, previewProgress) * speedScale,
+        18,
+        136,
+      );
+      const speedError = targetSpeed - speed;
+      const overspeed = -speedError;
+      const previewOverspeed = speed - previewTarget;
+      let brake = overspeed > 0.20
+        ? clamp((overspeed - 0.20) / 7.4, 0, 1)
+        : 0;
+      if (previewTarget < targetSpeed - 0.25 && previewOverspeed > 0.55) {
+        brake = Math.max(brake, clamp((previewOverspeed - 0.55) / 10.5, 0, 0.92));
+      }
+      brake *= brakeScale;
+
+      let throttle: number;
+      if (brake > 0.06) throttle = 0;
+      else if (speedError > 0.55) throttle = 1;
+      else if (speedError > -0.35) throttle = clamp(0.62 + speedError * 0.34, 0.50, 1);
+      else throttle = clamp(1 + speedError / 3.0, 0, 1);
+
+      return {
+        throttle,
+        brake,
+        steer,
+        tireGrip: GRIP,
+        surfaceGrip: 1,
+        powerBoost: POWER_BOOST,
+        powerMultiplier: 1,
+        rollingResistance: 0,
+      };
+    }
+
+    if (!base) throw new Error('legacy machine pilot requires a base controller');
 
     // Preserve the proven longitudinal seed exactly unless the course-specific
     // optimizer actually asks for a different target speed at this progress.
