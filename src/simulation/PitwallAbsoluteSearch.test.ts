@@ -7,16 +7,21 @@ import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
+const CENTRAL_SPEED_LIFT = 4.0;
+
 describe('Pitwall absolute profile search probe', () => {
-  it('resolves the legal stability island around the four metre per second central lift', () => {
+  it('measures final-complex speed headroom on the legal central-lift baseline', () => {
     installReferenceLineCalibration();
     const lanes = materializePitwallJointLine(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
       createPitwallJointSeed(),
     );
-    const lifts = [3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4] as const;
-    const results = lifts.map((centralSpeedLift) => {
-      const profile = materializePitwallAbsoluteProfile({ centralSpeedLift });
+    const lifts = [0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] as const;
+    const results = lifts.map((finalSpeedLift) => {
+      const profile = materializePitwallAbsoluteProfile({
+        centralSpeedLift: CENTRAL_SPEED_LIFT,
+        finalSpeedLift,
+      });
       const pilot = new PitwallAbsolutePilot(lanes, { profile });
       const result = evaluateMachineFlyingLap({
         trackId: 'pitwall-gp',
@@ -25,11 +30,12 @@ describe('Pitwall absolute profile search probe', () => {
         tireWear: 0,
         tyreSlideSeed: 0.37,
       });
-      return { centralSpeedLift, result };
+      return { finalSpeedLift, result };
     });
 
-    console.log('PITWALL_ABSOLUTE_CENTRAL_FINE_SWEEP', JSON.stringify(results.map(({ centralSpeedLift, result }) => ({
-      centralSpeedLift,
+    console.log('PITWALL_ABSOLUTE_FINAL_SPEED_SWEEP', JSON.stringify(results.map(({ finalSpeedLift, result }) => ({
+      centralSpeedLift: CENTRAL_SPEED_LIFT,
+      finalSpeedLift,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
