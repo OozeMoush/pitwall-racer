@@ -1,4 +1,4 @@
-import type { ArcadeCarInput } from './ArcadeCarController';
+import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import { dynamicAiControl } from './DynamicAiController';
 import type { MachineLapPolicyContext } from './MachineLapEvaluator';
 import { predictiveAiSteer } from './PredictiveAiSteering';
@@ -11,6 +11,11 @@ import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
 const SPEED_OVERRIDE_EPSILON = 1e-4;
+const CONTROL_DT = 1 / 120;
+// RapierRacePhysics uses 0.018 linear damping after the arcade controller has
+// written velocity. Add its first-order loss to the requested controller
+// acceleration so the absolute profile is solved against the complete chassis.
+const RAPIER_LINEAR_DAMPING = 0.018;
 
 export interface MachineBrakeWindow {
   center: number;
@@ -180,41 +185,77 @@ export class MachineLinePilot {
       brakeScale = lerp(brakeScale, clamp(window.scale, 0.25, 1.20), weight);
     }
 
-    let speedScale = 1;
-    for (const window of this.speedWindows) {
-      const weight = circularWindowWeight(progress, window.center, window.halfWidth);
-      if (weight <= 0) continue;
-      speedScale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
-    }
+    const speedScale = speedWindowScale(this.speedWindows, progress);
 
     if (this.absoluteSpeedProfile !== undefined) {
       const targetSpeed = clamp(sampleCircular(this.absoluteSpeedProfile, progress) * speedScale, 18, 136);
-      // A short preview of the same absolute profile supplies braking anticipation
-      // without importing a separately generated brake trace. This remains a
-      // closed-loop command on the same shared chassis, not hidden grip/power.
-      const previewMetres = clamp(speed * 0.22, 12, 24);
-      const previewProgress = progress + previewMetres / TRACK_LENGTH;
-      const previewTarget = clamp(
-        sampleCircular(this.absoluteSpeedProfile, previewProgress) * speedScale,
+      const profileStep = 1 / this.absoluteSpeedProfile.length;
+      const nextProgress = progress + profileStep;
+      const nextScale = speedWindowScale(this.speedWindows, nextProgress);
+      const nextTargetSpeed = clamp(
+        sampleCircular(this.absoluteSpeedProfile, nextProgress) * nextScale,
         18,
         136,
       );
-      const speedError = targetSpeed - speed;
-      const overspeed = -speedError;
-      const previewOverspeed = speed - previewTarget;
-      let brake = overspeed > 0.20
-        ? clamp((overspeed - 0.20) / 7.4, 0, 1)
-        : 0;
-      if (previewTarget < targetSpeed - 0.25 && previewOverspeed > 0.55) {
-        brake = Math.max(brake, clamp((previewOverspeed - 0.55) / 10.5, 0, 0.92));
-      }
-      brake *= brakeScale;
+      const nodeDistance = TRACK_LENGTH * profileStep;
+      const profileAcceleration = (
+        nextTargetSpeed * nextTargetSpeed - targetSpeed * targetSpeed
+      ) / Math.max(1, 2 * nodeDistance);
+      const feedbackAcceleration = clamp((targetSpeed - speed) * 1.75, -9.0, 9.0);
+      // controlArcadeCar reports acceleration before Rapier damping. Compensate
+      // for that known post-step loss so the requested *net* acceleration follows
+      // the measured executable speed profile rather than a hand-tuned preview.
+      const desiredControllerAcceleration = profileAcceleration
+        + feedbackAcceleration
+        + speed * RAPIER_LINEAR_DAMPING;
 
-      let throttle: number;
-      if (brake > 0.06) throttle = 0;
-      else if (speedError > 0.55) throttle = 1;
-      else if (speedError > -0.35) throttle = clamp(0.62 + speedError * 0.34, 0.50, 1);
-      else throttle = clamp(1 + speedError / 3.0, 0, 1);
+      const motion = {
+        vx: context.state.vx,
+        vy: context.state.vy,
+        heading: context.state.heading,
+        angularVelocity: context.state.yawRate,
+      };
+      const common = {
+        steer,
+        tireGrip: GRIP,
+        surfaceGrip: 1,
+        powerBoost: POWER_BOOST,
+        powerMultiplier: 1,
+        rollingResistance: 0,
+      };
+      const coastAcceleration = controlArcadeCar(
+        motion,
+        { ...common, throttle: 0, brake: 0 },
+        CONTROL_DT,
+      ).acceleration;
+      const fullThrottleAcceleration = controlArcadeCar(
+        motion,
+        { ...common, throttle: 1, brake: 0 },
+        CONTROL_DT,
+      ).acceleration;
+      const fullBrakeAcceleration = controlArcadeCar(
+        motion,
+        { ...common, throttle: 0, brake: 1 },
+        CONTROL_DT,
+      ).acceleration;
+
+      let throttle = 0;
+      let brake = 0;
+      if (desiredControllerAcceleration >= coastAcceleration) {
+        throttle = clamp(
+          (desiredControllerAcceleration - coastAcceleration)
+            / Math.max(0.001, fullThrottleAcceleration - coastAcceleration),
+          0,
+          1,
+        );
+      } else {
+        brake = clamp(
+          (coastAcceleration - desiredControllerAcceleration)
+            / Math.max(0.001, coastAcceleration - fullBrakeAcceleration),
+          0,
+          1,
+        ) * brakeScale;
+      }
 
       return {
         throttle,
@@ -290,6 +331,16 @@ function pitwallPredictionWeight(progress: number, severity: number): number {
     windowWeight(p, 0.000, 0.045, 0.022),
   );
   return technical * Math.max(middle * 0.32, final * 0.34);
+}
+
+function speedWindowScale(windows: readonly MachineSpeedWindow[], progress: number): number {
+  let scale = 1;
+  for (const window of windows) {
+    const weight = circularWindowWeight(progress, window.center, window.halfWidth);
+    if (weight <= 0) continue;
+    scale *= lerp(1, clamp(window.scale, 0.86, 1.14), weight);
+  }
+  return scale;
 }
 
 function sampleCircular(values: readonly number[], progress: number): number {
