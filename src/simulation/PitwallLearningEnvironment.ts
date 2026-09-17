@@ -1,6 +1,10 @@
 import type { VehicleState } from './VehicleModel';
 import { MACHINE_PHYSICS_DT } from './MachineCarIntegrator';
-import { RapierRacePhysics, CAR_COLLIDER_HALF_WIDTH } from './RapierRacePhysics';
+import {
+  RapierRacePhysics,
+  CAR_COLLIDER_HALF_WIDTH,
+  type PlanarVelocity,
+} from './RapierRacePhysics';
 import { compoundPeakGrip } from './TireModel';
 import { surfaceEffect } from './SurfaceModel';
 import {
@@ -26,6 +30,7 @@ const FULL_CAR_OFFROAD_DISTANCE = TRACK_ROAD_HALF_WIDTH + CAR_COLLIDER_HALF_WIDT
 const MAX_PLAUSIBLE_PROGRESS_STEP = 0.010;
 const MAX_REVERSE_PROGRESS = 0.025;
 const LOOKAHEAD_METRES = [12, 25, 45, 70, 100] as const;
+const PROGRESS_HARMONICS = [1, 2, 4] as const;
 
 export interface PitwallLearningPolicyContext {
   observation: readonly number[];
@@ -116,7 +121,13 @@ export function evaluatePitwallLearningPolicy(
     for (; ticks < maximumTicks; ticks++) {
       const elapsedSeconds = ticks * MACHINE_PHYSICS_DT;
       const state = physics.playerState();
-      const observation = pitwallLearningObservation(state, projection);
+      const velocity = physics.playerVelocity();
+      const observation = pitwallLearningObservation(
+        state,
+        projection,
+        velocity,
+        physics.playerSlideSeverity(),
+      );
       const action = sanitizeAction(policy({
         observation,
         state,
@@ -215,18 +226,29 @@ export function evaluatePitwallLearningPolicy(
 export function pitwallLearningObservation(
   state: VehicleState,
   projection: TrackProjection,
+  velocity: PlanarVelocity,
+  slideSeverity: number,
 ): number[] {
   const headingError = wrapAngle(state.heading - projection.heading);
   const progressAngle = projection.progress * Math.PI * 2;
+  const cosHeading = Math.cos(state.heading);
+  const sinHeading = Math.sin(state.heading);
+  const forwardSpeed = velocity.vx * cosHeading + velocity.vy * sinHeading;
+  const lateralSpeed = -velocity.vx * sinHeading + velocity.vy * cosHeading;
+  const progressFeatures = PROGRESS_HARMONICS.flatMap((harmonic) => [
+    Math.sin(progressAngle * harmonic),
+    Math.cos(progressAngle * harmonic),
+  ]);
   const observation = [
-    state.speed / 110,
+    forwardSpeed / 110,
+    lateralSpeed / 50,
     state.yawRate / 1.45,
     projection.laneOffset / TRACK_ROAD_HALF_WIDTH,
     Math.sin(headingError),
     Math.cos(headingError),
-    Math.sin(progressAngle),
-    Math.cos(progressAngle),
+    ...progressFeatures,
     ...LOOKAHEAD_METRES.map((metres) => aheadTurn(projection.progress, metres)),
+    clamp(slideSeverity, 0, 1),
   ];
 
   if (observation.length !== PITWALL_LEARNING_OBSERVATION_SIZE) {
