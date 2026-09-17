@@ -40,12 +40,14 @@ describe('Pitwall learning environment', () => {
       });
       return {
         steer: control.steer,
-        longitudinal: control.throttle - control.brake,
+        throttle: control.throttle,
+        brake: control.brake,
       };
     }, { captureFlyingLap: true });
 
     console.log('PITWALL_LEARNING_TEACHER', JSON.stringify({
       status: result.status,
+      invalidReason: result.invalidReason ?? null,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       forwardProgressMetres: Number(result.forwardProgressMetres.toFixed(1)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
