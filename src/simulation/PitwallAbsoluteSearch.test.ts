@@ -8,13 +8,13 @@ import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 describe('Pitwall absolute profile search probe', () => {
-  it('measures the upper legal central-complex speed margin without changing physics', () => {
+  it('resolves the legal stability island around the four metre per second central lift', () => {
     installReferenceLineCalibration();
     const lanes = materializePitwallJointLine(
       OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
       createPitwallJointSeed(),
     );
-    const lifts = [2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0] as const;
+    const lifts = [3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4] as const;
     const results = lifts.map((centralSpeedLift) => {
       const profile = materializePitwallAbsoluteProfile({ centralSpeedLift });
       const pilot = new PitwallAbsolutePilot(lanes, { profile });
@@ -28,7 +28,7 @@ describe('Pitwall absolute profile search probe', () => {
       return { centralSpeedLift, result };
     });
 
-    console.log('PITWALL_ABSOLUTE_CENTRAL_SPEED_SWEEP', JSON.stringify(results.map(({ centralSpeedLift, result }) => ({
+    console.log('PITWALL_ABSOLUTE_CENTRAL_FINE_SWEEP', JSON.stringify(results.map(({ centralSpeedLift, result }) => ({
       centralSpeedLift,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
@@ -47,6 +47,6 @@ describe('Pitwall absolute profile search probe', () => {
       .sort((a, b) => a.result.lapSeconds! - b.result.lapSeconds!);
 
     expect(legal.length).toBeGreaterThan(0);
-    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.683 + 1e-9);
+    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.60 + 1e-9);
   }, 15_000);
 });
