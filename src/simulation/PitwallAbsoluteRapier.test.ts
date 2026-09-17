@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MACHINE_PHYSICS_DT } from './MachineCarIntegrator';
 import { PitwallAbsolutePilot } from './PitwallAbsolutePilot';
+import { materializePitwallAbsoluteProfile } from './PitwallAbsoluteProfileTuning';
 import { createPitwallJointSeed, materializePitwallJointLine } from './PitwallJointOptimizer';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
@@ -15,12 +16,14 @@ import {
 } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
+const CENTRAL_SPEED_LIFT = 2.5;
+
 describe('Pitwall absolute machine pilot in Rapier', () => {
   beforeAll(async () => {
     await RAPIER.init();
   });
 
-  it('keeps the reference-free longitudinal trace legal in the actual rigid-body world', () => {
+  it('keeps the faster reference-free longitudinal trace legal in the actual rigid-body world', () => {
     const previousTrack = getActiveTrack().id;
     setActiveTrack('pitwall-gp');
     try {
@@ -29,7 +32,10 @@ describe('Pitwall absolute machine pilot in Rapier', () => {
         OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
         createPitwallJointSeed(),
       );
-      const pilot = new PitwallAbsolutePilot(lanes);
+      const profile = materializePitwallAbsoluteProfile({
+        centralSpeedLift: CENTRAL_SPEED_LIFT,
+      });
+      const pilot = new PitwallAbsolutePilot(lanes, { profile });
       const startPose = sampleTrack(0.08, 0);
       const start = {
         ...createVehicle(startPose.x, startPose.y, startPose.heading),
@@ -95,6 +101,7 @@ describe('Pitwall absolute machine pilot in Rapier', () => {
       }
 
       console.log('PITWALL_ABSOLUTE_RAPIER', JSON.stringify({
+        centralSpeedLift: CENTRAL_SPEED_LIFT,
         completed: flyingLap !== undefined,
         seconds: flyingLap === undefined ? null : Number(flyingLap.toFixed(3)),
         maxLaneDistance: Number(maxLaneDistance.toFixed(3)),
