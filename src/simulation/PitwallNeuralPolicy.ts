@@ -1,5 +1,5 @@
 export const PITWALL_LEARNING_OBSERVATION_SIZE = 12;
-export const PITWALL_LEARNING_ACTION_SIZE = 2;
+export const PITWALL_LEARNING_ACTION_SIZE = 3;
 export const PITWALL_POLICY_HIDDEN_SIZES = [16, 16] as const;
 
 export interface NeuralLayerData {
@@ -20,12 +20,17 @@ export interface PitwallNeuralPolicyData {
 
 export interface PitwallLearningAction {
   steer: number;
-  /** Positive = throttle, negative = brake. */
-  longitudinal: number;
+  throttle: number;
+  brake: number;
 }
 
 /**
  * Tiny deterministic MLP used by the learned Pitwall driver.
+ *
+ * The output preserves the game's three real actuator channels instead of
+ * collapsing throttle/brake into a signed scalar. That matters at the closed-
+ * loop stability boundary, and lets behavior cloning reproduce the machine
+ * teacher without changing its control space before learning even begins.
  *
  * Keeping inference in TypeScript means candidates are evaluated by the exact
  * same Rapier/game code as the player rather than by a Python physics clone.
@@ -59,9 +64,13 @@ export class PitwallNeuralPolicy {
       values = next;
     }
 
+    // Steer naturally lives in [-1, 1]. Throttle and brake use the same tanh
+    // network output but are mapped smoothly onto [0, 1], so the trainer can
+    // represent exact physical actuator targets without a dead clamp region.
     return {
       steer: clamp(values[0] ?? 0, -1, 1),
-      longitudinal: clamp(values[1] ?? 0, -1, 1),
+      throttle: clamp(((values[1] ?? -1) + 1) * 0.5, 0, 1),
+      brake: clamp(((values[2] ?? -1) + 1) * 0.5, 0, 1),
     };
   }
 
