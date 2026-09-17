@@ -8,23 +8,24 @@ import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 const CENTRAL_SPEED_LIFT = 4.0;
-const FINAL_ENTRY_LINE_SHIFT = -0.3;
-const PREDICTION_SCALES = [0, 0.05, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.60] as const;
+const PREDICTION_SCALE = 0.05;
+const FINAL_ENTRY_LINE_SHIFTS = [-0.45, -0.40, -0.35, -0.30, -0.25] as const;
+const LOOK_AHEAD_SCALES = [0.98, 1.0, 1.02] as const;
 
 describe('Pitwall absolute profile search probe', () => {
-  it('retunes predictive steering for the faster absolute longitudinal profile', () => {
+  it('repairs the faster predictive-steering boundary with coupled line and look-ahead changes', () => {
     installReferenceLineCalibration();
     const reference = OPTIMIZED_REFERENCE_LANES['pitwall-gp'];
-    const seed = createPitwallJointSeed();
-    seed.lineDeltas[6] += FINAL_ENTRY_LINE_SHIFT;
-    const lanes = materializePitwallJointLine(reference, seed);
     const profile = materializePitwallAbsoluteProfile({ centralSpeedLift: CENTRAL_SPEED_LIFT });
 
-    const results = PREDICTION_SCALES.map((predictionScale) => {
+    const results = FINAL_ENTRY_LINE_SHIFTS.flatMap((lineShift) => LOOK_AHEAD_SCALES.map((lookAheadScale) => {
+      const genome = createPitwallJointSeed();
+      genome.lineDeltas[6] += lineShift;
+      const lanes = materializePitwallJointLine(reference, genome);
       const pilot = new PitwallAbsolutePilot(lanes, {
         profile,
-        predictionScale,
-        lookAheadScale: 1,
+        predictionScale: PREDICTION_SCALE,
+        lookAheadScale,
       });
       const result = evaluateMachineFlyingLap({
         trackId: 'pitwall-gp',
@@ -33,11 +34,13 @@ describe('Pitwall absolute profile search probe', () => {
         tireWear: 0,
         tyreSlideSeed: 0.37,
       });
-      return { predictionScale, result };
-    });
+      return { lineShift, lookAheadScale, result };
+    }));
 
-    console.log('PITWALL_ABSOLUTE_PREDICTION_SWEEP', JSON.stringify(results.map(({ predictionScale, result }) => ({
-      predictionScale,
+    console.log('PITWALL_ABSOLUTE_BOUNDARY_REPAIR', JSON.stringify(results.map(({ lineShift, lookAheadScale, result }) => ({
+      predictionScale: PREDICTION_SCALE,
+      lineShift,
+      lookAheadScale,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
@@ -57,5 +60,5 @@ describe('Pitwall absolute profile search probe', () => {
 
     expect(legal.length).toBeGreaterThan(0);
     expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.60 + 1e-9);
-  }, 20_000);
+  }, 30_000);
 });
