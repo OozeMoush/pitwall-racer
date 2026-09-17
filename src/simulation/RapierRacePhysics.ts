@@ -57,6 +57,11 @@ const BARRIER_COLLISION_GROUPS = collisionGroups(
 type PhysicalCarInput = ArcadeCarInput & { tireWear?: number };
 type CarRole = 'PLAYER' | 'AI';
 
+export interface PlanarVelocity {
+  vx: number;
+  vy: number;
+}
+
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
   private readonly playerBody: RAPIER.RigidBody;
@@ -101,6 +106,12 @@ export class RapierRacePhysics {
 
   playerSlideSeverity(): number {
     return this.playerSlideSeverityValue;
+  }
+
+  /** Raw world-space linear velocity for controllers that need sideslip state. */
+  playerVelocity(): PlanarVelocity {
+    const velocity = this.playerBody.linvel();
+    return { vx: velocity.x, vy: velocity.y };
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -293,6 +304,7 @@ export class RapierRacePhysics {
         speed: state.speed,
         laneOffset: projection.laneOffset,
         performance: driver.skill * driver.tire.grip,
+        isPlayer: false,
       });
     });
     return result;
@@ -427,14 +439,14 @@ export class RapierRacePhysics {
     body.setAngvel(state.yawRate, true);
   }
 
-  private stopBody(body: RAPIER.RigidBody | undefined): void {
-    if (!body) return;
+  private stopBody(body: RAPIER.RigidBody): void {
     body.setLinvel({ x: 0, y: 0 }, true);
     body.setAngvel(0, true);
   }
 
-  private limitSpin(body: RAPIER.RigidBody, maximum: number): void {
-    const yaw = body.angvel();
-    if (Math.abs(yaw) > maximum) body.setAngvel(Math.sign(yaw) * maximum, true);
+  private limitSpin(body: RAPIER.RigidBody, maxYawRate: number): void {
+    const yawRate = body.angvel();
+    if (Math.abs(yawRate) <= maxYawRate) return;
+    body.setAngvel(Math.sign(yawRate) * maxYawRate, true);
   }
 }
