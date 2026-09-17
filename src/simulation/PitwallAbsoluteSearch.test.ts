@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateMachineFlyingLap } from './MachineLapEvaluator';
 import { PitwallAbsolutePilot } from './PitwallAbsolutePilot';
-import { materializePitwallAbsoluteProfile } from './PitwallAbsoluteProfileTuning';
+import {
+  materializePitwallAbsoluteProfile,
+  type PitwallAbsoluteSpeedWindow,
+} from './PitwallAbsoluteProfileTuning';
 import { createPitwallJointSeed, materializePitwallJointLine } from './PitwallJointOptimizer';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
 import { installReferenceLineCalibration } from './ReferenceLineCalibration';
@@ -10,32 +13,48 @@ import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 const CENTRAL_SPEED_LIFT = 4.0;
 const FINAL_ENTRY_LINE_SHIFT = -0.3;
 const PREDICTION_SCALE = 0.10;
-const CENTERS = [0.875, 0.905, 0.925, 0.945] as const;
-const DELTAS = [0.5, 1.0, 1.5] as const;
+const window = (center: number, delta: number): PitwallAbsoluteSpeedWindow => ({
+  center,
+  halfWidth: 0.018,
+  delta,
+});
 
 describe('Pitwall absolute profile search probe', () => {
-  it('isolates final-complex speed headroom with local absolute-speed windows', () => {
+  it('checks whether individually legal final-complex speed windows compose', () => {
     installReferenceLineCalibration();
     const reference = OPTIMIZED_REFERENCE_LANES['pitwall-gp'];
     const seed = createPitwallJointSeed();
     seed.lineDeltas[6] += FINAL_ENTRY_LINE_SHIFT;
     const lanes = materializePitwallJointLine(reference, seed);
 
-    const cases: Array<{ label: string; center?: number; delta?: number }> = [
-      { label: 'baseline' },
-      ...CENTERS.flatMap((center) => DELTAS.map((delta) => ({
-        label: `p${center}+${delta}`,
-        center,
-        delta,
-      }))),
+    const cases: Array<{ label: string; speedWindows: PitwallAbsoluteSpeedWindow[] }> = [
+      { label: 'baseline', speedWindows: [] },
+      { label: 'p925', speedWindows: [window(0.925, 1.5)] },
+      { label: 'p945', speedWindows: [window(0.945, 1.5)] },
+      { label: 'p925+p945', speedWindows: [window(0.925, 1.5), window(0.945, 1.5)] },
+      { label: 'p905+p945', speedWindows: [window(0.905, 1.5), window(0.945, 1.5)] },
+      { label: 'p905+p925+p945', speedWindows: [
+        window(0.905, 1.5),
+        window(0.925, 1.5),
+        window(0.945, 1.5),
+      ] },
+      { label: 'p875+p925+p945', speedWindows: [
+        window(0.875, 0.5),
+        window(0.925, 1.5),
+        window(0.945, 1.5),
+      ] },
+      { label: 'all-legal-singles', speedWindows: [
+        window(0.875, 0.5),
+        window(0.905, 1.5),
+        window(0.925, 1.5),
+        window(0.945, 1.5),
+      ] },
     ];
 
-    const results = cases.map(({ label, center, delta }) => {
+    const results = cases.map(({ label, speedWindows }) => {
       const profile = materializePitwallAbsoluteProfile({
         centralSpeedLift: CENTRAL_SPEED_LIFT,
-        speedWindows: center === undefined || delta === undefined
-          ? []
-          : [{ center, halfWidth: 0.018, delta }],
+        speedWindows,
       });
       const pilot = new PitwallAbsolutePilot(lanes, {
         profile,
@@ -49,13 +68,12 @@ describe('Pitwall absolute profile search probe', () => {
         tireWear: 0,
         tyreSlideSeed: 0.37,
       });
-      return { label, center, delta, result };
+      return { label, speedWindows, result };
     });
 
-    console.log('PITWALL_ABSOLUTE_LOCAL_SPEED_SWEEP', JSON.stringify(results.map(({ label, center, delta, result }) => ({
+    console.log('PITWALL_ABSOLUTE_WINDOW_COMBINATIONS', JSON.stringify(results.map(({ label, speedWindows, result }) => ({
       label,
-      center: center ?? null,
-      delta: delta ?? 0,
+      speedWindows,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
@@ -74,6 +92,6 @@ describe('Pitwall absolute profile search probe', () => {
       .sort((a, b) => a.result.lapSeconds! - b.result.lapSeconds!);
 
     expect(legal.length).toBeGreaterThan(0);
-    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.60 + 1e-9);
-  }, 30_000);
+    expect(legal[0].result.lapSeconds!).toBeLessThanOrEqual(25.558 + 1e-9);
+  }, 20_000);
 });
