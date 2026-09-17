@@ -17,6 +17,8 @@ import {
 } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
+const SPEED_TRACE_BINS = 32;
+
 describe('Pitwall machine reference in Rapier', () => {
   beforeAll(async () => {
     await RAPIER.init();
@@ -50,11 +52,25 @@ describe('Pitwall machine reference in Rapier', () => {
       let maxLaneOffset = projection.laneOffset;
       let illegalSamples = 0;
       let peakSlideSeverity = 0;
+      const speedSums = Array.from({ length: SPEED_TRACE_BINS }, () => 0);
+      const speedCounts = Array.from({ length: SPEED_TRACE_BINS }, () => 0);
+      const speedMins = Array.from({ length: SPEED_TRACE_BINS }, () => Number.POSITIVE_INFINITY);
+      const speedMaxes = Array.from({ length: SPEED_TRACE_BINS }, () => 0);
 
       const maximumTicks = Math.ceil(60 / MACHINE_PHYSICS_DT);
       for (let tick = 0; tick < maximumTicks; tick++) {
         const state = physics.playerState();
         const speed = state.speed;
+        if (completedLaps === 1) {
+          const bin = Math.min(
+            SPEED_TRACE_BINS - 1,
+            Math.floor(projection.progress * SPEED_TRACE_BINS),
+          );
+          speedSums[bin] += speed;
+          speedCounts[bin] += 1;
+          speedMins[bin] = Math.min(speedMins[bin], speed);
+          speedMaxes[bin] = Math.max(speedMaxes[bin], speed);
+        }
         const input = pilot.control({
           state: {
             x: state.x,
@@ -95,6 +111,13 @@ describe('Pitwall machine reference in Rapier', () => {
         previousProgress = projection.progress;
       }
 
+      const speedTrace = speedSums.map((sum, index) => ({
+        p: Number(((index + 0.5) / SPEED_TRACE_BINS).toFixed(4)),
+        avg: speedCounts[index] === 0 ? null : Number((sum / speedCounts[index]).toFixed(3)),
+        min: speedCounts[index] === 0 ? null : Number(speedMins[index].toFixed(3)),
+        max: speedCounts[index] === 0 ? null : Number(speedMaxes[index].toFixed(3)),
+      }));
+
       console.log('PITWALL_RAPIER_MACHINE_REFERENCE', JSON.stringify({
         completed: flyingLap !== undefined,
         seconds: flyingLap === undefined ? null : Number(flyingLap.toFixed(3)),
@@ -103,12 +126,14 @@ describe('Pitwall machine reference in Rapier', () => {
         maxLaneOffset: Number(maxLaneOffset.toFixed(3)),
         illegalSamples,
         peakSlideSeverity: Number(peakSlideSeverity.toFixed(3)),
+        speedTrace,
       }));
 
       expect(flyingLap).toBeDefined();
       expect(illegalSamples).toBe(0);
       expect(maxLaneDistance).toBeLessThanOrEqual(REFERENCE_LANE_LIMIT);
       expect(peakSlideSeverity).toBe(0);
+      expect(speedCounts.every((count) => count > 0)).toBe(true);
     } finally {
       setActiveTrack(previousTrack);
     }
