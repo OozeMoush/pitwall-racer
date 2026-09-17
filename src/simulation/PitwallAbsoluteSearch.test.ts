@@ -8,24 +8,39 @@ import { installReferenceLineCalibration } from './ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 
 const CENTRAL_SPEED_LIFT = 4.0;
-const PREDICTION_SCALE = 0.05;
-const FINAL_ENTRY_LINE_SHIFTS = [-0.45, -0.40, -0.35, -0.30, -0.25] as const;
-const LOOK_AHEAD_SCALES = [0.98, 1.0, 1.02] as const;
+const FINAL_ENTRY_LINE_SHIFT = -0.3;
+const PREDICTION_SCALE = 0.10;
+const CENTERS = [0.875, 0.905, 0.925, 0.945] as const;
+const DELTAS = [0.5, 1.0, 1.5] as const;
 
 describe('Pitwall absolute profile search probe', () => {
-  it('repairs the faster predictive-steering boundary with coupled line and look-ahead changes', () => {
+  it('isolates final-complex speed headroom with local absolute-speed windows', () => {
     installReferenceLineCalibration();
     const reference = OPTIMIZED_REFERENCE_LANES['pitwall-gp'];
-    const profile = materializePitwallAbsoluteProfile({ centralSpeedLift: CENTRAL_SPEED_LIFT });
+    const seed = createPitwallJointSeed();
+    seed.lineDeltas[6] += FINAL_ENTRY_LINE_SHIFT;
+    const lanes = materializePitwallJointLine(reference, seed);
 
-    const results = FINAL_ENTRY_LINE_SHIFTS.flatMap((lineShift) => LOOK_AHEAD_SCALES.map((lookAheadScale) => {
-      const genome = createPitwallJointSeed();
-      genome.lineDeltas[6] += lineShift;
-      const lanes = materializePitwallJointLine(reference, genome);
+    const cases: Array<{ label: string; center?: number; delta?: number }> = [
+      { label: 'baseline' },
+      ...CENTERS.flatMap((center) => DELTAS.map((delta) => ({
+        label: `p${center}+${delta}`,
+        center,
+        delta,
+      }))),
+    ];
+
+    const results = cases.map(({ label, center, delta }) => {
+      const profile = materializePitwallAbsoluteProfile({
+        centralSpeedLift: CENTRAL_SPEED_LIFT,
+        speedWindows: center === undefined || delta === undefined
+          ? []
+          : [{ center, halfWidth: 0.018, delta }],
+      });
       const pilot = new PitwallAbsolutePilot(lanes, {
         profile,
         predictionScale: PREDICTION_SCALE,
-        lookAheadScale,
+        lookAheadScale: 1,
       });
       const result = evaluateMachineFlyingLap({
         trackId: 'pitwall-gp',
@@ -34,13 +49,13 @@ describe('Pitwall absolute profile search probe', () => {
         tireWear: 0,
         tyreSlideSeed: 0.37,
       });
-      return { lineShift, lookAheadScale, result };
-    }));
+      return { label, center, delta, result };
+    });
 
-    console.log('PITWALL_ABSOLUTE_BOUNDARY_REPAIR', JSON.stringify(results.map(({ lineShift, lookAheadScale, result }) => ({
-      predictionScale: PREDICTION_SCALE,
-      lineShift,
-      lookAheadScale,
+    console.log('PITWALL_ABSOLUTE_LOCAL_SPEED_SWEEP', JSON.stringify(results.map(({ label, center, delta, result }) => ({
+      label,
+      center: center ?? null,
+      delta: delta ?? 0,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       maxLaneProgress: Number(result.maxLaneProgress.toFixed(4)),
