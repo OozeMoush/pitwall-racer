@@ -50,6 +50,9 @@ if (incumbent.result.status !== 'COMPLETED') {
 let sigma = options.sigma;
 let stagnantGenerations = 0;
 const random = mulberry32(options.seed);
+let coordinateOrder = shuffledIndices(residualTemplate.parameters.length, random);
+let coordinateCursor = 0;
+let coordinateCycle = 1;
 
 await mkdir(dirname(options.output), { recursive: true });
 await saveCandidate(options.output, incumbent, 0, sigma);
@@ -58,20 +61,26 @@ console.log('SPARSE_RESIDUAL_SEARCH_START', JSON.stringify({
   ...summary(incumbent, 0, sigma),
   parameterCount: incumbent.parameters.length,
   activeParametersPerDirection: 1,
-  algorithm: 'sparse-antithetic-trust-region',
+  algorithm: 'coordinate-cycle-antithetic-trust-region',
+  coordinateCycle,
 }));
 
 for (let generation = 1; generation <= options.generations; generation++) {
   const candidates: PerturbedCandidate[] = [];
   const pairCount = options.population / 2;
 
-  // Each antithetic pair changes exactly one local actuator knot. Previous
-  // versions perturbed every policy/residual parameter at once; at the physical
-  // limit that changed the whole lap and made almost every rollout invalid.
+  // Each antithetic pair changes exactly one local actuator knot. Coordinates
+  // are visited without replacement so a long run covers all 32 x 3 controls
+  // before spending budget on repeats. The order is reshuffled between cycles.
   for (let pair = 0; pair < pairCount; pair++) {
-    const knot = Math.floor(random() * PITWALL_RESIDUAL_KNOTS);
-    const channel = Math.floor(random() * PITWALL_RESIDUAL_CHANNELS);
-    const parameterIndex = knot * PITWALL_RESIDUAL_CHANNELS + channel;
+    if (coordinateCursor >= coordinateOrder.length) {
+      coordinateOrder = shuffledIndices(residualTemplate.parameters.length, random);
+      coordinateCursor = 0;
+      coordinateCycle += 1;
+    }
+    const parameterIndex = coordinateOrder[coordinateCursor++];
+    const knot = Math.floor(parameterIndex / PITWALL_RESIDUAL_CHANNELS);
+    const channel = parameterIndex % PITWALL_RESIDUAL_CHANNELS;
     const magnitude = clamp(Math.abs(normal(random)), 0.35, 1.75);
 
     for (const sign of [1, -1] as const) {
@@ -134,6 +143,8 @@ for (let generation = 1; generation <= options.generations; generation++) {
     improved,
     completedFraction: Number(completedFraction.toFixed(3)),
     populationStatuses: statuses,
+    coordinateCycle,
+    coordinatesVisitedInCycle: coordinateCursor,
     populationBest: {
       ...compactResult(populationBest.result),
       knot: populationBest.knot,
@@ -175,7 +186,7 @@ async function saveCandidate(
     generation,
     sigma: currentSigma,
     result: compactResult(candidate.result),
-    algorithm: 'sparse-antithetic-trust-region',
+    algorithm: 'coordinate-cycle-antithetic-trust-region',
     humanTelemetryUsed: false,
   }, null, 2)}\n`, 'utf8');
 }
@@ -197,6 +208,15 @@ function summary(candidate: Candidate, generation: number, currentSigma: number)
     sigma: Number(currentSigma.toFixed(6)),
     ...compactResult(candidate.result),
   };
+}
+
+function shuffledIndices(length: number, random: () => number): number[] {
+  const values = Array.from({ length }, (_, index) => index);
+  for (let index = values.length - 1; index > 0; index--) {
+    const swap = Math.floor(random() * (index + 1));
+    [values[index], values[swap]] = [values[swap], values[index]];
+  }
+  return values;
 }
 
 function channelName(channel: number): string {
