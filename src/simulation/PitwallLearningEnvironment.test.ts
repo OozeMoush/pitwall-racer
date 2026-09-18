@@ -1,4 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
+import { MACHINE_PHYSICS_DT } from './MachineCarIntegrator';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   evaluatePitwallLearningPolicy,
@@ -26,6 +27,9 @@ describe('Pitwall learning environment', () => {
       status: result.status,
       invalidReason: result.invalidReason ?? null,
       seconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
+      preciseSeconds: result.preciseLapSeconds === undefined
+        ? null
+        : Number(result.preciseLapSeconds.toFixed(6)),
       forwardProgressMetres: Number(result.forwardProgressMetres.toFixed(1)),
       maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
       peakSlideSeverity: Number(result.peakSlideSeverity.toFixed(3)),
@@ -36,6 +40,9 @@ describe('Pitwall learning environment', () => {
     expect(result.invalidReason).toBeUndefined();
     expect(result.lapSeconds).toBeDefined();
     expect(result.lapSeconds!).toBeLessThan(25.7);
+    expect(result.preciseLapSeconds).toBeDefined();
+    expect(Math.abs(result.preciseLapSeconds! - result.lapSeconds!))
+      .toBeLessThan(MACHINE_PHYSICS_DT);
     expect(result.trace.length).toBeGreaterThan(2500);
   }, 15_000);
 
@@ -55,6 +62,21 @@ describe('Pitwall learning environment', () => {
     expect(result.lapSeconds!).toBeLessThanOrEqual(25.46);
     expect(result.maxLaneDistance).toBeLessThan(16);
   }, 15_000);
+
+  it('uses sub-tick time to break completed-lap ties without changing validity tiers', () => {
+    const base = {
+      status: 'COMPLETED' as const,
+      elapsedSeconds: 30,
+      forwardProgressMetres: 4000,
+      maxLaneDistance: 18,
+      peakSlideSeverity: 0,
+      trace: [],
+      lapSeconds: 25.45,
+    };
+    const fasterWithinTick = { ...base, preciseLapSeconds: 25.443 };
+    const slowerWithinTick = { ...base, preciseLapSeconds: 25.448 };
+    expect(comparePitwallLearningResults(fasterWithinTick, slowerWithinTick)).toBeLessThan(0);
+  });
 
   it('orders completed laps by time rather than an off-track penalty score', () => {
     const base = {
