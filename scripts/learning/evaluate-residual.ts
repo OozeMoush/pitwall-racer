@@ -2,10 +2,7 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { evaluatePitwallLearningPolicy } from '../../src/simulation/PitwallLearningEnvironment';
-import {
-  PitwallNeuralPolicy,
-  type PitwallNeuralPolicyData,
-} from '../../src/simulation/PitwallNeuralPolicy';
+import { createPitwallMachineTeacherPolicy } from '../../src/simulation/PitwallMachineTeacherPolicy';
 import {
   applyPitwallResidual,
   validatePitwallResidualPolicyData,
@@ -14,25 +11,26 @@ import {
 
 await RAPIER.init();
 
-const basePath = resolve(process.argv[2] ?? 'artifacts/pitwall-learning/policy-teacher.json');
-const residualPath = resolve(process.argv[3] ?? 'artifacts/pitwall-learning/policy-residual.json');
-
-const baseData = JSON.parse(await readFile(basePath, 'utf8')) as PitwallNeuralPolicyData;
-const residualData = JSON.parse(await readFile(residualPath, 'utf8')) as PitwallResidualPolicyData;
+const residualPath = resolve(
+  process.argv[2] ?? 'artifacts/pitwall-learning/policy-residual.json',
+);
+const residualData = JSON.parse(
+  await readFile(residualPath, 'utf8'),
+) as PitwallResidualPolicyData;
 validatePitwallResidualPolicyData(residualData);
 
-const basePolicy = new PitwallNeuralPolicy(baseData);
+const basePolicy = createPitwallMachineTeacherPolicy();
 const result = evaluatePitwallLearningPolicy(
-  ({ observation, projection }) => applyPitwallResidual(
-    basePolicy.act(observation),
-    projection.progress,
+  (context) => applyPitwallResidual(
+    basePolicy(context),
+    context.projection.progress,
     residualData,
   ),
   { captureFlyingLap: false },
 );
 
 console.log(JSON.stringify({
-  basePolicy: basePath,
+  basePolicy: 'machine-only-pitwall-absolute-seed',
   residualPolicy: residualPath,
   status: result.status,
   invalidReason: result.invalidReason ?? null,
