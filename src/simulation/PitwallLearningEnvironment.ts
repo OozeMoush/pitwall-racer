@@ -69,7 +69,14 @@ export interface PitwallLearningTraceSample {
 export interface PitwallLearningEpisodeResult {
   status: PitwallLearningStatus;
   invalidReason?: PitwallLearningInvalidReason;
+  /** Game-equivalent 120 Hz flying-lap time. */
   lapSeconds?: number;
+  /**
+   * Sub-tick start-line interpolation used only to rank physically identical
+   * 120 Hz rollouts more finely during optimization. Physics still steps at
+   * 120 Hz and lapSeconds remains the authoritative game-equivalent result.
+   */
+  preciseLapSeconds?: number;
   elapsedSeconds: number;
   forwardProgressMetres: number;
   maxLaneDistance: number;
@@ -114,7 +121,9 @@ export function evaluatePitwallLearningPolicy(
     let previousProgress = projection.progress;
     let completedLaps = 0;
     let firstCrossing: number | undefined;
+    let firstPreciseCrossing: number | undefined;
     let flyingLap: number | undefined;
+    let preciseFlyingLap: number | undefined;
     let maxLaneDistance = projection.distance;
     let peakSlideSeverity = 0;
     let netProgress = 0;
@@ -206,10 +215,16 @@ export function evaluatePitwallLearningPolicy(
       if (crossedStart) {
         completedLaps += 1;
         const crossing = (ticks + 1) * MACHINE_PHYSICS_DT;
+        const crossingFraction = startCrossingFraction(previousProgress, delta);
+        const preciseCrossing = (ticks + crossingFraction) * MACHINE_PHYSICS_DT;
         if (firstCrossing === undefined) {
           firstCrossing = crossing;
+          firstPreciseCrossing = preciseCrossing;
         } else {
           flyingLap = crossing - firstCrossing;
+          preciseFlyingLap = firstPreciseCrossing === undefined
+            ? flyingLap
+            : preciseCrossing - firstPreciseCrossing;
           projection = nextProjection;
           ticks += 1;
           break;
@@ -229,6 +244,7 @@ export function evaluatePitwallLearningPolicy(
           : 'INCOMPLETE',
       invalidReason,
       lapSeconds: flyingLap,
+      preciseLapSeconds: preciseFlyingLap,
       elapsedSeconds,
       forwardProgressMetres: Math.max(0, bestProgress * TRACK_LENGTH),
       maxLaneDistance,
@@ -291,7 +307,9 @@ export function comparePitwallLearningResults(
   const tierDelta = tier(b) - tier(a);
   if (tierDelta !== 0) return tierDelta;
   if (a.status === 'COMPLETED' && b.status === 'COMPLETED') {
-    return (a.lapSeconds ?? Infinity) - (b.lapSeconds ?? Infinity);
+    const aTime = a.preciseLapSeconds ?? a.lapSeconds ?? Infinity;
+    const bTime = b.preciseLapSeconds ?? b.lapSeconds ?? Infinity;
+    return aTime - bTime;
   }
   return b.forwardProgressMetres - a.forwardProgressMetres;
 }
@@ -300,6 +318,11 @@ function aheadTurn(progress: number, metres: number): number {
   const here = sampleTrack(progress, 0);
   const ahead = sampleTrack(progress + metres / Math.max(1, TRACK_LENGTH), 0);
   return clamp(wrapAngle(ahead.heading - here.heading) / (Math.PI / 2), -1, 1);
+}
+
+function startCrossingFraction(previousProgress: number, signedDelta: number): number {
+  if (!(signedDelta > 0)) return 1;
+  return clamp((1 - previousProgress) / signedDelta, 0, 1);
 }
 
 function signedProgressDelta(previous: number, next: number): number {
