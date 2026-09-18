@@ -3,8 +3,8 @@ set -euo pipefail
 
 GENERATIONS="${GENERATIONS:-80}"
 POPULATION="${POPULATION:-24}"
-SIGMA="${SIGMA:-0.018}"
-EVOLUTION_LR="${EVOLUTION_LR:-0.006}"
+SIGMA="${SIGMA:-0.003}"
+EVOLUTION_LR="${EVOLUTION_LR:-0.00075}"
 SIGMA_DECAY="${SIGMA_DECAY:-0.995}"
 TRAIN_DEVICE="${TRAIN_DEVICE:-cuda}"
 
@@ -23,10 +23,11 @@ uv run tools/learning/train_teacher.py \
 
 echo "[3/5] Verify cloned policy in authoritative Rapier environment"
 if ! npm run learn:evaluate -- "$CLONE"; then
-  echo "Clone did not complete a valid lap. Rank evolution can still use progress curriculum, but this usually means BC needs improvement." >&2
+  echo "Clone did not complete a valid lap. Evolution requires a valid seed; stopping." >&2
+  exit 1
 fi
 
-echo "[4/5] Rank-based neuroevolution directly in Rapier"
+echo "[4/5] Safe rank-based neuroevolution directly in Rapier"
 npm run learn:evolve -- \
   --input "$CLONE" \
   --output "$EVOLVED" \
