@@ -2,6 +2,7 @@ import type { VehicleState } from './VehicleModel';
 import { MACHINE_PHYSICS_DT } from './MachineCarIntegrator';
 import {
   RapierRacePhysics,
+  CAR_COLLIDER_HALF_LENGTH,
   CAR_COLLIDER_HALF_WIDTH,
   type PlanarVelocity,
 } from './RapierRacePhysics';
@@ -26,7 +27,6 @@ const POWER_BOOST = 0.22;
 const GRIP = compoundPeakGrip('SOFT', 'PUSH');
 const START_PROGRESS = 0.08;
 const START_SPEED = 52;
-const FULL_CAR_OFFROAD_DISTANCE = TRACK_ROAD_HALF_WIDTH + CAR_COLLIDER_HALF_WIDTH;
 const MAX_PLAUSIBLE_PROGRESS_STEP = 0.010;
 const MAX_REVERSE_PROGRESS = 0.025;
 const LOOKAHEAD_METRES = [12, 25, 45, 70, 100] as const;
@@ -191,7 +191,11 @@ export function evaluatePitwallLearningPolicy(
       const nextProjection = projectTrackNear(next.x, next.y, previousProgress);
       maxLaneDistance = Math.max(maxLaneDistance, nextProjection.distance);
 
-      if (nextProjection.distance > FULL_CAR_OFFROAD_DISTANCE) {
+      const nextHeadingError = wrapAngle(next.heading - nextProjection.heading);
+      const lateralSupportRadius =
+        Math.abs(Math.sin(nextHeadingError)) * CAR_COLLIDER_HALF_LENGTH
+        + Math.abs(Math.cos(nextHeadingError)) * CAR_COLLIDER_HALF_WIDTH;
+      if (nextProjection.distance > TRACK_ROAD_HALF_WIDTH + lateralSupportRadius) {
         invalidReason = 'FULL_CAR_OFFROAD';
         projection = nextProjection;
         break;
@@ -307,9 +311,13 @@ export function comparePitwallLearningResults(
   const tierDelta = tier(b) - tier(a);
   if (tierDelta !== 0) return tierDelta;
   if (a.status === 'COMPLETED' && b.status === 'COMPLETED') {
-    const aTime = a.preciseLapSeconds ?? a.lapSeconds ?? Infinity;
-    const bTime = b.preciseLapSeconds ?? b.lapSeconds ?? Infinity;
-    return aTime - bTime;
+    // The actual 120 Hz game-equivalent result is authoritative. Sub-tick
+    // interpolation is only a tie-breaker inside the same game-time bucket.
+    const gameDelta = (a.lapSeconds ?? Infinity) - (b.lapSeconds ?? Infinity);
+    if (gameDelta !== 0) return gameDelta;
+    const aPrecise = a.preciseLapSeconds ?? a.lapSeconds ?? Infinity;
+    const bPrecise = b.preciseLapSeconds ?? b.lapSeconds ?? Infinity;
+    return aPrecise - bPrecise;
   }
   return b.forwardProgressMetres - a.forwardProgressMetres;
 }
