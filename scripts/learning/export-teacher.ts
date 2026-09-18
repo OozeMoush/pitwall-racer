@@ -1,45 +1,18 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, extname, resolve } from 'node:path';
-import {
-  createPitwallAbsolutePilot,
-  createPitwallAbsoluteSeed,
-} from '../../src/simulation/PitwallAbsoluteOptimizer';
 import { evaluatePitwallLearningPolicy } from '../../src/simulation/PitwallLearningEnvironment';
-import { installReferenceLineCalibration } from '../../src/simulation/ReferenceLineCalibration';
-import { OPTIMIZED_REFERENCE_LANES } from '../../src/simulation/ReferenceTrajectoryData';
+import { createPitwallMachineTeacherPolicy } from '../../src/simulation/PitwallMachineTeacherPolicy';
 
 await RAPIER.init();
-installReferenceLineCalibration();
 
 const output = resolve(process.argv[2] ?? 'artifacts/pitwall-learning/teacher.jsonl');
 await mkdir(dirname(output), { recursive: true });
 
-const teacher = createPitwallAbsolutePilot(
-  OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-  createPitwallAbsoluteSeed(),
+const result = evaluatePitwallLearningPolicy(
+  createPitwallMachineTeacherPolicy(),
+  { captureFlyingLap: true },
 );
-const result = evaluatePitwallLearningPolicy((context) => {
-  const speed = context.state.speed;
-  const control = teacher.control({
-    state: {
-      x: context.state.x,
-      y: context.state.y,
-      heading: context.state.heading,
-      vx: Math.cos(context.state.heading) * speed,
-      vy: Math.sin(context.state.heading) * speed,
-      yawRate: context.state.yawRate,
-    },
-    projection: context.projection,
-    elapsedSeconds: context.elapsedSeconds,
-    completedLaps: context.completedLaps,
-  });
-  return {
-    steer: control.steer,
-    throttle: control.throttle,
-    brake: control.brake,
-  };
-}, { captureFlyingLap: true });
 
 if (result.status !== 'COMPLETED' || result.lapSeconds === undefined) {
   throw new Error(`Teacher rollout failed: ${result.status} ${result.invalidReason ?? ''}`);
