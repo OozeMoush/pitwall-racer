@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #   "torch>=2.4,<3",
+#   "numpy>=2,<3",
 # ]
 # ///
 """Behavior-clone the current machine-only Pitwall teacher into a tiny MLP.
