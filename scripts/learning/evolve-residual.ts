@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   comparePitwallLearningResults,
@@ -13,9 +13,12 @@ import {
   PITWALL_RESIDUAL_CHANNELS,
   PITWALL_RESIDUAL_KNOTS,
   residualDataWithParameters,
+  validatePitwallResidualPolicyData,
+  type PitwallResidualPolicyData,
 } from '../../src/simulation/PitwallResidualPolicy';
 
 interface SearchOptions {
+  input?: string;
   output: string;
   generations: number;
   population: number;
@@ -39,7 +42,9 @@ const options = parseOptions(process.argv.slice(2));
 await RAPIER.init();
 
 const basePolicy = createPitwallMachineTeacherPolicy();
-const residualTemplate = createPitwallResidualPolicyData();
+const residualTemplate = options.input
+  ? await loadResidual(options.input)
+  : createPitwallResidualPolicyData();
 let incumbent = evaluate(residualTemplate.parameters);
 if (incumbent.result.status !== 'COMPLETED') {
   throw new Error(
@@ -63,6 +68,7 @@ console.log('SPARSE_RESIDUAL_SEARCH_START', JSON.stringify({
   activeParametersPerDirection: 1,
   algorithm: 'coordinate-cycle-antithetic-trust-region',
   coordinateCycle,
+  resumedFrom: options.input ?? null,
 }));
 
 for (let generation = 1; generation <= options.generations; generation++) {
@@ -183,6 +189,7 @@ async function saveCandidate(
   const meta = output.endsWith('.json') ? output.slice(0, -5) + '.meta.json' : `${output}.meta.json`;
   await writeFile(meta, `${JSON.stringify({
     basePolicy: 'machine-only-pitwall-absolute-seed',
+    resumedFrom: options.input ?? null,
     generation,
     sigma: currentSigma,
     result: compactResult(candidate.result),
@@ -237,6 +244,8 @@ function parseOptions(args: string[]): SearchOptions {
     else values.set(key, 'true');
   }
 
+  const inputRaw = values.get('--input');
+  const input = inputRaw ? resolve(inputRaw) : undefined;
   const output = resolve(values.get('--output') ?? 'artifacts/pitwall-learning/policy-residual.json');
   const generations = positiveInteger(values.get('--generations'), 80);
   const requestedPopulation = Math.max(6, positiveInteger(values.get('--population'), 24));
@@ -244,7 +253,13 @@ function parseOptions(args: string[]): SearchOptions {
   const sigma = positiveNumber(values.get('--sigma'), 0.08);
   const sigmaDecay = clamp(positiveNumber(values.get('--sigma-decay'), 0.995), 0.90, 1);
   const seed = positiveInteger(values.get('--seed'), 56062);
-  return { output, generations, population, sigma, sigmaDecay, seed };
+  return { input, output, generations, population, sigma, sigmaDecay, seed };
+}
+
+async function loadResidual(path: string): Promise<PitwallResidualPolicyData> {
+  const data = JSON.parse(await readFile(path, 'utf8')) as PitwallResidualPolicyData;
+  validatePitwallResidualPolicyData(data);
+  return data;
 }
 
 function positiveInteger(raw: string | undefined, fallback: number): number {
