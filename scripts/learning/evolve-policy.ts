@@ -10,6 +10,7 @@ import {
   adamAscent,
   centeredRankUtilities,
   createAdamAscentState,
+  type AdamAscentState,
 } from '../../src/simulation/PitwallEvolutionStrategy';
 import {
   PitwallNeuralPolicy,
@@ -44,6 +45,12 @@ const inputData = JSON.parse(await readFile(options.input, 'utf8')) as PitwallNe
 const policyTemplate = new PitwallNeuralPolicy(inputData);
 let meanParameters = policyTemplate.parameters();
 let best = evaluate(meanParameters);
+if (best.result.status !== 'COMPLETED') {
+  throw new Error(
+    `Evolution seed must complete a valid lap; got ${best.result.status} ${best.result.invalidReason ?? ''}`,
+  );
+}
+
 let sigma = options.sigma;
 let adamState = createAdamAscentState(meanParameters.length);
 let stagnantGenerations = 0;
@@ -52,7 +59,7 @@ const random = mulberry32(options.seed);
 await mkdir(dirname(options.output), { recursive: true });
 await saveCandidate(options.output, best, {
   generation: 0,
-  algorithm: 'rank-es-adam',
+  algorithm: 'safe-rank-es-adam',
   sigma,
   options,
 });
@@ -60,15 +67,15 @@ await saveCandidate(options.output, best, {
 console.log('LEARNING_EVOLUTION_START', JSON.stringify({
   ...summary(best, 0, sigma),
   parameterCount: meanParameters.length,
-  algorithm: 'rank-es-adam',
+  algorithm: 'safe-rank-es-adam',
 }));
 
 for (let generation = 1; generation <= options.generations; generation++) {
   const candidates: PerturbedCandidate[] = [];
   const pairCount = options.population / 2;
 
-  // Antithetic perturbations reduce variance: each random direction is tested
-  // both positively and negatively through the exact same Rapier environment.
+  // Always perturb a physically verified center. Antithetic pairs reduce
+  // estimator variance and make the local stability boundary visible.
   for (let pair = 0; pair < pairCount; pair++) {
     const direction = meanParameters.map(() => normal(random));
     for (const sign of [1, -1] as const) {
@@ -80,68 +87,116 @@ for (let generation = 1; generation <= options.generations; generation++) {
     }
   }
 
-  // Utilities depend only on lexicographic ordering. No numeric penalty says
-  // how many seconds grass, runoff, or invalidity is "worth". Completed valid
-  // laps dominate, then lap time; curriculum progress only orders lower tiers.
-  const utilities = centeredRankUtilities(
-    candidates,
-    (a, b) => comparePitwallLearningResults(a.result, b.result),
-  );
-  const gradient = new Array<number>(meanParameters.length).fill(0);
-  for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
-    const utility = utilities[candidateIndex];
-    const noise = candidates[candidateIndex].noise;
-    for (let parameterIndex = 0; parameterIndex < gradient.length; parameterIndex++) {
-      gradient[parameterIndex] += utility * noise[parameterIndex];
-    }
-  }
-  const scale = 1 / Math.max(1e-9, candidates.length * sigma);
-  for (let index = 0; index < gradient.length; index++) gradient[index] *= scale;
-
-  meanParameters = adamAscent(
-    meanParameters,
-    gradient,
-    adamState,
-    options.learningRate,
-  );
-  const center = evaluate(meanParameters);
-
   const ranked = [...candidates].sort(
     (a, b) => comparePitwallLearningResults(a.result, b.result),
   );
   const populationBest = ranked[0];
-  let improved = false;
-  for (const challenger of [populationBest, center]) {
-    if (comparePitwallLearningResults(challenger.result, best.result) < 0) {
-      best = {
-        parameters: [...challenger.parameters],
-        result: challenger.result,
-      };
-      improved = true;
-    }
-  }
+  const completedCount = candidates.filter(
+    (candidate) => candidate.result.status === 'COMPLETED',
+  ).length;
+  const completedFraction = completedCount / candidates.length;
 
-  if (improved) {
+  let improved = false;
+  if (populationBest.result.status === 'COMPLETED'
+    && comparePitwallLearningResults(populationBest.result, best.result) < 0) {
+    best = {
+      parameters: [...populationBest.parameters],
+      result: populationBest.result,
+    };
+    meanParameters = [...best.parameters];
+    adamState = createAdamAscentState(meanParameters.length);
     stagnantGenerations = 0;
+    improved = true;
     await saveCandidate(options.output, best, {
       generation,
-      algorithm: 'rank-es-adam',
+      algorithm: 'safe-rank-es-adam',
       sigma,
       options,
     });
-  } else {
-    stagnantGenerations += 1;
   }
 
-  sigma = Math.max(0.0015, sigma * options.sigmaDecay);
+  let center: Candidate = evaluate(meanParameters);
+  let updateAccepted = false;
+  let gradientNorm = 0;
 
-  // If the rank-gradient walks into a brittle basin, return the search mean to
-  // the best physically verified policy without changing that best checkpoint.
-  // This is a search-stability mechanism, not a driving reward.
-  if (stagnantGenerations >= 15) {
+  // Do not infer a high-dimensional gradient from a population that mostly
+  // fell off the valid manifold. In that regime the useful signal is simply
+  // "search closer to the verified policy", so shrink sigma and retry.
+  const enoughCompleted = completedCount >= Math.max(2, Math.ceil(candidates.length * 0.5));
+  if (!improved && enoughCompleted) {
+    const utilities = centeredRankUtilities(
+      candidates,
+      (a, b) => comparePitwallLearningResults(a.result, b.result),
+    );
+    const gradient = new Array<number>(meanParameters.length).fill(0);
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+      const utility = utilities[candidateIndex];
+      const noise = candidates[candidateIndex].noise;
+      for (let parameterIndex = 0; parameterIndex < gradient.length; parameterIndex++) {
+        gradient[parameterIndex] += utility * noise[parameterIndex];
+      }
+    }
+    const scale = 1 / Math.max(1e-9, candidates.length * sigma);
+    for (let index = 0; index < gradient.length; index++) gradient[index] *= scale;
+    gradientNorm = Math.sqrt(gradient.reduce((sum, value) => sum + value * value, 0));
+
+    // Adam mutates its moment state in-place. Propose on a copy so an invalid
+    // center does not contaminate the optimizer state or the next generation.
+    const proposedAdam = cloneAdamState(adamState);
+    const proposedParameters = adamAscent(
+      meanParameters,
+      gradient,
+      proposedAdam,
+      options.learningRate,
+    );
+    const proposedCenter = evaluate(proposedParameters);
+
+    if (proposedCenter.result.status === 'COMPLETED') {
+      meanParameters = proposedParameters;
+      adamState = proposedAdam;
+      center = proposedCenter;
+      updateAccepted = true;
+
+      if (comparePitwallLearningResults(center.result, best.result) < 0) {
+        best = {
+          parameters: [...center.parameters],
+          result: center.result,
+        };
+        stagnantGenerations = 0;
+        improved = true;
+        await saveCandidate(options.output, best, {
+          generation,
+          algorithm: 'safe-rank-es-adam',
+          sigma,
+          options,
+        });
+      }
+    } else {
+      // Stay on the last verified center. The rejected Adam state is discarded.
+      center = evaluate(meanParameters);
+    }
+  }
+
+  if (!improved) stagnantGenerations += 1;
+
+  // Adapt the search radius from actual closed-loop validity rather than from
+  // an arbitrary off-track reward. A brittle population contracts quickly;
+  // a mostly-valid population can explore slightly farther.
+  if (completedFraction < 0.25) {
+    sigma *= 0.50;
+  } else if (completedFraction < 0.50) {
+    sigma *= 0.70;
+  } else if (completedFraction > 0.85 && updateAccepted) {
+    sigma *= 1.01;
+  } else {
+    sigma *= options.sigmaDecay;
+  }
+  sigma = clamp(sigma, 0.00025, 0.02);
+
+  // Periodically pull the search center back to the best verified policy.
+  if (stagnantGenerations >= 10) {
     meanParameters = [...best.parameters];
     adamState = createAdamAscentState(meanParameters.length);
-    sigma = Math.max(sigma, options.sigma * 0.55);
     stagnantGenerations = 0;
   }
 
@@ -149,11 +204,12 @@ for (let generation = 1; generation <= options.generations; generation++) {
     counts[candidate.result.status] = (counts[candidate.result.status] ?? 0) + 1;
     return counts;
   }, {} as Record<string, number>);
-  const gradientNorm = Math.sqrt(gradient.reduce((sum, value) => sum + value * value, 0));
 
   console.log('LEARNING_EVOLUTION_GENERATION', JSON.stringify({
     ...summary(best, generation, sigma),
     improved,
+    updateAccepted,
+    completedFraction: Number(completedFraction.toFixed(3)),
     gradientNorm: Number(gradientNorm.toFixed(6)),
     populationStatuses: statuses,
     populationBest: compactResult(populationBest.result),
@@ -209,6 +265,14 @@ function summary(candidate: Candidate, generation: number, currentSigma: number)
   };
 }
 
+function cloneAdamState(state: AdamAscentState): AdamAscentState {
+  return {
+    firstMoment: [...state.firstMoment],
+    secondMoment: [...state.secondMoment],
+    step: state.step,
+  };
+}
+
 function parseOptions(args: string[]): EvolutionOptions {
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
@@ -225,8 +289,8 @@ function parseOptions(args: string[]): EvolutionOptions {
   const generations = positiveInteger(values.get('--generations'), 80);
   const requestedPopulation = Math.max(4, positiveInteger(values.get('--population'), 24));
   const population = requestedPopulation % 2 === 0 ? requestedPopulation : requestedPopulation + 1;
-  const sigma = positiveNumber(values.get('--sigma'), 0.018);
-  const learningRate = positiveNumber(values.get('--learning-rate'), 0.006);
+  const sigma = positiveNumber(values.get('--sigma'), 0.003);
+  const learningRate = positiveNumber(values.get('--learning-rate'), 0.00075);
   const sigmaDecay = clamp(positiveNumber(values.get('--sigma-decay'), 0.995), 0.90, 1);
   const seed = positiveInteger(values.get('--seed'), 56062);
   return { input, output, generations, population, sigma, learningRate, sigmaDecay, seed };
