@@ -4,12 +4,11 @@ import {
   evaluatePitwallLearningPolicy,
   comparePitwallLearningResults,
 } from './PitwallLearningEnvironment';
+import { createPitwallMachineTeacherPolicy } from './PitwallMachineTeacherPolicy';
 import {
-  createPitwallAbsolutePilot,
-  createPitwallAbsoluteSeed,
-} from './PitwallAbsoluteOptimizer';
-import { installReferenceLineCalibration } from './ReferenceLineCalibration';
-import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
+  applyPitwallResidual,
+  createPitwallResidualPolicyData,
+} from './PitwallResidualPolicy';
 
 describe('Pitwall learning environment', () => {
   beforeAll(async () => {
@@ -17,33 +16,11 @@ describe('Pitwall learning environment', () => {
   });
 
   it('replays the current machine-only teacher as a valid flying lap without off-track reward shaping', () => {
-    installReferenceLineCalibration();
-    const teacher = createPitwallAbsolutePilot(
-      OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-      createPitwallAbsoluteSeed(),
+    const teacher = createPitwallMachineTeacherPolicy();
+    const result = evaluatePitwallLearningPolicy(
+      teacher,
+      { captureFlyingLap: true },
     );
-
-    const result = evaluatePitwallLearningPolicy((context) => {
-      const speed = context.state.speed;
-      const control = teacher.control({
-        state: {
-          x: context.state.x,
-          y: context.state.y,
-          heading: context.state.heading,
-          vx: Math.cos(context.state.heading) * speed,
-          vy: Math.sin(context.state.heading) * speed,
-          yawRate: context.state.yawRate,
-        },
-        projection: context.projection,
-        elapsedSeconds: context.elapsedSeconds,
-        completedLaps: context.completedLaps,
-      });
-      return {
-        steer: control.steer,
-        throttle: control.throttle,
-        brake: control.brake,
-      };
-    }, { captureFlyingLap: true });
 
     console.log('PITWALL_LEARNING_TEACHER', JSON.stringify({
       status: result.status,
@@ -60,6 +37,23 @@ describe('Pitwall learning environment', () => {
     expect(result.lapSeconds).toBeDefined();
     expect(result.lapSeconds!).toBeLessThan(25.7);
     expect(result.trace.length).toBeGreaterThan(2500);
+  }, 15_000);
+
+  it('keeps a zero residual exactly on the verified teacher trajectory', () => {
+    const teacher = createPitwallMachineTeacherPolicy();
+    const residual = createPitwallResidualPolicyData();
+    const result = evaluatePitwallLearningPolicy(
+      (context) => applyPitwallResidual(
+        teacher(context),
+        context.projection.progress,
+        residual,
+      ),
+    );
+
+    expect(result.status).toBe('COMPLETED');
+    expect(result.lapSeconds).toBeDefined();
+    expect(result.lapSeconds!).toBeLessThanOrEqual(25.46);
+    expect(result.maxLaneDistance).toBeLessThan(16);
   }, 15_000);
 
   it('orders completed laps by time rather than an off-track penalty score', () => {
