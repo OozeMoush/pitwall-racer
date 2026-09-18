@@ -63,6 +63,28 @@ describe('Pitwall learning environment', () => {
     expect(result.maxLaneDistance).toBeLessThan(16);
   }, 15_000);
 
+  it('never lets a better sub-tick estimate override a worse game-time bucket', () => {
+    const base = {
+      status: 'COMPLETED' as const,
+      elapsedSeconds: 30,
+      forwardProgressMetres: 4000,
+      maxLaneDistance: 18,
+      peakSlideSeverity: 0,
+      trace: [],
+    };
+    const fasterGameLap = {
+      ...base,
+      lapSeconds: 25.425,
+      preciseLapSeconds: 25.4319,
+    };
+    const slowerGameLap = {
+      ...base,
+      lapSeconds: 25.433,
+      preciseLapSeconds: 25.4300,
+    };
+    expect(comparePitwallLearningResults(fasterGameLap, slowerGameLap)).toBeLessThan(0);
+  });
+
   it('uses sub-tick time to break completed-lap ties without changing validity tiers', () => {
     const base = {
       status: 'COMPLETED' as const,
