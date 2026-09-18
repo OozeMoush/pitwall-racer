@@ -35,6 +35,7 @@ await writeFile(metaPath, `${JSON.stringify({
   actionSpace: ['steer', 'throttle', 'brake'],
   samples: result.trace.length,
   lapSeconds: result.lapSeconds,
+  preciseLapSeconds: result.preciseLapSeconds,
   maxLaneDistance: result.maxLaneDistance,
   peakSlideSeverity: result.peakSlideSeverity,
   humanTelemetryUsed: false,
@@ -45,4 +46,7 @@ console.log(JSON.stringify({
   metaPath,
   samples: result.trace.length,
   lapSeconds: Number(result.lapSeconds.toFixed(3)),
+  preciseLapSeconds: result.preciseLapSeconds === undefined
+    ? null
+    : Number(result.preciseLapSeconds.toFixed(6)),
 }, null, 2));
