@@ -51,6 +51,9 @@ console.log(JSON.stringify({
   output,
   samples: result.trace.length,
   lapSeconds: Number(result.lapSeconds.toFixed(3)),
+  preciseLapSeconds: result.preciseLapSeconds === undefined
+    ? null
+    : Number(result.preciseLapSeconds.toFixed(6)),
   maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
   peakSlideSeverity: Number(result.peakSlideSeverity.toFixed(3)),
 }, null, 2));
