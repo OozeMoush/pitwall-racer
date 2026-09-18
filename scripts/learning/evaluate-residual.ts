@@ -35,6 +35,9 @@ console.log(JSON.stringify({
   status: result.status,
   invalidReason: result.invalidReason ?? null,
   lapSeconds: result.lapSeconds === undefined ? null : Number(result.lapSeconds.toFixed(3)),
+  preciseLapSeconds: result.preciseLapSeconds === undefined
+    ? null
+    : Number(result.preciseLapSeconds.toFixed(6)),
   forwardProgressMetres: Number(result.forwardProgressMetres.toFixed(1)),
   maxLaneDistance: Number(result.maxLaneDistance.toFixed(3)),
   peakSlideSeverity: Number(result.peakSlideSeverity.toFixed(3)),
