@@ -275,7 +275,7 @@ function parseOptions(args: string[]): EvolutionOptions {
   const input = resolve(values.get('--input') ?? 'artifacts/pitwall-learning/policy-teacher.json');
   const output = resolve(values.get('--output') ?? 'artifacts/pitwall-learning/policy-residual.json');
   const generations = positiveInteger(values.get('--generations'), 80);
-  const requestedPopulation = Math.max(8, positiveInteger(values.get('--population'), 24));
+  const requestedPopulation = Math.max(6, positiveInteger(values.get('--population'), 24));
   const population = requestedPopulation % 2 === 0 ? requestedPopulation : requestedPopulation + 1;
   const sigma = positiveNumber(values.get('--sigma'), 0.12);
   const learningRate = positiveNumber(values.get('--learning-rate'), 0.03);
