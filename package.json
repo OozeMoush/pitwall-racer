@@ -13,7 +13,8 @@
     "learn:evolve": "tsx scripts/learning/evolve-policy.ts",
     "learn:residual": "tsx scripts/learning/evolve-residual.ts",
     "learn:evaluate-residual": "tsx scripts/learning/evaluate-residual.ts",
-    "learn:local": "bash scripts/learning/run-local.sh"
+    "learn:local": "bash scripts/learning/run-local.sh",
+    "learn:export-residual": "tsx scripts/learning/export-residual-trace.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
