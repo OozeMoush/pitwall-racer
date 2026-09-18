@@ -11,6 +11,8 @@
     "learn:teacher": "tsx scripts/learning/export-teacher.ts",
     "learn:evaluate": "tsx scripts/learning/evaluate-policy.ts",
     "learn:evolve": "tsx scripts/learning/evolve-policy.ts",
+    "learn:residual": "tsx scripts/learning/evolve-residual.ts",
+    "learn:evaluate-residual": "tsx scripts/learning/evaluate-residual.ts",
     "learn:local": "bash scripts/learning/run-local.sh"
   },
   "dependencies": {
