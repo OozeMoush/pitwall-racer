@@ -1,35 +1,25 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   comparePitwallLearningResults,
   evaluatePitwallLearningPolicy,
   type PitwallLearningEpisodeResult,
 } from '../../src/simulation/PitwallLearningEnvironment';
-import {
-  adamAscent,
-  centeredRankUtilities,
-  createAdamAscentState,
-  type AdamAscentState,
-} from '../../src/simulation/PitwallEvolutionStrategy';
-import {
-  PitwallNeuralPolicy,
-  type PitwallNeuralPolicyData,
-} from '../../src/simulation/PitwallNeuralPolicy';
+import { createPitwallMachineTeacherPolicy } from '../../src/simulation/PitwallMachineTeacherPolicy';
 import {
   applyPitwallResidual,
   createPitwallResidualPolicyData,
+  PITWALL_RESIDUAL_CHANNELS,
+  PITWALL_RESIDUAL_KNOTS,
   residualDataWithParameters,
-  type PitwallResidualPolicyData,
 } from '../../src/simulation/PitwallResidualPolicy';
 
-interface EvolutionOptions {
-  input: string;
+interface SearchOptions {
   output: string;
   generations: number;
   population: number;
   sigma: number;
-  learningRate: number;
   sigmaDecay: number;
   seed: number;
 }
@@ -40,50 +30,59 @@ interface Candidate {
 }
 
 interface PerturbedCandidate extends Candidate {
-  noise: number[];
+  knot: number;
+  channel: number;
+  direction: number;
 }
 
 const options = parseOptions(process.argv.slice(2));
 await RAPIER.init();
 
-const baseData = JSON.parse(await readFile(options.input, 'utf8')) as PitwallNeuralPolicyData;
-const basePolicy = new PitwallNeuralPolicy(baseData);
+const basePolicy = createPitwallMachineTeacherPolicy();
 const residualTemplate = createPitwallResidualPolicyData();
-
-let meanParameters = [...residualTemplate.parameters];
-let best = evaluate(meanParameters);
-if (best.result.status !== 'COMPLETED') {
+let incumbent = evaluate(residualTemplate.parameters);
+if (incumbent.result.status !== 'COMPLETED') {
   throw new Error(
-    `Residual base policy must complete a valid lap; got ${best.result.status} ${best.result.invalidReason ?? ''}`,
+    `Machine teacher must complete a valid lap; got ${incumbent.result.status} ${incumbent.result.invalidReason ?? ''}`,
   );
 }
 
 let sigma = options.sigma;
-let adamState = createAdamAscentState(meanParameters.length);
 let stagnantGenerations = 0;
 const random = mulberry32(options.seed);
 
 await mkdir(dirname(options.output), { recursive: true });
-await saveCandidate(options.output, best, 0, sigma);
+await saveCandidate(options.output, incumbent, 0, sigma);
 
-console.log('RESIDUAL_EVOLUTION_START', JSON.stringify({
-  ...summary(best, 0, sigma),
-  parameterCount: meanParameters.length,
-  algorithm: 'bounded-residual-rank-es-adam',
+console.log('SPARSE_RESIDUAL_SEARCH_START', JSON.stringify({
+  ...summary(incumbent, 0, sigma),
+  parameterCount: incumbent.parameters.length,
+  activeParametersPerDirection: 1,
+  algorithm: 'sparse-antithetic-trust-region',
 }));
 
 for (let generation = 1; generation <= options.generations; generation++) {
   const candidates: PerturbedCandidate[] = [];
   const pairCount = options.population / 2;
 
+  // Each antithetic pair changes exactly one local actuator knot. Previous
+  // versions perturbed every policy/residual parameter at once; at the physical
+  // limit that changed the whole lap and made almost every rollout invalid.
   for (let pair = 0; pair < pairCount; pair++) {
-    const direction = meanParameters.map(() => normal(random));
+    const knot = Math.floor(random() * PITWALL_RESIDUAL_KNOTS);
+    const channel = Math.floor(random() * PITWALL_RESIDUAL_CHANNELS);
+    const parameterIndex = knot * PITWALL_RESIDUAL_CHANNELS + channel;
+    const magnitude = clamp(Math.abs(normal(random)), 0.35, 1.75);
+
     for (const sign of [1, -1] as const) {
-      const signedNoise = direction.map((value) => value * sign);
-      const parameters = meanParameters.map(
-        (value, index) => value + sigma * signedNoise[index],
-      );
-      candidates.push({ ...evaluate(parameters), noise: signedNoise });
+      const parameters = [...incumbent.parameters];
+      parameters[parameterIndex] += sign * sigma * magnitude;
+      candidates.push({
+        ...evaluate(parameters),
+        knot,
+        channel,
+        direction: sign * magnitude,
+      });
     }
   }
 
@@ -98,116 +97,63 @@ for (let generation = 1; generation <= options.generations; generation++) {
 
   let improved = false;
   if (populationBest.result.status === 'COMPLETED'
-    && comparePitwallLearningResults(populationBest.result, best.result) < 0) {
-    best = {
+    && comparePitwallLearningResults(populationBest.result, incumbent.result) < 0) {
+    incumbent = {
       parameters: [...populationBest.parameters],
       result: populationBest.result,
     };
-    meanParameters = [...best.parameters];
-    adamState = createAdamAscentState(meanParameters.length);
-    stagnantGenerations = 0;
     improved = true;
-    await saveCandidate(options.output, best, generation, sigma);
+    stagnantGenerations = 0;
+    await saveCandidate(options.output, incumbent, generation, sigma);
+  } else {
+    stagnantGenerations += 1;
   }
 
-  let center = evaluate(meanParameters);
-  let updateAccepted = false;
-  let gradientNorm = 0;
-
-  const enoughCompleted = completedCount >= Math.max(4, Math.ceil(candidates.length * 0.5));
-  if (!improved && enoughCompleted) {
-    const utilities = centeredRankUtilities(
-      candidates,
-      (a, b) => comparePitwallLearningResults(a.result, b.result),
-    );
-    const gradient = new Array<number>(meanParameters.length).fill(0);
-
-    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
-      const utility = utilities[candidateIndex];
-      const noise = candidates[candidateIndex].noise;
-      for (let parameterIndex = 0; parameterIndex < gradient.length; parameterIndex++) {
-        gradient[parameterIndex] += utility * noise[parameterIndex];
-      }
-    }
-
-    const scale = 1 / Math.max(1e-9, candidates.length * sigma);
-    for (let index = 0; index < gradient.length; index++) gradient[index] *= scale;
-    gradientNorm = Math.sqrt(gradient.reduce((sum, value) => sum + value * value, 0));
-
-    const proposedAdam = cloneAdamState(adamState);
-    const proposedParameters = adamAscent(
-      meanParameters,
-      gradient,
-      proposedAdam,
-      options.learningRate,
-    );
-    const proposedCenter = evaluate(proposedParameters);
-
-    if (proposedCenter.result.status === 'COMPLETED') {
-      meanParameters = proposedParameters;
-      adamState = proposedAdam;
-      center = proposedCenter;
-      updateAccepted = true;
-
-      if (comparePitwallLearningResults(center.result, best.result) < 0) {
-        best = {
-          parameters: [...center.parameters],
-          result: center.result,
-        };
-        stagnantGenerations = 0;
-        improved = true;
-        await saveCandidate(options.output, best, generation, sigma);
-      }
-    }
-  }
-
-  if (!improved) stagnantGenerations += 1;
-
-  if (completedFraction < 0.25) {
-    sigma *= 0.65;
-  } else if (completedFraction < 0.50) {
+  // Trust-region adaptation uses only physical validity/improvement rates. It
+  // does not assign a numeric reward penalty to grass or invalid laps.
+  if (completedFraction === 0) {
+    sigma *= 0.60;
+  } else if (completedFraction < 0.5) {
     sigma *= 0.82;
-  } else if (completedFraction > 0.85 && updateAccepted) {
-    sigma *= 1.01;
+  } else if (improved && completedFraction >= 0.8) {
+    sigma *= 1.04;
+  } else if (stagnantGenerations >= 8) {
+    sigma *= 0.85;
   } else {
     sigma *= options.sigmaDecay;
   }
   sigma = clamp(sigma, 0.005, 0.35);
-
-  if (stagnantGenerations >= 12) {
-    meanParameters = [...best.parameters];
-    adamState = createAdamAscentState(meanParameters.length);
-    stagnantGenerations = 0;
-  }
 
   const statuses = candidates.reduce((counts, candidate) => {
     counts[candidate.result.status] = (counts[candidate.result.status] ?? 0) + 1;
     return counts;
   }, {} as Record<string, number>);
 
-  console.log('RESIDUAL_EVOLUTION_GENERATION', JSON.stringify({
-    ...summary(best, generation, sigma),
+  console.log('SPARSE_RESIDUAL_SEARCH_GENERATION', JSON.stringify({
+    ...summary(incumbent, generation, sigma),
     improved,
-    updateAccepted,
     completedFraction: Number(completedFraction.toFixed(3)),
-    gradientNorm: Number(gradientNorm.toFixed(6)),
     populationStatuses: statuses,
-    populationBest: compactResult(populationBest.result),
-    center: compactResult(center.result),
+    populationBest: {
+      ...compactResult(populationBest.result),
+      knot: populationBest.knot,
+      channel: channelName(populationBest.channel),
+      direction: Number(populationBest.direction.toFixed(3)),
+    },
   }));
 }
 
-console.log('RESIDUAL_EVOLUTION_DONE', JSON.stringify({
+console.log('SPARSE_RESIDUAL_SEARCH_DONE', JSON.stringify({
   output: options.output,
-  ...summary(best, options.generations, sigma),
+  ...summary(incumbent, options.generations, sigma),
 }, null, 2));
 
 function evaluate(parameters: readonly number[]): Candidate {
   const residual = residualDataWithParameters(residualTemplate, parameters);
   const result = evaluatePitwallLearningPolicy(
-    ({ observation, projection }) => applyPitwallResidual(
-      basePolicy.act(observation),
-      projection.progress,
+    (context) => applyPitwallResidual(
+      basePolicy(context),
+      context.projection.progress,
       residual,
     ),
     { captureFlyingLap: false },
@@ -225,11 +171,11 @@ async function saveCandidate(
   await writeFile(output, `${JSON.stringify(residual, null, 2)}\n`, 'utf8');
   const meta = output.endsWith('.json') ? output.slice(0, -5) + '.meta.json' : `${output}.meta.json`;
   await writeFile(meta, `${JSON.stringify({
-    basePolicy: options.input,
+    basePolicy: 'machine-only-pitwall-absolute-seed',
     generation,
     sigma: currentSigma,
     result: compactResult(candidate.result),
-    algorithm: 'bounded-residual-rank-es-adam',
+    algorithm: 'sparse-antithetic-trust-region',
     humanTelemetryUsed: false,
   }, null, 2)}\n`, 'utf8');
 }
@@ -253,15 +199,11 @@ function summary(candidate: Candidate, generation: number, currentSigma: number)
   };
 }
 
-function cloneAdamState(state: AdamAscentState): AdamAscentState {
-  return {
-    firstMoment: [...state.firstMoment],
-    secondMoment: [...state.secondMoment],
-    step: state.step,
-  };
+function channelName(channel: number): string {
+  return ['steer', 'throttle', 'brake'][channel] ?? `channel-${channel}`;
 }
 
-function parseOptions(args: string[]): EvolutionOptions {
+function parseOptions(args: string[]): SearchOptions {
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
@@ -272,16 +214,14 @@ function parseOptions(args: string[]): EvolutionOptions {
     else values.set(key, 'true');
   }
 
-  const input = resolve(values.get('--input') ?? 'artifacts/pitwall-learning/policy-teacher.json');
   const output = resolve(values.get('--output') ?? 'artifacts/pitwall-learning/policy-residual.json');
   const generations = positiveInteger(values.get('--generations'), 80);
   const requestedPopulation = Math.max(6, positiveInteger(values.get('--population'), 24));
   const population = requestedPopulation % 2 === 0 ? requestedPopulation : requestedPopulation + 1;
-  const sigma = positiveNumber(values.get('--sigma'), 0.12);
-  const learningRate = positiveNumber(values.get('--learning-rate'), 0.03);
+  const sigma = positiveNumber(values.get('--sigma'), 0.08);
   const sigmaDecay = clamp(positiveNumber(values.get('--sigma-decay'), 0.995), 0.90, 1);
   const seed = positiveInteger(values.get('--seed'), 56062);
-  return { input, output, generations, population, sigma, learningRate, sigmaDecay, seed };
+  return { output, generations, population, sigma, sigmaDecay, seed };
 }
 
 function positiveInteger(raw: string | undefined, fallback: number): number {
