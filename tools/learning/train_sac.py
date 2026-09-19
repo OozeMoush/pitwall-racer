@@ -300,6 +300,109 @@ class Actor(nn.Module):
         return torch.tanh(mean)
 
 
+class DeploymentActorMirror:
+    """Scalar float64 actor inference matching PitwallSacPolicy.ts order.
+
+    Rollout behavior should match the actor that will actually be exported to
+    the TypeScript/Rapier authority. PyTorch GEMM may accumulate the same
+    weights in a different order, which is enough to diverge on a brittle
+    closed-loop racing trajectory.
+    """
+
+    def __init__(self, actor: Actor) -> None:
+        self.sync(actor)
+
+    def sync(self, actor: Actor) -> None:
+        self.fc1_w = actor.fc1.weight.detach().cpu().double().tolist()
+        self.fc1_b = actor.fc1.bias.detach().cpu().double().tolist()
+        self.fc2_w = actor.fc2.weight.detach().cpu().double().tolist()
+        self.fc2_b = actor.fc2.bias.detach().cpu().double().tolist()
+        self.mean_w = actor.mean.weight.detach().cpu().double().tolist()
+        self.mean_b = actor.mean.bias.detach().cpu().double().tolist()
+        self.log_std_w = (
+            actor.log_std.weight.detach().cpu().double().tolist()
+        )
+        self.log_std_b = actor.log_std.bias.detach().cpu().double().tolist()
+
+    @staticmethod
+    def _dense(
+        weights: list[list[float]],
+        biases: list[float],
+        values: list[float],
+    ) -> list[float]:
+        output: list[float] = []
+        for row, bias in zip(weights, biases, strict=True):
+            value = float(bias)
+            for weight, item in zip(row, values, strict=True):
+                value += float(weight) * float(item)
+            output.append(value)
+        return output
+
+    def _features(
+        self,
+        observation: np.ndarray | list[float],
+    ) -> list[float]:
+        values = [float(value) for value in observation]
+        values = [
+            max(0.0, value)
+            for value in self._dense(self.fc1_w, self.fc1_b, values)
+        ]
+        return [
+            max(0.0, value)
+            for value in self._dense(self.fc2_w, self.fc2_b, values)
+        ]
+
+    def deterministic_one(
+        self,
+        observation: np.ndarray | list[float],
+    ) -> list[float]:
+        features = self._features(observation)
+        means = self._dense(self.mean_w, self.mean_b, features)
+        return [math.tanh(value) for value in means]
+
+    def deterministic_batch(
+        self,
+        observations: np.ndarray,
+    ) -> np.ndarray:
+        return np.asarray(
+            [
+                self.deterministic_one(observation)
+                for observation in observations
+            ],
+            dtype=np.float64,
+        )
+
+    def sample_batch(
+        self,
+        observations: np.ndarray,
+    ) -> np.ndarray:
+        actions: list[list[float]] = []
+        for observation in observations:
+            features = self._features(observation)
+            means = self._dense(self.mean_w, self.mean_b, features)
+            log_stds = [
+                clamp(value, LOG_STD_MIN, LOG_STD_MAX)
+                for value in self._dense(
+                    self.log_std_w,
+                    self.log_std_b,
+                    features,
+                )
+            ]
+            noise = np.random.normal(size=ACTION_SIZE)
+            actions.append([
+                math.tanh(
+                    mean + math.exp(log_std) * float(epsilon)
+                )
+                for mean, log_std, epsilon in zip(
+                    means,
+                    log_stds,
+                    noise,
+                    strict=True,
+                )
+            ])
+        return np.asarray(actions, dtype=np.float64)
+
+
 class Critic(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -914,15 +1017,19 @@ def evaluate_actor(
     actor: Actor,
     environment: VectorRapierEnv,
     device: torch.device,
+    deployment_actor: DeploymentActorMirror | None = None,
 ) -> dict[str, Any]:
     observation = environment.reset()
     while True:
-        tensor = torch.as_tensor(
-            observation,
-            device=device,
-            dtype=next(actor.parameters()).dtype,
-        )
-        action = actor.deterministic(tensor).cpu().numpy()
+        if deployment_actor is not None:
+            action = deployment_actor.deterministic_batch(observation)
+        else:
+            tensor = torch.as_tensor(
+                observation,
+                device=device,
+                dtype=next(actor.parameters()).dtype,
+            )
+            action = actor.deterministic(tensor).cpu().numpy()
         (
             observation,
             _reward,
@@ -1073,6 +1180,7 @@ def write_meta(
         "actorLearningStarts": config.actor_learning_starts,
         "targetEntropy": config.target_entropy,
         "modelDtype": config.model_dtype,
+        "rolloutInference": "scalar-float64-deployment-order",
         "teacherBootstrap": config.teacher_bootstrap,
         "teacherBootstrapEpochs": config.teacher_epochs,
         "daggerRounds": config.dagger_rounds,
@@ -1212,6 +1320,7 @@ def main() -> int:
                 actor,
                 bootstrap_env,
                 device,
+                DeploymentActorMirror(actor),
             )
         finally:
             bootstrap_env.close()
@@ -1294,6 +1403,8 @@ def main() -> int:
             flush=True,
         )
 
+    deployment_actor = DeploymentActorMirror(actor)
+
     replay = ReplayBuffer(
         config.replay_size,
         OBSERVATION_SIZE,
@@ -1314,7 +1425,12 @@ def main() -> int:
     )
     observation = train_env.observations.copy()
 
-    runtime_initial_info = evaluate_actor(actor, eval_env, device)
+    runtime_initial_info = evaluate_actor(
+        actor,
+        eval_env,
+        device,
+        deployment_actor,
+    )
     authoritative_initial_path = Path(
         f"{output_prefix}-initial-candidate.json"
     )
@@ -1397,13 +1513,7 @@ def main() -> int:
     try:
         while transitions < config.steps:
             with torch.no_grad():
-                obs_tensor = torch.as_tensor(
-                    observation,
-                    device=device,
-                    dtype=model_dtype,
-                )
-                action, _log_prob, _deterministic = actor.sample(obs_tensor)
-                action_np = action.cpu().numpy()
+                action_np = deployment_actor.sample_batch(observation)
 
             (
                 next_observation,
@@ -1513,6 +1623,7 @@ def main() -> int:
                         last_alpha_loss = float(
                             alpha_loss.detach().cpu()
                         )
+                        deployment_actor.sync(actor)
 
                     soft_update(q1, target_q1, config.tau)
                     soft_update(q2, target_q2, config.tau)
@@ -1559,7 +1670,12 @@ def main() -> int:
                 next_log += config.log_every
 
             if transitions >= next_eval:
-                runtime_info = evaluate_actor(actor, eval_env, device)
+                runtime_info = evaluate_actor(
+                    actor,
+                    eval_env,
+                    device,
+                    deployment_actor,
+                )
                 latest_json = Path(f"{output_prefix}-latest.json")
                 info = authoritative_evaluate_actor(
                     actor,
@@ -1653,7 +1769,12 @@ def main() -> int:
                 )
                 next_eval += config.eval_every
 
-        runtime_final_info = evaluate_actor(actor, eval_env, device)
+        runtime_final_info = evaluate_actor(
+            actor,
+            eval_env,
+            device,
+            deployment_actor,
+        )
         final_info = authoritative_evaluate_actor(
             actor,
             repo_root,
