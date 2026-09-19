@@ -20,7 +20,7 @@ import {
   type PitwallFineResidualPolicyData,
 } from '../../src/simulation/PitwallFineResidualPolicy';
 import {
-  applyPitwallLineResidual,
+  samplePitwallLineResidual,
   validatePitwallLineResidualPolicyData,
   type PitwallLineResidualPolicyData,
 } from '../../src/simulation/PitwallLineResidualPolicy';
@@ -51,11 +51,13 @@ const baseLanes = materializePitwallAbsoluteLine(
   OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
   genome,
 );
-const lanes = applyPitwallLineResidual(baseLanes, line);
 const teacher = createPitwallMachineTeacherPolicyForLine(
-  lanes,
+  baseLanes,
   genome,
-  { laneTargetLimit: TRACK_BARRIER_OFFSET - 0.25 },
+  {
+    laneTargetLimit: TRACK_BARRIER_OFFSET - 0.25,
+    laneResidual: (progress) => samplePitwallLineResidual(line, progress),
+  },
 );
 
 const result = evaluatePitwallLearningPolicy(
