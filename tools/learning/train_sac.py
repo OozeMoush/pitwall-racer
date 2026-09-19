@@ -56,6 +56,9 @@ class Config:
     actor_init: Path | None
     actor_init_log_std: float
     actor_learning_starts: int
+    target_entropy: float
+    model_dtype: str
+    initial_eval_only: bool
     fixed_training_starts: bool
     teacher_bootstrap: bool
     teacher_epochs: int
@@ -135,7 +138,7 @@ class VectorRapierEnv:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Any]]:
         reply = self._request({
             "op": "step",
-            "actions": actions.astype(np.float32).tolist(),
+            "actions": actions.tolist(),
         })
         observations = np.asarray(reply["observations"], dtype=np.float32)
         rewards = np.asarray(reply["rewards"], dtype=np.float32)
@@ -226,23 +229,24 @@ class ReplayBuffer:
         self,
         batch_size: int,
         device: torch.device,
+        dtype: torch.dtype,
     ) -> tuple[torch.Tensor, ...]:
         indices = np.random.randint(0, self.size, size=batch_size)
         return (
             torch.as_tensor(
-                self.observations[indices], device=device
+                self.observations[indices], device=device, dtype=dtype
             ),
             torch.as_tensor(
-                self.actions[indices], device=device
+                self.actions[indices], device=device, dtype=dtype
             ),
             torch.as_tensor(
-                self.rewards[indices], device=device
+                self.rewards[indices], device=device, dtype=dtype
             ),
             torch.as_tensor(
-                self.next_observations[indices], device=device
+                self.next_observations[indices], device=device, dtype=dtype
             ),
             torch.as_tensor(
-                self.dones[indices], device=device
+                self.dones[indices], device=device, dtype=dtype
             ),
         )
 
@@ -375,6 +379,25 @@ def parse_args() -> Config:
         ),
     )
     parser.add_argument(
+        "--target-entropy",
+        type=float,
+        default=-3.0,
+    )
+    parser.add_argument(
+        "--model-dtype",
+        choices=("float32", "float64"),
+        default="float64",
+        help=(
+            "Use float64 to match the JavaScript deterministic actor more "
+            "closely when fine-tuning an exported policy."
+        ),
+    )
+    parser.add_argument(
+        "--initial-eval-only",
+        action="store_true",
+        help="Load the initial actor, run parity/authoritative evaluation, and exit.",
+    )
+    parser.add_argument(
         "--fixed-training-starts",
         action="store_true",
         help=(
@@ -435,6 +458,9 @@ def parse_args() -> Config:
             if args.actor_learning_starts is not None
             else args.learning_starts,
         ),
+        target_entropy=float(args.target_entropy),
+        model_dtype=str(args.model_dtype),
+        initial_eval_only=bool(args.initial_eval_only),
         fixed_training_starts=bool(args.fixed_training_starts),
         teacher_bootstrap=not args.no_teacher_bootstrap,
         teacher_epochs=max(1, args.teacher_epochs),
@@ -891,7 +917,11 @@ def evaluate_actor(
 ) -> dict[str, Any]:
     observation = environment.reset()
     while True:
-        tensor = torch.as_tensor(observation, device=device)
+        tensor = torch.as_tensor(
+            observation,
+            device=device,
+            dtype=next(actor.parameters()).dtype,
+        )
         action = actor.deterministic(tensor).cpu().numpy()
         (
             observation,
@@ -905,6 +935,32 @@ def evaluate_actor(
             if not isinstance(info, dict):
                 raise RuntimeError("Evaluation episode ended without info")
             return info
+
+
+def authoritative_evaluate_actor(
+    actor: Actor,
+    repo_root: Path,
+    policy_path: Path,
+) -> dict[str, Any]:
+    export_actor(actor, policy_path)
+    tsx = repo_root / "node_modules" / ".bin" / "tsx"
+    completed = subprocess.run(
+        [
+            str(tsx),
+            "scripts/learning/evaluate-sac-policy.ts",
+            str(policy_path),
+        ],
+        cwd=repo_root,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if not completed.stdout.strip():
+        raise RuntimeError(
+            "Authoritative actor evaluation produced no JSON output: "
+            + completed.stderr.strip()
+        )
+    return json.loads(completed.stdout)
 
 
 def layer_json(layer: nn.Linear) -> dict[str, Any]:
@@ -1015,6 +1071,8 @@ def write_meta(
         ),
         "actorInitLogStd": config.actor_init_log_std,
         "actorLearningStarts": config.actor_learning_starts,
+        "targetEntropy": config.target_entropy,
+        "modelDtype": config.model_dtype,
         "teacherBootstrap": config.teacher_bootstrap,
         "teacherBootstrapEpochs": config.teacher_epochs,
         "daggerRounds": config.dagger_rounds,
@@ -1040,6 +1098,11 @@ def main() -> int:
         else repo_root / config.output_prefix
     )
     device = select_device(config.device)
+    model_dtype = (
+        torch.float64
+        if config.model_dtype == "float64"
+        else torch.float32
+    )
 
     random.seed(config.seed)
     np.random.seed(config.seed)
@@ -1067,6 +1130,9 @@ def main() -> int:
                 ),
                 "actorInitLogStd": config.actor_init_log_std,
                 "actorLearningStarts": config.actor_learning_starts,
+                "targetEntropy": config.target_entropy,
+                "modelDtype": config.model_dtype,
+                "initialEvalOnly": config.initial_eval_only,
                 "fixedTrainingStarts": config.fixed_training_starts,
                 "teacherBootstrap": config.teacher_bootstrap,
                 "teacherEpochs": config.teacher_epochs,
@@ -1082,11 +1148,11 @@ def main() -> int:
         flush=True,
     )
 
-    actor = Actor().to(device)
-    q1 = Critic().to(device)
-    q2 = Critic().to(device)
-    target_q1 = Critic().to(device)
-    target_q2 = Critic().to(device)
+    actor = Actor().to(device=device, dtype=model_dtype)
+    q1 = Critic().to(device=device, dtype=model_dtype)
+    q2 = Critic().to(device=device, dtype=model_dtype)
+    target_q1 = Critic().to(device=device, dtype=model_dtype)
+    target_q2 = Critic().to(device=device, dtype=model_dtype)
     target_q1.load_state_dict(q1.state_dict())
     target_q2.load_state_dict(q2.state_dict())
     for parameter in target_q1.parameters():
@@ -1184,12 +1250,13 @@ def main() -> int:
     log_alpha = torch.tensor(
         math.log(config.initial_alpha),
         device=device,
+        dtype=model_dtype,
         requires_grad=True,
     )
     alpha_optimizer = torch.optim.Adam(
         [log_alpha], lr=config.alpha_lr
     )
-    target_entropy = -float(ACTION_SIZE)
+    target_entropy = config.target_entropy
 
     transitions = 0
     best_info: dict[str, Any] | None = None
@@ -1247,8 +1314,20 @@ def main() -> int:
     )
     observation = train_env.observations.copy()
 
-    initial_info = evaluate_actor(actor, eval_env, device)
-    if best_info is None or normalized_episode_key(initial_info) < normalized_episode_key(best_info):
+    runtime_initial_info = evaluate_actor(actor, eval_env, device)
+    authoritative_initial_path = Path(
+        f"{output_prefix}-initial-candidate.json"
+    )
+    initial_info = authoritative_evaluate_actor(
+        actor,
+        repo_root,
+        authoritative_initial_path,
+    )
+    if (
+        best_info is None
+        or normalized_episode_key(initial_info)
+        < normalized_episode_key(best_info)
+    ):
         best_info = dict(initial_info)
         export_actor(
             actor,
@@ -1279,10 +1358,23 @@ def main() -> int:
             "event": "SAC_INITIAL_EVAL",
             "transitions": transitions,
             "evaluation": initial_info,
+            "trainingRuntimeEvaluation": runtime_initial_info,
             "best": best_info,
         }),
         flush=True,
     )
+    if config.initial_eval_only:
+        print(
+            json.dumps({
+                "event": "SAC_INITIAL_EVAL_DONE",
+                "authoritative": initial_info,
+                "trainingRuntime": runtime_initial_info,
+            }),
+            flush=True,
+        )
+        train_env.close()
+        eval_env.close()
+        return 0
 
     next_eval = (
         (transitions // config.eval_every) + 1
@@ -1308,6 +1400,7 @@ def main() -> int:
                 obs_tensor = torch.as_tensor(
                     observation,
                     device=device,
+                    dtype=model_dtype,
                 )
                 action, _log_prob, _deterministic = actor.sample(obs_tensor)
                 action_np = action.cpu().numpy()
@@ -1361,7 +1454,11 @@ def main() -> int:
                         batch_reward,
                         batch_next_obs,
                         batch_done,
-                    ) = replay.sample(config.batch_size, device)
+                    ) = replay.sample(
+                        config.batch_size,
+                        device,
+                        model_dtype,
+                    )
 
                     with torch.no_grad():
                         (
@@ -1462,11 +1559,15 @@ def main() -> int:
                 next_log += config.log_every
 
             if transitions >= next_eval:
-                info = evaluate_actor(actor, eval_env, device)
+                runtime_info = evaluate_actor(actor, eval_env, device)
                 latest_json = Path(f"{output_prefix}-latest.json")
+                info = authoritative_evaluate_actor(
+                    actor,
+                    repo_root,
+                    latest_json,
+                )
                 latest_pt = Path(f"{output_prefix}-latest.pt")
                 latest_meta = Path(f"{output_prefix}-latest.meta.json")
-                export_actor(actor, latest_json)
                 save_training_state(
                     latest_pt,
                     actor=actor,
@@ -1545,18 +1646,25 @@ def main() -> int:
                         "transitions": transitions,
                         "improved": improved,
                         "evaluation": info,
+                        "trainingRuntimeEvaluation": runtime_info,
                         "best": best_info,
                     }),
                     flush=True,
                 )
                 next_eval += config.eval_every
 
-        final_info = evaluate_actor(actor, eval_env, device)
+        runtime_final_info = evaluate_actor(actor, eval_env, device)
+        final_info = authoritative_evaluate_actor(
+            actor,
+            repo_root,
+            Path(f"{output_prefix}-final-candidate.json"),
+        )
         print(
             json.dumps({
                 "event": "SAC_DONE",
                 "transitions": transitions,
                 "final": final_info,
+                "trainingRuntimeFinal": runtime_final_info,
                 "best": best_info,
                 "bestPolicy": str(
                     Path(f"{output_prefix}-best.json")
