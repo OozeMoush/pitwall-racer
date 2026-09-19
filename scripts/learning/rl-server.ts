@@ -28,7 +28,11 @@ interface CloseRequest {
 
 type Request = StepRequest | ResetRequest | CloseRequest;
 
-const envCount = parsePositiveInteger(process.argv.slice(2), '--envs', 16);
+const cliArgs = process.argv.slice(2);
+const envCount = parsePositiveInteger(cliArgs, '--envs', 16);
+const randomStarts = cliArgs.includes('--random-starts');
+const seed = parsePositiveInteger(cliArgs, '--seed', 56068);
+const random = mulberry32(seed);
 
 await RAPIER.init();
 setActiveTrack('pitwall-gp');
@@ -37,7 +41,11 @@ const environments = Array.from(
   { length: envCount },
   () => new PitwallLearningStepEnvironment(),
 );
-let contexts = environments.map((environment) => environment.context());
+let contexts = environments.map((environment) =>
+  randomStarts
+    ? environment.reset(trainingResetOptions())
+    : environment.context(),
+);
 
 write({
   type: 'ready',
@@ -65,7 +73,11 @@ for await (const line of input) {
     }
 
     if (request.op === 'reset') {
-      contexts = environments.map((environment) => environment.reset());
+      contexts = environments.map((environment) =>
+        randomStarts
+          ? environment.reset(trainingResetOptions())
+          : environment.reset(),
+      );
       write({
         type: 'reset',
         observations: contexts.map((context) => [...context.observation]),
@@ -101,12 +113,17 @@ for await (const line of input) {
       truncated.push(transition.truncated);
       infos.push(
         episodeResult
-          ? episodeInfo(episodeResult)
+          ? episodeInfo(
+              episodeResult,
+              transition.trainingLapCompleted ?? false,
+            )
           : null,
       );
 
       if (transition.terminated || transition.truncated) {
-        contexts[index] = environments[index].reset();
+        contexts[index] = randomStarts
+          ? environments[index].reset(trainingResetOptions())
+          : environments[index].reset();
       } else {
         contexts[index] = transition.context;
       }
@@ -147,10 +164,26 @@ function normalizedToPhysicalAction(
   };
 }
 
+function trainingResetOptions(): {
+  startProgress: number;
+  startSpeed: number;
+  completionProgressLaps: number;
+} {
+  return {
+    startProgress: random(),
+    // Curriculum randomization only: expose the policy to recoverable states
+    // across the whole track without supplying a target line or speed profile.
+    startSpeed: 25 + random() * 30,
+    completionProgressLaps: 1,
+  };
+}
+
 function episodeInfo(
   result: PitwallLearningEpisodeResult,
+  trainingLapCompleted: boolean,
 ): Record<string, unknown> {
   return {
+    trainingLapCompleted,
     status: result.status,
     invalidReason: result.invalidReason ?? null,
     lapSeconds: result.lapSeconds ?? null,
@@ -182,6 +215,17 @@ function parsePositiveInteger(
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
   return fallback;
+}
+
+function mulberry32(seedValue: number): () => number {
+  let value = seedValue >>> 0;
+  return () => {
+    value += 0x6d2b79f5;
+    let t = value;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function clampFinite(
