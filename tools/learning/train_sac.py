@@ -53,6 +53,9 @@ class Config:
     device: str
     output_prefix: Path
     resume: Path | None
+    teacher_bootstrap: bool
+    teacher_epochs: int
+    bootstrap_only: bool
 
 
 class VectorRapierEnv:
@@ -337,6 +340,17 @@ def parse_args() -> Config:
         default=Path("artifacts/pitwall-learning/policy-sac"),
     )
     parser.add_argument("--resume", type=Path)
+    parser.add_argument(
+        "--no-teacher-bootstrap",
+        action="store_true",
+        help="Start SAC from scratch instead of the machine-only teacher.",
+    )
+    parser.add_argument("--teacher-epochs", type=int, default=400)
+    parser.add_argument(
+        "--bootstrap-only",
+        action="store_true",
+        help="Pretrain/evaluate the actor from the machine teacher and exit.",
+    )
     args = parser.parse_args()
 
     return Config(
@@ -358,6 +372,9 @@ def parse_args() -> Config:
         device=args.device,
         output_prefix=args.output_prefix,
         resume=args.resume,
+        teacher_bootstrap=not args.no_teacher_bootstrap,
+        teacher_epochs=max(1, args.teacher_epochs),
+        bootstrap_only=bool(args.bootstrap_only),
     )
 
 
@@ -369,6 +386,140 @@ def select_device(requested: str) -> torch.device:
             "CUDA was requested but torch.cuda.is_available() is false"
         )
     return torch.device(requested)
+
+
+def export_machine_teacher(repo_root: Path, output: Path) -> None:
+    tsx = repo_root / "node_modules" / ".bin" / "tsx"
+    if not tsx.exists():
+        raise RuntimeError(
+            f"{tsx} does not exist. Run npm install before SAC training."
+        )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            str(tsx),
+            "scripts/learning/export-teacher.ts",
+            str(output),
+        ],
+        cwd=repo_root,
+        check=True,
+    )
+
+
+def load_machine_teacher(
+    path: Path,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    observations: list[list[float]] = []
+    actions: list[list[float]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for raw in handle:
+            if not raw.strip():
+                continue
+            row = json.loads(raw)
+            observation = [float(value) for value in row["observation"]]
+            physical = [float(value) for value in row["action"]]
+            if len(observation) != OBSERVATION_SIZE:
+                raise RuntimeError(
+                    f"Teacher observation size mismatch: {len(observation)}"
+                )
+            if len(physical) != ACTION_SIZE:
+                raise RuntimeError(
+                    f"Teacher action size mismatch: {len(physical)}"
+                )
+            observations.append(observation)
+            actions.append([
+                physical[0],
+                physical[1] * 2.0 - 1.0,
+                physical[2] * 2.0 - 1.0,
+            ])
+    if len(observations) < 100:
+        raise RuntimeError(
+            f"Machine teacher dataset is too small: {len(observations)}"
+        )
+    return (
+        torch.tensor(observations, dtype=torch.float32),
+        torch.tensor(actions, dtype=torch.float32),
+    )
+
+
+def pretrain_actor_from_teacher(
+    actor: Actor,
+    repo_root: Path,
+    device: torch.device,
+    epochs: int,
+    seed: int,
+) -> dict[str, Any]:
+    teacher_path = (
+        repo_root
+        / "artifacts"
+        / "pitwall-learning"
+        / "sac-machine-teacher.jsonl"
+    )
+    export_machine_teacher(repo_root, teacher_path)
+    observations, actions = load_machine_teacher(teacher_path)
+
+    generator = torch.Generator().manual_seed(seed)
+    permutation = torch.randperm(
+        observations.shape[0],
+        generator=generator,
+    )
+    validation_count = max(1, int(observations.shape[0] * 0.12))
+    validation_indices = permutation[:validation_count]
+    train_indices = permutation[validation_count:]
+
+    train_x = observations[train_indices].to(device)
+    train_y = actions[train_indices].to(device)
+    validation_x = observations[validation_indices].to(device)
+    validation_y = actions[validation_indices].to(device)
+
+    optimizer = torch.optim.AdamW(
+        actor.parameters(),
+        lr=1e-3,
+        weight_decay=1e-6,
+    )
+    batch_size = min(512, train_x.shape[0])
+    best_validation = math.inf
+    best_state: dict[str, torch.Tensor] | None = None
+
+    for epoch in range(1, epochs + 1):
+        order = torch.randperm(
+            train_x.shape[0],
+            device=device,
+        )
+        actor.train()
+        for start in range(0, train_x.shape[0], batch_size):
+            indices = order[start:start + batch_size]
+            prediction = actor.deterministic(train_x[indices])
+            loss = F.mse_loss(prediction, train_y[indices])
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+
+        actor.eval()
+        with torch.no_grad():
+            validation_loss = float(
+                F.mse_loss(
+                    actor.deterministic(validation_x),
+                    validation_y,
+                ).cpu()
+            )
+        if validation_loss < best_validation:
+            best_validation = validation_loss
+            best_state = {
+                key: value.detach().cpu().clone()
+                for key, value in actor.state_dict().items()
+            }
+
+    if best_state is None:
+        raise RuntimeError("Teacher bootstrap produced no actor checkpoint")
+    actor.load_state_dict(best_state)
+    actor.eval()
+    return {
+        "teacher": str(teacher_path),
+        "samples": int(observations.shape[0]),
+        "epochs": epochs,
+        "bestValidationMse": best_validation,
+    }
 
 
 def soft_update(
@@ -529,6 +680,8 @@ def write_meta(
         "alpha": alpha,
         "initialAlpha": config.initial_alpha,
         "randomTrainingStarts": True,
+        "teacherBootstrap": config.teacher_bootstrap,
+        "teacherBootstrapEpochs": config.teacher_epochs,
         "evaluation": evaluation,
     }
     path.write_text(
@@ -566,6 +719,9 @@ def main() -> int:
                 "envs": config.envs,
                 "targetTransitions": config.steps,
                 "seed": config.seed,
+                "teacherBootstrap": config.teacher_bootstrap,
+                "teacherEpochs": config.teacher_epochs,
+                "bootstrapOnly": config.bootstrap_only,
             }
         ),
         flush=True,
@@ -582,6 +738,54 @@ def main() -> int:
         parameter.requires_grad_(False)
     for parameter in target_q2.parameters():
         parameter.requires_grad_(False)
+
+    bootstrap_meta: dict[str, Any] | None = None
+    if config.teacher_bootstrap and config.resume is None:
+        bootstrap_meta = pretrain_actor_from_teacher(
+            actor,
+            repo_root,
+            device,
+            config.teacher_epochs,
+            config.seed,
+        )
+        bootstrap_env = VectorRapierEnv(
+            repo_root,
+            1,
+            random_starts=False,
+            seed=config.seed + 2,
+        )
+        try:
+            bootstrap_eval = evaluate_actor(
+                actor,
+                bootstrap_env,
+                device,
+            )
+        finally:
+            bootstrap_env.close()
+        print(
+            json.dumps({
+                "event": "SAC_BOOTSTRAP_EVAL",
+                "bootstrap": bootstrap_meta,
+                "evaluation": bootstrap_eval,
+            }),
+            flush=True,
+        )
+        export_actor(
+            actor,
+            Path(f"{output_prefix}-bootstrap.json"),
+        )
+        if config.bootstrap_only:
+            print(
+                json.dumps({
+                    "event": "SAC_BOOTSTRAP_DONE",
+                    "evaluation": bootstrap_eval,
+                    "policy": str(
+                        Path(f"{output_prefix}-bootstrap.json")
+                    ),
+                }),
+                flush=True,
+            )
+            return 0
 
     actor_optimizer = torch.optim.Adam(
         actor.parameters(), lr=config.actor_lr
