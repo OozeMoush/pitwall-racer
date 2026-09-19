@@ -1,5 +1,6 @@
 import {
   createPitwallAbsolutePilot,
+  createPitwallAbsolutePilotForLine,
   createPitwallAbsoluteSeed,
   type PitwallAbsoluteGenome,
 } from './PitwallAbsoluteOptimizer';
@@ -19,11 +20,28 @@ export function createPitwallMachineTeacherPolicy(
   genome: PitwallAbsoluteGenome = createPitwallAbsoluteSeed(),
 ): PitwallLearningPolicy {
   installReferenceLineCalibration();
-  const teacher = createPitwallAbsolutePilot(
+  return adaptTeacher(createPitwallAbsolutePilot(
     OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
     genome,
-  );
+  ));
+}
 
+export function createPitwallMachineTeacherPolicyForLine(
+  lanes: readonly number[],
+  genome: PitwallAbsoluteGenome = createPitwallAbsoluteSeed(),
+  options: { laneTargetLimit?: number } = {},
+): PitwallLearningPolicy {
+  installReferenceLineCalibration();
+  return adaptTeacher(createPitwallAbsolutePilotForLine(
+    lanes,
+    genome,
+    options,
+  ));
+}
+
+function adaptTeacher(
+  teacher: ReturnType<typeof createPitwallAbsolutePilot>,
+): PitwallLearningPolicy {
   return (context: PitwallLearningPolicyContext) => {
     const speed = context.state.speed;
     const control = teacher.control({
