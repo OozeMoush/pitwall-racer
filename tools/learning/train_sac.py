@@ -221,7 +221,7 @@ class ReplayBuffer:
         self.actions[indices] = actions
         self.rewards[indices, 0] = rewards
         self.next_observations[indices] = next_observations
-        self.dones[indices, 0] = dones.astype(np.float32)
+        self.dones[indices, 0] = dones.astype(np.float64)
         self.position = (self.position + count) % self.capacity
         self.size = min(self.capacity, self.size + count)
 
