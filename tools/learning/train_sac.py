@@ -123,13 +123,13 @@ class VectorRapierEnv:
 
         self.envs = int(ready["envs"])
         self.observations = np.asarray(
-            ready["observations"], dtype=np.float32
+            ready["observations"], dtype=np.float64
         )
 
     def reset(self) -> np.ndarray:
         reply = self._request({"op": "reset"})
         self.observations = np.asarray(
-            reply["observations"], dtype=np.float32
+            reply["observations"], dtype=np.float64
         )
         return self.observations.copy()
 
@@ -140,8 +140,8 @@ class VectorRapierEnv:
             "op": "step",
             "actions": actions.tolist(),
         })
-        observations = np.asarray(reply["observations"], dtype=np.float32)
-        rewards = np.asarray(reply["rewards"], dtype=np.float32)
+        observations = np.asarray(reply["observations"], dtype=np.float64)
+        rewards = np.asarray(reply["rewards"], dtype=np.float64)
         terminated = np.asarray(reply["terminated"], dtype=np.bool_)
         truncated = np.asarray(reply["truncated"], dtype=np.bool_)
         infos = list(reply["infos"])
@@ -192,16 +192,16 @@ class ReplayBuffer:
     ):
         self.capacity = capacity
         self.observations = np.empty(
-            (capacity, observation_size), dtype=np.float32
+            (capacity, observation_size), dtype=np.float64
         )
         self.actions = np.empty(
-            (capacity, action_size), dtype=np.float32
+            (capacity, action_size), dtype=np.float64
         )
-        self.rewards = np.empty((capacity, 1), dtype=np.float32)
+        self.rewards = np.empty((capacity, 1), dtype=np.float64)
         self.next_observations = np.empty(
-            (capacity, observation_size), dtype=np.float32
+            (capacity, observation_size), dtype=np.float64
         )
-        self.dones = np.empty((capacity, 1), dtype=np.float32)
+        self.dones = np.empty((capacity, 1), dtype=np.float64)
         self.position = 0
         self.size = 0
 
