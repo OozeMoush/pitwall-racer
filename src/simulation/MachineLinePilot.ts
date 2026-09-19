@@ -36,8 +36,14 @@ export interface MachineSteeringTuning {
 }
 
 export interface MachineLinePilotOptions extends MachineSteeringTuning {
-  /** Optional search-only target-line bound. Defaults to the legacy reference limit. */
+  /** Optional search-only outer target-line bound. Defaults to the legacy reference limit. */
   laneTargetLimit?: number;
+  /**
+   * Search-only offset applied after the legacy reference-line clamp. Keeping
+   * this at zero preserves the verified baseline exactly while allowing an
+   * optimizer to explore beyond the old artificial lane target bound.
+   */
+  laneResidual?: (progress: number) => number;
   /** Brake multiplier through the 50-72% technical complex. */
   middleBrakeScale?: number;
   /** Brake multiplier through the wrapped 82-6% final/start complex. */
@@ -61,6 +67,7 @@ export class MachineLinePilot {
   private readonly brakeWindows: readonly MachineBrakeWindow[];
   private readonly speedWindows: readonly MachineSpeedWindow[];
   private readonly laneTargetLimit: number;
+  private readonly laneResidual: (progress: number) => number;
   private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
@@ -77,6 +84,7 @@ export class MachineLinePilot {
       0,
       TRACK_BARRIER_OFFSET - 0.25,
     );
+    this.laneResidual = options.laneResidual ?? (() => 0);
     this.steering = {
       lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
       headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
@@ -127,11 +135,11 @@ export class MachineLinePilot {
       * technicalLookahead
       * this.steering.lookAheadScale;
     const targetProgress = progress + lookAheadMetres / TRACK_LENGTH;
-    const targetLane = clamp(sampleCircular(this.lanes, targetProgress), -this.laneTargetLimit, this.laneTargetLimit);
-    const currentLane = clamp(sampleCircular(this.lanes, progress), -this.laneTargetLimit, this.laneTargetLimit);
+    const targetLane = this.targetLane(targetProgress);
+    const currentLane = this.targetLane(progress);
     const target = sampleTrack(targetProgress, targetLane);
     const tangentProgress = targetProgress + 8 * this.steering.tangentScale / TRACK_LENGTH;
-    const tangentLane = clamp(sampleCircular(this.lanes, tangentProgress), -this.laneTargetLimit, this.laneTargetLimit);
+    const tangentLane = this.targetLane(tangentProgress);
     const tangent = sampleTrack(tangentProgress, tangentLane);
 
     const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
@@ -212,6 +220,19 @@ export class MachineLinePilot {
       powerMultiplier: 1,
       rollingResistance: 0,
     };
+  }
+
+  private targetLane(progress: number): number {
+    const baseline = clamp(
+      sampleCircular(this.lanes, progress),
+      -REFERENCE_LANE_LIMIT,
+      REFERENCE_LANE_LIMIT,
+    );
+    return clamp(
+      baseline + this.laneResidual(progress),
+      -this.laneTargetLimit,
+      this.laneTargetLimit,
+    );
   }
 }
 
