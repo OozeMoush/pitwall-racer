@@ -30,6 +30,7 @@ import {
   validatePitwallLineResidualPolicyData,
   type PitwallLineResidualPolicyData,
 } from '../../src/simulation/PitwallLineResidualPolicy';
+import { installReferenceLineCalibration } from '../../src/simulation/ReferenceLineCalibration';
 import { OPTIMIZED_REFERENCE_LANES } from '../../src/simulation/ReferenceTrajectoryData';
 import { TRACK_BARRIER_OFFSET } from '../../src/simulation/TrackLimitsModel';
 
@@ -74,6 +75,7 @@ const lineTemplate = options.input
   : createPitwallLineResidualPolicyData();
 
 const absoluteGenome = createPitwallAbsoluteSeed();
+installReferenceLineCalibration();
 const baseLanes = materializePitwallAbsoluteLine(
   OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
   absoluteGenome,
