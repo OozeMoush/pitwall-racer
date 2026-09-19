@@ -55,6 +55,9 @@ class Config:
     resume: Path | None
     teacher_bootstrap: bool
     teacher_epochs: int
+    dagger_rounds: int
+    dagger_episodes: int
+    dagger_epochs: int
     bootstrap_only: bool
 
 
@@ -346,6 +349,9 @@ def parse_args() -> Config:
         help="Start SAC from scratch instead of the machine-only teacher.",
     )
     parser.add_argument("--teacher-epochs", type=int, default=400)
+    parser.add_argument("--dagger-rounds", type=int, default=4)
+    parser.add_argument("--dagger-episodes", type=int, default=4)
+    parser.add_argument("--dagger-epochs", type=int, default=160)
     parser.add_argument(
         "--bootstrap-only",
         action="store_true",
@@ -374,6 +380,9 @@ def parse_args() -> Config:
         resume=args.resume,
         teacher_bootstrap=not args.no_teacher_bootstrap,
         teacher_epochs=max(1, args.teacher_epochs),
+        dagger_rounds=max(0, args.dagger_rounds),
+        dagger_episodes=max(1, args.dagger_episodes),
+        dagger_epochs=max(1, args.dagger_epochs),
         bootstrap_only=bool(args.bootstrap_only),
     )
 
@@ -442,22 +451,16 @@ def load_machine_teacher(
     )
 
 
-def pretrain_actor_from_teacher(
+def fit_actor_supervised(
     actor: Actor,
-    repo_root: Path,
+    observations: torch.Tensor,
+    actions: torch.Tensor,
     device: torch.device,
+    *,
     epochs: int,
     seed: int,
-) -> dict[str, Any]:
-    teacher_path = (
-        repo_root
-        / "artifacts"
-        / "pitwall-learning"
-        / "sac-machine-teacher.jsonl"
-    )
-    export_machine_teacher(repo_root, teacher_path)
-    observations, actions = load_machine_teacher(teacher_path)
-
+    learning_rate: float = 1e-3,
+) -> float:
     generator = torch.Generator().manual_seed(seed)
     permutation = torch.randperm(
         observations.shape[0],
@@ -474,21 +477,21 @@ def pretrain_actor_from_teacher(
 
     optimizer = torch.optim.AdamW(
         actor.parameters(),
-        lr=1e-3,
+        lr=learning_rate,
         weight_decay=1e-6,
     )
     batch_size = min(512, train_x.shape[0])
     best_validation = math.inf
     best_state: dict[str, torch.Tensor] | None = None
 
-    for epoch in range(1, epochs + 1):
+    for _epoch in range(1, epochs + 1):
         order = torch.randperm(
             train_x.shape[0],
             device=device,
         )
         actor.train()
-        for start in range(0, train_x.shape[0], batch_size):
-            indices = order[start:start + batch_size]
+        for batch_start in range(0, train_x.shape[0], batch_size):
+            indices = order[batch_start:batch_start + batch_size]
             prediction = actor.deterministic(train_x[indices])
             loss = F.mse_loss(prediction, train_y[indices])
             optimizer.zero_grad(set_to_none=True)
@@ -511,14 +514,147 @@ def pretrain_actor_from_teacher(
             }
 
     if best_state is None:
-        raise RuntimeError("Teacher bootstrap produced no actor checkpoint")
+        raise RuntimeError("Supervised actor fit produced no checkpoint")
     actor.load_state_dict(best_state)
+    actor.eval()
+    return best_validation
+
+
+def collect_dagger_teacher(
+    repo_root: Path,
+    actor: Actor,
+    *,
+    round_index: int,
+    learner_probability: float,
+    episodes: int,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor, dict[str, Any]]:
+    actor_path = (
+        repo_root
+        / "artifacts"
+        / "pitwall-learning"
+        / f"sac-dagger-actor-r{round_index}.json"
+    )
+    output_path = (
+        repo_root
+        / "artifacts"
+        / "pitwall-learning"
+        / f"sac-dagger-r{round_index}.jsonl"
+    )
+    export_actor(actor, actor_path)
+
+    tsx = repo_root / "node_modules" / ".bin" / "tsx"
+    completed = subprocess.run(
+        [
+            str(tsx),
+            "scripts/learning/collect-dagger-teacher.ts",
+            "--actor",
+            str(actor_path),
+            "--output",
+            str(output_path),
+            "--episodes",
+            str(episodes),
+            "--learner-probability",
+            str(learner_probability),
+            "--seed",
+            str(seed),
+        ],
+        cwd=repo_root,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    summary_text = completed.stdout.strip()
+    summary = json.loads(summary_text) if summary_text else {}
+    observations, actions = load_machine_teacher(output_path)
+    return observations, actions, summary
+
+
+def pretrain_actor_from_teacher(
+    actor: Actor,
+    repo_root: Path,
+    device: torch.device,
+    epochs: int,
+    seed: int,
+    dagger_rounds: int,
+    dagger_episodes: int,
+    dagger_epochs: int,
+) -> dict[str, Any]:
+    teacher_path = (
+        repo_root
+        / "artifacts"
+        / "pitwall-learning"
+        / "sac-machine-teacher.jsonl"
+    )
+    export_machine_teacher(repo_root, teacher_path)
+    observations, actions = load_machine_teacher(teacher_path)
+
+    best_validation = fit_actor_supervised(
+        actor,
+        observations,
+        actions,
+        device,
+        epochs=epochs,
+        seed=seed,
+    )
+    aggregate_observations = observations
+    aggregate_actions = actions
+    rounds: list[dict[str, Any]] = []
+
+    for round_index in range(1, dagger_rounds + 1):
+        learner_probability = round_index / dagger_rounds
+        dagger_x, dagger_y, collector_summary = collect_dagger_teacher(
+            repo_root,
+            actor,
+            round_index=round_index,
+            learner_probability=learner_probability,
+            episodes=dagger_episodes,
+            seed=seed + round_index,
+        )
+        aggregate_observations = torch.cat(
+            [aggregate_observations, dagger_x],
+            dim=0,
+        )
+        aggregate_actions = torch.cat(
+            [aggregate_actions, dagger_y],
+            dim=0,
+        )
+        best_validation = fit_actor_supervised(
+            actor,
+            aggregate_observations,
+            aggregate_actions,
+            device,
+            epochs=dagger_epochs,
+            seed=seed + 1000 + round_index,
+            learning_rate=5e-4,
+        )
+        rounds.append({
+            "round": round_index,
+            "learnerProbability": learner_probability,
+            "newSamples": int(dagger_x.shape[0]),
+            "aggregateSamples": int(aggregate_observations.shape[0]),
+            "validationMse": best_validation,
+            "collector": collector_summary,
+        })
+        print(
+            json.dumps({
+                "event": "SAC_DAGGER_ROUND",
+                **rounds[-1],
+            }),
+            flush=True,
+        )
+
     actor.eval()
     return {
         "teacher": str(teacher_path),
         "samples": int(observations.shape[0]),
         "epochs": epochs,
         "bestValidationMse": best_validation,
+        "daggerRounds": dagger_rounds,
+        "daggerEpisodes": dagger_episodes,
+        "daggerEpochs": dagger_epochs,
+        "aggregateSamples": int(aggregate_observations.shape[0]),
+        "rounds": rounds,
     }
 
 
@@ -682,6 +818,9 @@ def write_meta(
         "randomTrainingStarts": True,
         "teacherBootstrap": config.teacher_bootstrap,
         "teacherBootstrapEpochs": config.teacher_epochs,
+        "daggerRounds": config.dagger_rounds,
+        "daggerEpisodes": config.dagger_episodes,
+        "daggerEpochs": config.dagger_epochs,
         "evaluation": evaluation,
     }
     path.write_text(
@@ -721,6 +860,9 @@ def main() -> int:
                 "seed": config.seed,
                 "teacherBootstrap": config.teacher_bootstrap,
                 "teacherEpochs": config.teacher_epochs,
+                "daggerRounds": config.dagger_rounds,
+                "daggerEpisodes": config.dagger_episodes,
+                "daggerEpochs": config.dagger_epochs,
                 "bootstrapOnly": config.bootstrap_only,
             }
         ),
@@ -747,6 +889,9 @@ def main() -> int:
             device,
             config.teacher_epochs,
             config.seed,
+            config.dagger_rounds,
+            config.dagger_episodes,
+            config.dagger_epochs,
         )
         bootstrap_env = VectorRapierEnv(
             repo_root,
