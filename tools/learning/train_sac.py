@@ -53,6 +53,10 @@ class Config:
     device: str
     output_prefix: Path
     resume: Path | None
+    actor_init: Path | None
+    actor_init_log_std: float
+    actor_learning_starts: int
+    fixed_training_starts: bool
     teacher_bootstrap: bool
     teacher_epochs: int
     dagger_rounds: int
@@ -345,6 +349,40 @@ def parse_args() -> Config:
     )
     parser.add_argument("--resume", type=Path)
     parser.add_argument(
+        "--actor-init",
+        type=Path,
+        help=(
+            "Initialize the SAC actor from an exported deterministic actor "
+            "JSON (for example a validated DAgger checkpoint)."
+        ),
+    )
+    parser.add_argument(
+        "--actor-init-log-std",
+        type=float,
+        default=-2.5,
+        help=(
+            "Initial stochastic log-std when --actor-init supplies only the "
+            "deterministic mean actor."
+        ),
+    )
+    parser.add_argument(
+        "--actor-learning-starts",
+        type=int,
+        default=None,
+        help=(
+            "Delay actor/temperature updates beyond critic learning starts. "
+            "Useful when fine-tuning a validated bootstrap policy."
+        ),
+    )
+    parser.add_argument(
+        "--fixed-training-starts",
+        action="store_true",
+        help=(
+            "Train from the normal fixed Pitwall start instead of randomized "
+            "curriculum starts."
+        ),
+    )
+    parser.add_argument(
         "--no-teacher-bootstrap",
         action="store_true",
         help="Start SAC from scratch instead of the machine-only teacher.",
@@ -389,6 +427,15 @@ def parse_args() -> Config:
         device=args.device,
         output_prefix=args.output_prefix,
         resume=args.resume,
+        actor_init=args.actor_init,
+        actor_init_log_std=float(args.actor_init_log_std),
+        actor_learning_starts=max(
+            1,
+            args.actor_learning_starts
+            if args.actor_learning_starts is not None
+            else args.learning_starts,
+        ),
+        fixed_training_starts=bool(args.fixed_training_starts),
         teacher_bootstrap=not args.no_teacher_bootstrap,
         teacher_epochs=max(1, args.teacher_epochs),
         dagger_rounds=max(0, args.dagger_rounds),
@@ -402,6 +449,10 @@ def parse_args() -> Config:
     )
 
 
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
 def select_device(requested: str) -> torch.device:
     if requested == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -410,6 +461,57 @@ def select_device(requested: str) -> torch.device:
             "CUDA was requested but torch.cuda.is_available() is false"
         )
     return torch.device(requested)
+
+
+def load_exported_actor(
+    actor: Actor,
+    path: Path,
+    *,
+    log_std: float,
+) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if int(data.get("observationSize", -1)) != OBSERVATION_SIZE:
+        raise RuntimeError(
+            f"Actor observation size mismatch: {data.get('observationSize')}"
+        )
+    if int(data.get("actionSize", -1)) != ACTION_SIZE:
+        raise RuntimeError(
+            f"Actor action size mismatch: {data.get('actionSize')}"
+        )
+    hidden_sizes = tuple(int(value) for value in data.get("hiddenSizes", []))
+    if hidden_sizes != ACTOR_HIDDEN:
+        raise RuntimeError(
+            f"Actor hidden sizes mismatch: {hidden_sizes}"
+        )
+
+    hidden_layers = data.get("hiddenLayers", [])
+    if len(hidden_layers) != 2:
+        raise RuntimeError("Actor JSON must contain exactly two hidden layers")
+
+    def load_linear(layer: nn.Linear, raw: dict[str, Any]) -> None:
+        weights = torch.tensor(
+            raw["weights"],
+            dtype=layer.weight.dtype,
+            device=layer.weight.device,
+        ).reshape(layer.out_features, layer.in_features)
+        biases = torch.tensor(
+            raw["biases"],
+            dtype=layer.bias.dtype,
+            device=layer.bias.device,
+        )
+        if biases.numel() != layer.out_features:
+            raise RuntimeError("Actor JSON bias shape mismatch")
+        with torch.no_grad():
+            layer.weight.copy_(weights)
+            layer.bias.copy_(biases)
+
+    load_linear(actor.fc1, hidden_layers[0])
+    load_linear(actor.fc2, hidden_layers[1])
+    load_linear(actor.mean, data["meanLayer"])
+    with torch.no_grad():
+        actor.log_std.weight.zero_()
+        actor.log_std.bias.fill_(clamp(log_std, LOG_STD_MIN, LOG_STD_MAX))
+    actor.eval()
 
 
 def export_machine_teacher(repo_root: Path, output: Path) -> None:
@@ -905,7 +1007,14 @@ def write_meta(
         "tau": config.tau,
         "alpha": alpha,
         "initialAlpha": config.initial_alpha,
-        "randomTrainingStarts": True,
+        "randomTrainingStarts": not config.fixed_training_starts,
+        "actorInit": (
+            str(config.actor_init)
+            if config.actor_init is not None
+            else None
+        ),
+        "actorInitLogStd": config.actor_init_log_std,
+        "actorLearningStarts": config.actor_learning_starts,
         "teacherBootstrap": config.teacher_bootstrap,
         "teacherBootstrapEpochs": config.teacher_epochs,
         "daggerRounds": config.dagger_rounds,
@@ -951,6 +1060,14 @@ def main() -> int:
                 "envs": config.envs,
                 "targetTransitions": config.steps,
                 "seed": config.seed,
+                "actorInit": (
+                    str(config.actor_init)
+                    if config.actor_init is not None
+                    else None
+                ),
+                "actorInitLogStd": config.actor_init_log_std,
+                "actorLearningStarts": config.actor_learning_starts,
+                "fixedTrainingStarts": config.fixed_training_starts,
                 "teacherBootstrap": config.teacher_bootstrap,
                 "teacherEpochs": config.teacher_epochs,
                 "daggerRounds": config.dagger_rounds,
@@ -977,8 +1094,36 @@ def main() -> int:
     for parameter in target_q2.parameters():
         parameter.requires_grad_(False)
 
+    if config.resume is not None and config.actor_init is not None:
+        raise RuntimeError("--resume and --actor-init cannot be used together")
+
+    actor_init_path: Path | None = None
+    if config.actor_init is not None and config.resume is None:
+        actor_init_path = (
+            config.actor_init
+            if config.actor_init.is_absolute()
+            else repo_root / config.actor_init
+        )
+        load_exported_actor(
+            actor,
+            actor_init_path,
+            log_std=config.actor_init_log_std,
+        )
+        print(
+            json.dumps({
+                "event": "SAC_ACTOR_INIT",
+                "policy": str(actor_init_path),
+                "logStd": config.actor_init_log_std,
+            }),
+            flush=True,
+        )
+
     bootstrap_meta: dict[str, Any] | None = None
-    if config.teacher_bootstrap and config.resume is None:
+    if (
+        config.teacher_bootstrap
+        and config.resume is None
+        and config.actor_init is None
+    ):
         bootstrap_meta = pretrain_actor_from_teacher(
             actor,
             repo_root,
@@ -1091,7 +1236,7 @@ def main() -> int:
     train_env = VectorRapierEnv(
         repo_root,
         config.envs,
-        random_starts=True,
+        random_starts=not config.fixed_training_starts,
         seed=config.seed,
     )
     eval_env = VectorRapierEnv(
@@ -1101,6 +1246,44 @@ def main() -> int:
         seed=config.seed + 1,
     )
     observation = train_env.observations.copy()
+
+    initial_info = evaluate_actor(actor, eval_env, device)
+    if best_info is None or normalized_episode_key(initial_info) < normalized_episode_key(best_info):
+        best_info = dict(initial_info)
+        export_actor(
+            actor,
+            Path(f"{output_prefix}-best.json"),
+        )
+        export_actor(
+            actor,
+            Path(f"{output_prefix}.json"),
+        )
+        write_meta(
+            Path(f"{output_prefix}-best.meta.json"),
+            config,
+            device,
+            transitions,
+            initial_info,
+            float(log_alpha.exp().detach().cpu()),
+        )
+        write_meta(
+            Path(f"{output_prefix}.meta.json"),
+            config,
+            device,
+            transitions,
+            initial_info,
+            float(log_alpha.exp().detach().cpu()),
+        )
+    print(
+        json.dumps({
+            "event": "SAC_INITIAL_EVAL",
+            "transitions": transitions,
+            "evaluation": initial_info,
+            "best": best_info,
+        }),
+        flush=True,
+    )
+
     next_eval = (
         (transitions // config.eval_every) + 1
     ) * config.eval_every
@@ -1205,33 +1388,39 @@ def main() -> int:
                     critic_loss.backward()
                     critic_optimizer.step()
 
-                    sampled_action, log_prob, _ = actor.sample(batch_obs)
-                    min_q = torch.minimum(
-                        q1(batch_obs, sampled_action),
-                        q2(batch_obs, sampled_action),
-                    )
-                    alpha_detached = log_alpha.exp().detach()
-                    actor_loss = (
-                        alpha_detached * log_prob - min_q
-                    ).mean()
-                    actor_optimizer.zero_grad(set_to_none=True)
-                    actor_loss.backward()
-                    actor_optimizer.step()
+                    if transitions >= config.actor_learning_starts:
+                        sampled_action, log_prob, _ = actor.sample(batch_obs)
+                        min_q = torch.minimum(
+                            q1(batch_obs, sampled_action),
+                            q2(batch_obs, sampled_action),
+                        )
+                        alpha_detached = log_alpha.exp().detach()
+                        actor_loss = (
+                            alpha_detached * log_prob - min_q
+                        ).mean()
+                        actor_optimizer.zero_grad(set_to_none=True)
+                        actor_loss.backward()
+                        actor_optimizer.step()
 
-                    alpha_loss = -(
-                        log_alpha
-                        * (log_prob + target_entropy).detach()
-                    ).mean()
-                    alpha_optimizer.zero_grad(set_to_none=True)
-                    alpha_loss.backward()
-                    alpha_optimizer.step()
+                        alpha_loss = -(
+                            log_alpha
+                            * (log_prob + target_entropy).detach()
+                        ).mean()
+                        alpha_optimizer.zero_grad(set_to_none=True)
+                        alpha_loss.backward()
+                        alpha_optimizer.step()
+
+                        last_actor_loss = float(
+                            actor_loss.detach().cpu()
+                        )
+                        last_alpha_loss = float(
+                            alpha_loss.detach().cpu()
+                        )
 
                     soft_update(q1, target_q1, config.tau)
                     soft_update(q2, target_q2, config.tau)
 
-                    last_actor_loss = float(actor_loss.detach().cpu())
                     last_critic_loss = float(critic_loss.detach().cpu())
-                    last_alpha_loss = float(alpha_loss.detach().cpu())
 
             if transitions >= next_log:
                 elapsed = max(1e-6, time.monotonic() - start_time)
