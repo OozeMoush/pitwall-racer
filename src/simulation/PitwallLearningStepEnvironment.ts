@@ -35,7 +35,7 @@ const PROGRESS_HARMONICS = [1, 2, 4] as const;
  * Positive constant scaling only. It does not change which trajectory is
  * optimal; it keeps SAC critic targets in a numerically convenient range.
  */
-export const PITWALL_RL_REWARD_METRES_SCALE = 0.1;
+export const PITWALL_RL_REWARD_METRES_SCALE = 1;
 
 export type PitwallLearningStatus = 'COMPLETED' | 'INCOMPLETE' | 'INVALID';
 export type PitwallLearningInvalidReason =
@@ -86,12 +86,23 @@ export interface PitwallLearningEpisodeOptions {
   captureFlyingLap?: boolean;
 }
 
+export interface PitwallLearningResetOptions {
+  startProgress?: number;
+  startSpeed?: number;
+  /**
+   * Training-only curriculum termination. When set, the episode ends after
+   * this much net forward progress without redefining an official flying lap.
+   */
+  completionProgressLaps?: number;
+}
+
 export interface PitwallLearningTransition {
   context: PitwallLearningPolicyContext;
   reward: number;
   terminated: boolean;
   truncated: boolean;
   result?: PitwallLearningEpisodeResult;
+  trainingLapCompleted?: boolean;
 }
 
 /**
@@ -123,6 +134,7 @@ export class PitwallLearningStepEnvironment {
   private trace: PitwallLearningTraceSample[] = [];
   private ticks = 0;
   private done = false;
+  private completionProgressLaps: number | undefined;
   private readonly captureFlyingLap: boolean;
   private readonly maximumTicks: number;
 
@@ -134,18 +146,28 @@ export class PitwallLearningStepEnvironment {
     this.reset();
   }
 
-  reset(): PitwallLearningPolicyContext {
+  reset(
+    options: PitwallLearningResetOptions = {},
+  ): PitwallLearningPolicyContext {
     setActiveTrack('pitwall-gp');
-    const startPose = sampleTrack(START_PROGRESS, 0);
+    const startProgress = wrapProgress(
+      options.startProgress ?? START_PROGRESS,
+    );
+    const startSpeed = options.startSpeed ?? START_SPEED;
+    const startPose = sampleTrack(startProgress, 0);
     const start = {
       ...createVehicle(startPose.x, startPose.y, startPose.heading),
-      speed: START_SPEED,
+      speed: startSpeed,
       yawRate: 0,
     };
     this.physics = new RapierRacePhysics(start, []);
     this.physics.setPlayerState(start);
 
-    this.projection = projectTrackNear(start.x, start.y, START_PROGRESS);
+    this.projection = projectTrackNear(
+      start.x,
+      start.y,
+      startProgress,
+    );
     this.previousProgress = this.projection.progress;
     this.completedLaps = 0;
     this.firstCrossing = undefined;
@@ -160,6 +182,10 @@ export class PitwallLearningStepEnvironment {
     this.trace = [];
     this.ticks = 0;
     this.done = false;
+    this.completionProgressLaps =
+      options.completionProgressLaps === undefined
+        ? undefined
+        : Math.max(0, options.completionProgressLaps);
 
     return this.context();
   }
@@ -276,7 +302,26 @@ export class PitwallLearningStepEnvironment {
       return this.terminalTransition(0, true, false);
     }
 
-    const reward = delta * TRACK_LENGTH * PITWALL_RL_REWARD_METRES_SCALE;
+    const reward =
+      delta * TRACK_LENGTH * PITWALL_RL_REWARD_METRES_SCALE;
+
+    if (
+      this.completionProgressLaps !== undefined
+      && this.netProgress >= this.completionProgressLaps
+    ) {
+      this.projection = nextProjection;
+      this.previousProgress = nextProjection.progress;
+      this.ticks += 1;
+      this.done = true;
+      const transition = this.terminalTransition(
+        reward,
+        true,
+        false,
+      );
+      transition.trainingLapCompleted = true;
+      return transition;
+    }
+
     const crossedStart =
       this.previousProgress > 0.88 && nextProjection.progress < 0.12;
 
@@ -444,6 +489,10 @@ function sanitizeAction(
       1,
     ),
   };
+}
+
+function wrapProgress(progress: number): number {
+  return ((progress % 1) + 1) % 1;
 }
 
 function wrapAngle(angle: number): number {
