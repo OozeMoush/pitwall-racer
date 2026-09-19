@@ -182,7 +182,10 @@ export function materializePitwallAbsoluteLine(
 export function createPitwallAbsolutePilotForLine(
   lanes: readonly number[],
   genome: PitwallAbsoluteGenome,
-  options: { laneTargetLimit?: number } = {},
+  options: {
+    laneTargetLimit?: number;
+    laneResidual?: (progress: number) => number;
+  } = {},
 ): PitwallAbsolutePilot {
   const profile = materializePitwallAbsoluteProfile({
     centralSpeedLift: genome.centralSpeedLift,
@@ -198,6 +201,7 @@ export function createPitwallAbsolutePilotForLine(
     lookAheadScale: genome.lookAheadScale,
     speedFeedback: genome.speedFeedback,
     laneTargetLimit: options.laneTargetLimit,
+    laneResidual: options.laneResidual,
   });
 }
 
