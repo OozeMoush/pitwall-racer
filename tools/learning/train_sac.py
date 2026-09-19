@@ -617,6 +617,8 @@ def pretrain_actor_from_teacher(
     aggregate_actions = actions
     rounds: list[dict[str, Any]] = []
 
+    best_learner_state: dict[str, torch.Tensor] | None = None
+    best_learner_key: tuple[int, float] | None = None
     total_rounds = dagger_rounds + dagger_stabilization_rounds
     for round_index in range(1, total_rounds + 1):
         if round_index <= dagger_rounds:
@@ -634,6 +636,58 @@ def pretrain_actor_from_teacher(
             episodes=dagger_episodes,
             seed=seed + round_index,
         )
+
+        summaries = collector_summary.get("episodeSummaries", [])
+        learner_only = learner_probability >= 1.0 - 1e-9
+        learner_completed = (
+            learner_only
+            and bool(summaries)
+            and all(
+                summary.get("behaviorStatus") == "COMPLETED"
+                for summary in summaries
+            )
+        )
+        if learner_only and summaries:
+            completed_count = sum(
+                summary.get("behaviorStatus") == "COMPLETED"
+                for summary in summaries
+            )
+            mean_progress = sum(
+                float(summary.get("forwardProgressMetres") or 0.0)
+                for summary in summaries
+            ) / len(summaries)
+            learner_key = (completed_count, mean_progress)
+            if (
+                best_learner_key is None
+                or learner_key > best_learner_key
+            ):
+                best_learner_key = learner_key
+                best_learner_state = {
+                    key: value.detach().cpu().clone()
+                    for key, value in actor.state_dict().items()
+                }
+
+        if learner_completed:
+            rounds.append({
+                "round": round_index,
+                "phase": phase,
+                "learnerProbability": learner_probability,
+                "newSamples": int(dagger_x.shape[0]),
+                "aggregateSamples": int(aggregate_observations.shape[0]),
+                "validationMse": best_validation,
+                "collector": collector_summary,
+                "retrained": False,
+                "bootstrapGatePassed": True,
+            })
+            print(
+                json.dumps({
+                    "event": "SAC_DAGGER_ROUND",
+                    **rounds[-1],
+                }),
+                flush=True,
+            )
+            break
+
         aggregate_observations = torch.cat(
             [aggregate_observations, dagger_x],
             dim=0,
@@ -659,6 +713,8 @@ def pretrain_actor_from_teacher(
             "aggregateSamples": int(aggregate_observations.shape[0]),
             "validationMse": best_validation,
             "collector": collector_summary,
+            "retrained": True,
+            "bootstrapGatePassed": False,
         })
         print(
             json.dumps({
@@ -667,6 +723,15 @@ def pretrain_actor_from_teacher(
             }),
             flush=True,
         )
+
+    if (
+        best_learner_state is not None
+        and not any(
+            bool(round_data.get("bootstrapGatePassed"))
+            for round_data in rounds
+        )
+    ):
+        actor.load_state_dict(best_learner_state)
 
     actor.eval()
     return {
