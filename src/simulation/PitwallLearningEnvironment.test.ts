@@ -5,7 +5,16 @@ import {
   evaluatePitwallLearningPolicy,
   comparePitwallLearningResults,
 } from './PitwallLearningEnvironment';
-import { createPitwallMachineTeacherPolicy } from './PitwallMachineTeacherPolicy';
+import {
+  createPitwallMachineTeacherPolicy,
+  createPitwallMachineTeacherPolicyForLine,
+} from './PitwallMachineTeacherPolicy';
+import {
+  createPitwallAbsoluteSeed,
+  materializePitwallAbsoluteLine,
+} from './PitwallAbsoluteOptimizer';
+import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
+import { TRACK_BARRIER_OFFSET } from './TrackLimitsModel';
 import {
   applyPitwallResidual,
   createPitwallResidualPolicyData,
@@ -45,6 +54,34 @@ describe('Pitwall learning environment', () => {
       .toBeLessThan(MACHINE_PHYSICS_DT);
     expect(result.trace.length).toBeGreaterThan(2500);
   }, 15_000);
+
+  it('keeps a zero line residual exactly on the verified teacher even with a wider search bound', () => {
+    const baseline = evaluatePitwallLearningPolicy(
+      createPitwallMachineTeacherPolicy(),
+    );
+    const genome = createPitwallAbsoluteSeed();
+    const lanes = materializePitwallAbsoluteLine(
+      OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
+      genome,
+    );
+    const widened = evaluatePitwallLearningPolicy(
+      createPitwallMachineTeacherPolicyForLine(
+        lanes,
+        genome,
+        {
+          laneTargetLimit: TRACK_BARRIER_OFFSET - 0.25,
+          laneResidual: () => 0,
+        },
+      ),
+    );
+
+    expect(baseline.status).toBe('COMPLETED');
+    expect(widened.status).toBe('COMPLETED');
+    expect(widened.invalidReason).toBeUndefined();
+    expect(widened.lapSeconds).toBe(baseline.lapSeconds);
+    expect(widened.preciseLapSeconds).toBeCloseTo(baseline.preciseLapSeconds!, 12);
+    expect(widened.maxLaneDistance).toBeCloseTo(baseline.maxLaneDistance, 12);
+  }, 20_000);
 
   it('keeps a zero residual exactly on the verified teacher trajectory', () => {
     const teacher = createPitwallMachineTeacherPolicy();
