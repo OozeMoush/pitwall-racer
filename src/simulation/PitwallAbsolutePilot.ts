@@ -20,6 +20,8 @@ export interface PitwallAbsolutePilotOptions {
   speedFeedback?: number;
   /** Optional search-only target-line bound passed to the steering pilot. */
   laneTargetLimit?: number;
+  /** Optional search-only lane offset applied after the verified baseline clamp. */
+  laneResidual?: (progress: number) => number;
 }
 
 /**
@@ -55,6 +57,7 @@ export class PitwallAbsolutePilot {
       predictionScale: options.predictionScale ?? 0.10,
       lookAheadScale: options.lookAheadScale ?? 1,
       laneTargetLimit: options.laneTargetLimit,
+      laneResidual: options.laneResidual,
     });
   }
 
