@@ -24,9 +24,9 @@ import {
   type PitwallFineResidualPolicyData,
 } from '../../src/simulation/PitwallFineResidualPolicy';
 import {
-  applyPitwallLineResidual,
   createPitwallLineResidualPolicyData,
   lineResidualDataWithParameters,
+  samplePitwallLineResidual,
   validatePitwallLineResidualPolicyData,
   type PitwallLineResidualPolicyData,
 } from '../../src/simulation/PitwallLineResidualPolicy';
@@ -205,11 +205,13 @@ console.log('LINE_RESIDUAL_SEARCH_DONE', JSON.stringify({
 
 function evaluate(parameters: readonly number[]): Candidate {
   const lineResidual = lineResidualDataWithParameters(lineTemplate, parameters);
-  const lanes = applyPitwallLineResidual(baseLanes, lineResidual);
   const teacher = createPitwallMachineTeacherPolicyForLine(
-    lanes,
+    baseLanes,
     absoluteGenome,
-    { laneTargetLimit: TRACK_BARRIER_OFFSET - 0.25 },
+    {
+      laneTargetLimit: TRACK_BARRIER_OFFSET - 0.25,
+      laneResidual: (progress) => samplePitwallLineResidual(lineResidual, progress),
+    },
   );
 
   const result = evaluatePitwallLearningPolicy(
