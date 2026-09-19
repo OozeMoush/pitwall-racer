@@ -18,6 +18,8 @@ export interface PitwallAbsolutePilotOptions {
   lookAheadScale?: number;
   /** Closed-loop correction strength around the machine-only feed-forward trace. */
   speedFeedback?: number;
+  /** Optional search-only target-line bound passed to the steering pilot. */
+  laneTargetLimit?: number;
 }
 
 /**
@@ -52,6 +54,7 @@ export class PitwallAbsolutePilot {
     this.steeringPilot = new MachineLinePilot('pitwall-gp', lanes, {
       predictionScale: options.predictionScale ?? 0.10,
       lookAheadScale: options.lookAheadScale ?? 1,
+      laneTargetLimit: options.laneTargetLimit,
     });
   }
 
