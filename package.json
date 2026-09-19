@@ -20,7 +20,8 @@
     "learn:evaluate-fine": "tsx scripts/learning/evaluate-fine-residual.ts",
     "learn:line": "tsx scripts/learning/evolve-line-residual.ts",
     "learn:evaluate-line": "tsx scripts/learning/evaluate-line-residual.ts",
-    "learn:joint": "tsx scripts/learning/refine-joint-line-control.ts"
+    "learn:joint": "tsx scripts/learning/refine-joint-line-control.ts",
+    "learn:block": "tsx scripts/learning/refine-block-line-control.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
