@@ -163,8 +163,27 @@ export function createPitwallAbsolutePilot(
   calibratedReference: readonly number[],
   genome: PitwallAbsoluteGenome,
 ): PitwallAbsolutePilot {
-  const lineGenome = lineGenomeFromAbsolute(genome);
-  const lanes = materializePitwallJointLine(calibratedReference, lineGenome);
+  return createPitwallAbsolutePilotForLine(
+    materializePitwallAbsoluteLine(calibratedReference, genome),
+    genome,
+  );
+}
+
+export function materializePitwallAbsoluteLine(
+  calibratedReference: readonly number[],
+  genome: PitwallAbsoluteGenome,
+): number[] {
+  return materializePitwallJointLine(
+    calibratedReference,
+    lineGenomeFromAbsolute(genome),
+  );
+}
+
+export function createPitwallAbsolutePilotForLine(
+  lanes: readonly number[],
+  genome: PitwallAbsoluteGenome,
+  options: { laneTargetLimit?: number } = {},
+): PitwallAbsolutePilot {
   const profile = materializePitwallAbsoluteProfile({
     centralSpeedLift: genome.centralSpeedLift,
     speedWindows: SPEED_CENTERS.map((center, index) => ({
@@ -178,6 +197,7 @@ export function createPitwallAbsolutePilot(
     predictionScale: genome.predictionScale,
     lookAheadScale: genome.lookAheadScale,
     speedFeedback: genome.speedFeedback,
+    laneTargetLimit: options.laneTargetLimit,
   });
 }
 
