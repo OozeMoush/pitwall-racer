@@ -21,7 +21,10 @@
     "learn:line": "tsx scripts/learning/evolve-line-residual.ts",
     "learn:evaluate-line": "tsx scripts/learning/evaluate-line-residual.ts",
     "learn:joint": "tsx scripts/learning/refine-joint-line-control.ts",
-    "learn:block": "tsx scripts/learning/refine-block-line-control.ts"
+    "learn:block": "tsx scripts/learning/refine-block-line-control.ts",
+    "learn:sac": "uv run tools/learning/train_sac.py --device cuda",
+    "learn:evaluate-sac": "tsx scripts/learning/evaluate-sac-policy.ts",
+    "learn:rl-server": "tsx scripts/learning/rl-server.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
