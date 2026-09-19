@@ -17,7 +17,9 @@
     "learn:export-residual": "tsx scripts/learning/export-residual-trace.ts",
     "learn:residual-pairs": "tsx scripts/learning/refine-residual-pairs.ts",
     "learn:residual-fine": "tsx scripts/learning/evolve-fine-residual.ts",
-    "learn:evaluate-fine": "tsx scripts/learning/evaluate-fine-residual.ts"
+    "learn:evaluate-fine": "tsx scripts/learning/evaluate-fine-residual.ts",
+    "learn:line": "tsx scripts/learning/evolve-line-residual.ts",
+    "learn:evaluate-line": "tsx scripts/learning/evaluate-line-residual.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
