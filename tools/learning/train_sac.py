@@ -46,6 +46,7 @@ class Config:
     actor_lr: float
     critic_lr: float
     alpha_lr: float
+    initial_alpha: float
     eval_every: int
     log_every: int
     seed: int
@@ -55,20 +56,33 @@ class Config:
 
 
 class VectorRapierEnv:
-    def __init__(self, repo_root: Path, envs: int):
+    def __init__(
+        self,
+        repo_root: Path,
+        envs: int,
+        *,
+        random_starts: bool = False,
+        seed: int = 56068,
+    ):
         tsx = repo_root / "node_modules" / ".bin" / "tsx"
         if not tsx.exists():
             raise RuntimeError(
                 f"{tsx} does not exist. Run npm install before SAC training."
             )
 
+        command = [
+            str(tsx),
+            "scripts/learning/rl-server.ts",
+            "--envs",
+            str(envs),
+            "--seed",
+            str(seed),
+        ]
+        if random_starts:
+            command.append("--random-starts")
+
         self.process = subprocess.Popen(
-            [
-                str(tsx),
-                "scripts/learning/rl-server.ts",
-                "--envs",
-                str(envs),
-            ],
+            command,
             cwd=repo_root,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -232,10 +246,12 @@ class Actor(nn.Module):
 
         # Generic driving prior only: straight steering, mostly-on throttle,
         # mostly-off brake. No corner, line, target-speed or human knowledge.
+        nn.init.zeros_(self.mean.weight)
         nn.init.constant_(self.mean.bias, 0.0)
         with torch.no_grad():
             self.mean.bias[1] = 1.0
             self.mean.bias[2] = -2.0
+        nn.init.zeros_(self.log_std.weight)
         nn.init.constant_(self.log_std.bias, -1.0)
 
     def features(self, observation: torch.Tensor) -> torch.Tensor:
@@ -306,6 +322,7 @@ def parse_args() -> Config:
     parser.add_argument("--actor-lr", type=float, default=3e-4)
     parser.add_argument("--critic-lr", type=float, default=3e-4)
     parser.add_argument("--alpha-lr", type=float, default=3e-4)
+    parser.add_argument("--initial-alpha", type=float, default=0.1)
     parser.add_argument("--eval-every", type=int, default=50_000)
     parser.add_argument("--log-every", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=56068)
@@ -334,6 +351,7 @@ def parse_args() -> Config:
         actor_lr=float(args.actor_lr),
         critic_lr=float(args.critic_lr),
         alpha_lr=float(args.alpha_lr),
+        initial_alpha=max(1e-6, float(args.initial_alpha)),
         eval_every=max(1_000, args.eval_every),
         log_every=max(1_000, args.log_every),
         seed=int(args.seed),
@@ -509,6 +527,8 @@ def write_meta(
         "gamma": config.gamma,
         "tau": config.tau,
         "alpha": alpha,
+        "initialAlpha": config.initial_alpha,
+        "randomTrainingStarts": True,
         "evaluation": evaluation,
     }
     path.write_text(
@@ -571,7 +591,7 @@ def main() -> int:
         lr=config.critic_lr,
     )
     log_alpha = torch.tensor(
-        0.0,
+        math.log(config.initial_alpha),
         device=device,
         requires_grad=True,
     )
@@ -622,8 +642,18 @@ def main() -> int:
         ACTION_SIZE,
     )
 
-    train_env = VectorRapierEnv(repo_root, config.envs)
-    eval_env = VectorRapierEnv(repo_root, 1)
+    train_env = VectorRapierEnv(
+        repo_root,
+        config.envs,
+        random_starts=True,
+        seed=config.seed,
+    )
+    eval_env = VectorRapierEnv(
+        repo_root,
+        1,
+        random_starts=False,
+        seed=config.seed + 1,
+    )
     observation = train_env.observations.copy()
     next_eval = (
         (transitions // config.eval_every) + 1
@@ -635,6 +665,13 @@ def main() -> int:
     last_actor_loss = math.nan
     last_critic_loss = math.nan
     last_alpha_loss = math.nan
+    episode_count = 0
+    training_lap_count = 0
+    invalid_count = 0
+    truncated_count = 0
+    episode_progress_sum = 0.0
+    episode_progress_max = 0.0
+    invalid_reasons: dict[str, int] = {}
 
     try:
         while transitions < config.steps:
@@ -651,9 +688,28 @@ def main() -> int:
                 rewards,
                 terminated,
                 truncated,
-                _infos,
+                infos,
             ) = train_env.step(action_np)
             done = np.logical_or(terminated, truncated)
+
+            for index, ended in enumerate(done):
+                if not ended:
+                    continue
+                info = infos[index]
+                if not isinstance(info, dict):
+                    continue
+                episode_count += 1
+                progress = float(info.get("forwardProgressMetres") or 0.0)
+                episode_progress_sum += progress
+                episode_progress_max = max(episode_progress_max, progress)
+                if bool(info.get("trainingLapCompleted")):
+                    training_lap_count += 1
+                if info.get("status") == "INVALID":
+                    invalid_count += 1
+                    reason = str(info.get("invalidReason") or "UNKNOWN")
+                    invalid_reasons[reason] = invalid_reasons.get(reason, 0) + 1
+                if bool(truncated[index]):
+                    truncated_count += 1
 
             replay.add_batch(
                 observation,
@@ -747,9 +803,27 @@ def main() -> int:
                         "alpha": float(
                             log_alpha.exp().detach().cpu()
                         ),
+                        "episodes": episode_count,
+                        "trainingLaps": training_lap_count,
+                        "invalidEpisodes": invalid_count,
+                        "truncatedEpisodes": truncated_count,
+                        "meanEpisodeProgressMetres": (
+                            episode_progress_sum / episode_count
+                            if episode_count
+                            else 0.0
+                        ),
+                        "maxEpisodeProgressMetres": episode_progress_max,
+                        "invalidReasons": invalid_reasons,
                     }),
                     flush=True,
                 )
+                episode_count = 0
+                training_lap_count = 0
+                invalid_count = 0
+                truncated_count = 0
+                episode_progress_sum = 0.0
+                episode_progress_max = 0.0
+                invalid_reasons = {}
                 next_log += config.log_every
 
             if transitions >= next_eval:
