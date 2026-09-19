@@ -1,186 +1,188 @@
 # Pitwall learned driver
 
-This is an experimental machine-only driver for discovering the fastest valid
-Pitwall GP lap without hand-authoring a racing line or target-speed profile.
+This document describes the current Plan A path for #61: learn the fastest valid
+Pitwall GP lap directly from the game's own physics, without hand-authoring a
+racing line, corner targets, target speeds, or human-derived controls.
 
-The learned policy sees only normalized vehicle/track observations and directly
-outputs the game's real three actuator channels: steering, throttle and brake.
-Throttle and brake remain independent so learning does not discard transient
-control strategies that the physical car can actually execute.
+## Current direction: direct reinforcement learning
 
-## Rule model
+The authoritative environment is the real 120 Hz `RapierRacePhysics` world.
+The agent observes normalized vehicle/track state and directly outputs the
+game's three actuator channels:
 
-There is intentionally no numeric off-track reward penalty.
+- steering
+- throttle
+- brake
 
-- Kerb/runoff/grass affects the car only through the real `SurfaceModel`.
-- A policy is invalid when the whole physical car leaves the road, when track
-  progress makes a physically impossible jump, or when it substantially
-  reverses around the circuit.
-- Valid completed policies are compared only by flying-lap time.
-- Incomplete/invalid policies may use forward progress only as a curriculum or
-  tie-break signal; they can never outrank a valid completed lap.
+There is **no racing-line variable** in the RL policy. The racing line is an
+output of the learned behavior and can be reconstructed from the final trace.
 
-This prevents a tunable penalty coefficient from defining the racing line. If a
-small amount of kerb/runoff is physically faster, the learner is free to use it.
+The current algorithm is Soft Actor-Critic (SAC), trained in PyTorch/CUDA while
+multiple Rapier environments run in Node/TypeScript on CPU.
 
-## Architecture
+## What humans define vs what the agent learns
 
-The current policy is a tiny deterministic MLP:
+Humans define only the environment contract:
 
-- 18 observations
-- hidden layers: 16, 16
-- 3 actions: steer, throttle, brake
+- the existing vehicle/chassis physics;
+- the existing `SurfaceModel`;
+- track geometry;
+- the 18 generic vehicle/track observations;
+- physical steer/throttle/brake action limits;
+- hard validity rules;
+- completion of a flying lap.
 
-Observations contain forward and lateral velocity, yaw rate, lateral track
-position, heading error, several Fourier features of Pitwall progress, signed
-track-heading changes at 12/25/45/70/100 m ahead, and current tyre-slide
-severity. The lateral-velocity input is important because a direct-control
-policy otherwise cannot distinguish two states with the same scalar speed but
-opposite sideslip.
+The agent learns:
 
-The policy does **not** receive the old reference line, target speed, human PB,
-or human telemetry.
+- where to place the car;
+- turn-in and steering behavior;
+- braking timing/intensity;
+- throttle timing/intensity;
+- how to trade entry speed, minimum speed and exit speed;
+- the resulting racing line.
 
-The authoritative rollout is the real `RapierRacePhysics` world with the same
-fresh Soft grip, surface model, power baseline, tyre-slide logic, chassis and
-safety barriers as the player car.
+The agent does not receive the old reference line, target speed, human PB, or
+human telemetry.
 
-## Local workflow (WSL)
+## Reward and validity
 
-Install/update Node dependencies first:
+There is intentionally no grass/runoff/kerb penalty coefficient.
+
+A valid transition receives reward proportional only to **signed forward
+physical progress**. The multiplier is a positive constant for numerical
+conditioning and cannot change the optimum. SAC discounting makes faster
+progress preferable.
+
+Kerb/runoff/grass affect the car only through the real `SurfaceModel`.
+
+Episodes terminate under the same hard rules used by the machine-lap evaluator:
+
+- whole physical car leaves the road;
+- impossible progress jump;
+- sustained reverse.
+
+An episode also ends when a valid flying lap is completed. A maximum episode
+duration is only a training truncation.
+
+## Environment architecture
+
+`PitwallLearningStepEnvironment` is now the single stepwise environment used
+by both RL and the existing deterministic evaluator. This prevents a Python
+training simulator from drifting away from the actual game physics.
+
+`scripts/learning/rl-server.ts` exposes a vector of these environments over a
+small JSONL protocol. PyTorch sends normalized continuous actions; Node maps
+them to the physical actuator ranges and advances Rapier.
+
+The deterministic exported SAC actor is represented by
+`PitwallSacPolicy.ts`, so a trained checkpoint can be replayed independently
+inside the TypeScript/Rapier evaluator.
+
+## Train on WSL + RTX
+
+Install Node dependencies first:
 
 ```bash
 npm install
 ```
 
-The complete pipeline can then be started with one command:
+Start SAC with the default CUDA configuration:
 
 ```bash
-npm run learn:local
+npm run learn:sac
 ```
 
-`learn:local` requests CUDA by default. On the intended RTX-equipped WSL setup,
-that is useful because a broken CUDA/PyTorch setup should fail visibly instead
-of silently running behavior cloning on CPU. To deliberately use CPU training:
+The default run uses 16 Rapier environments and targets 1.5 million
+transitions. Useful overrides can be passed after `--`:
 
 ```bash
-TRAIN_DEVICE=cpu npm run learn:local
+npm run learn:sac -- \
+  --envs 16 \
+  --steps 1500000 \
+  --eval-every 50000
 ```
 
-The individual stages are below if you want to inspect or tune them separately.
-
-### 1. Export the current machine-only teacher
+For an initial smoke run:
 
 ```bash
-npm run learn:teacher
+npm run learn:sac -- \
+  --envs 8 \
+  --steps 100000 \
+  --learning-starts 10000 \
+  --eval-every 25000
 ```
 
-This writes:
+CUDA is required by the npm convenience command. To deliberately use CPU:
+
+```bash
+uv run tools/learning/train_sac.py --device cpu --steps 100000
+```
+
+## Checkpoints
+
+Training writes:
 
 ```text
-artifacts/pitwall-learning/teacher.jsonl
-artifacts/pitwall-learning/teacher.meta.json
+artifacts/pitwall-learning/policy-sac-latest.json
+artifacts/pitwall-learning/policy-sac-latest.pt
+artifacts/pitwall-learning/policy-sac-latest.meta.json
+
+artifacts/pitwall-learning/policy-sac-best.json
+artifacts/pitwall-learning/policy-sac-best.pt
+artifacts/pitwall-learning/policy-sac-best.meta.json
 ```
 
-The teacher is the current machine-only absolute controller. Human telemetry is
-not included. Each sample preserves exact `steer`, `throttle`, and `brake`.
+The `best` checkpoint follows the same validity hierarchy used elsewhere:
+completed valid laps first, then game-equivalent lap time, then sub-tick time.
+Before any policy can complete a lap, forward progress is only a lower-tier
+curriculum signal.
 
-### 2. Behavior-clone the teacher with PyTorch
-
-The trainer uses PEP 723 metadata, so `uv` creates an isolated Python
-environment automatically:
-
-```bash
-uv run tools/learning/train_teacher.py --device cuda
-```
-
-The standalone trainer also supports `--device auto` and `--device cpu`. It
-prints the selected CUDA device name in its final metadata.
-
-Output:
+Once the best deterministic actor completes a valid lap, it is also exported as:
 
 ```text
-artifacts/pitwall-learning/policy-teacher.json
-artifacts/pitwall-learning/policy-teacher.meta.json
+artifacts/pitwall-learning/policy-sac.json
+artifacts/pitwall-learning/policy-sac.meta.json
 ```
 
-### 3. Verify the neural policy in the real Rapier world
+Replay that policy independently with:
 
 ```bash
-npm run learn:evaluate
+npm run learn:evaluate-sac
 ```
 
-A useful clone should complete a valid lap. A small supervised MSE is not enough
-by itself: closed-loop Rapier execution is the authority.
-
-### 4. Evolve the neural policy directly against Rapier
+or:
 
 ```bash
-npm run learn:evolve -- --generations 80 --population 24
+npm run learn:evaluate-sac -- \
+  artifacts/pitwall-learning/policy-sac-best.json
 ```
 
-The optimizer is a rank-based evolution strategy with antithetic Gaussian
-perturbations and an Adam update of the policy-weight mean. Crucially, its
-utilities come from **rank only**. The ordering is the same rule ordering used by
-the environment: valid completed laps first, then lap time; progress only helps
-order lower-tier incomplete/invalid candidates. It never converts grass,
-runoff, or invalidity into an arbitrary number of penalty seconds.
+The independent Rapier replay is the promotion authority.
 
-The best physically verified checkpoint is preserved even if the search mean
-moves into a worse basin, and the search recenters on that checkpoint after
-extended stagnation.
+## Current external baseline
 
-The best checkpoint is written to:
+The frozen machine-only local-search checkpoint currently replays at:
 
-```text
-artifacts/pitwall-learning/policy-evolved.json
-artifacts/pitwall-learning/policy-evolved.meta.json
-```
+- game-equivalent lap: **25.292 s**
+- sub-tick diagnostic: **25.298093 s**
 
-Evaluate it explicitly with:
+This checkpoint is a comparison baseline, not an RL target and not a reward
+input. The observed human PB (~24.342 s) remains external sanity evidence only.
 
-```bash
-npm run learn:evaluate -- artifacts/pitwall-learning/policy-evolved.json
-```
+## Legacy local-search tooling
 
-Useful evolution controls:
+The branch still contains the earlier teacher, behavior-cloning, residual,
+fine-residual, line, pair, joint and block-search experiments so their results
+remain reproducible while PR #62 is draft.
 
-```text
---generations N
---population N
---sigma X
---learning-rate X
---sigma-decay X
---seed N
---input FILE
---output FILE
-```
-
-The one-command pipeline accepts corresponding environment variables, for
-example:
-
-```bash
-GENERATIONS=120 POPULATION=32 EVOLUTION_LR=0.005 npm run learn:local
-```
-
-## CPU vs GPU
-
-The PyTorch behavior-cloning phase uses the RTX 4070 through CUDA in the default
-local pipeline. The network is small, so this phase is not computationally
-demanding even though CUDA is enabled.
-
-The expensive part is evolutionary rollout: every candidate must execute the
-Rapier physics loop. Rapier currently runs on CPU, so GPU utilization will be
-low during `learn:evolve`. This is expected. Parallel rollout workers are the
-next performance optimization if single-process rollout becomes the bottleneck.
-
-If/when SAC/PPO is added, neural-network updates can use CUDA while Rapier
-rollouts remain CPU-side unless the physics environment is replaced or batched
-on another backend.
+They are now **frozen as baseline/prototyping tooling**. Do not keep adding
+course-specific windows, knots or local search layers as the primary Plan A
+path. The active path is the direct SAC policy described above.
 
 ## Promotion rule
 
-A learned policy must not be promoted merely because an approximate evaluator
-reports a fast time. The policy must complete a valid flying lap in the real
-Rapier environment. Machine-only learning remains Plan A; the known human PB is
-only an external comparison number, never a training target.
+Do not merge or call a learned policy a machine optimum because its training
+reward looks good. It must complete a valid flying lap in the authoritative
+Rapier evaluator and be independently replayable from the exported actor JSON.
+
+Human data remains excluded from Plan A training.
