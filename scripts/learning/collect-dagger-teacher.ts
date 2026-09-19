@@ -61,6 +61,12 @@ for (let episode = 0; episode < options.episodes; episode++) {
         learnerProbability: options.learnerProbability,
         behaviorStatus: transition.result.status,
         invalidReason: transition.result.invalidReason ?? null,
+        lapSeconds: transition.result.lapSeconds === undefined
+          ? null
+          : Number(transition.result.lapSeconds.toFixed(3)),
+        preciseLapSeconds: transition.result.preciseLapSeconds === undefined
+          ? null
+          : Number(transition.result.preciseLapSeconds.toFixed(6)),
         forwardProgressMetres: Number(
           transition.result.forwardProgressMetres.toFixed(1),
         ),
