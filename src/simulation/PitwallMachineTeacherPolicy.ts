@@ -29,7 +29,10 @@ export function createPitwallMachineTeacherPolicy(
 export function createPitwallMachineTeacherPolicyForLine(
   lanes: readonly number[],
   genome: PitwallAbsoluteGenome = createPitwallAbsoluteSeed(),
-  options: { laneTargetLimit?: number } = {},
+  options: {
+    laneTargetLimit?: number;
+    laneResidual?: (progress: number) => number;
+  } = {},
 ): PitwallLearningPolicy {
   installReferenceLineCalibration();
   return adaptTeacher(createPitwallAbsolutePilotForLine(
