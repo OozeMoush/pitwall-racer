@@ -4,6 +4,7 @@ import type { MachineLapPolicyContext } from './MachineLapEvaluator';
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { createAiField, type DriverState } from './RaceModel';
 import { REFERENCE_LANE_LIMIT } from './ReferenceDriverModel';
+import { TRACK_BARRIER_OFFSET } from './TrackLimitsModel';
 import { compoundPeakGrip, createTire } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
@@ -35,6 +36,8 @@ export interface MachineSteeringTuning {
 }
 
 export interface MachineLinePilotOptions extends MachineSteeringTuning {
+  /** Optional search-only target-line bound. Defaults to the legacy reference limit. */
+  laneTargetLimit?: number;
   /** Brake multiplier through the 50-72% technical complex. */
   middleBrakeScale?: number;
   /** Brake multiplier through the wrapped 82-6% final/start complex. */
@@ -57,6 +60,7 @@ export class MachineLinePilot {
   private readonly finalBrakeScale: number;
   private readonly brakeWindows: readonly MachineBrakeWindow[];
   private readonly speedWindows: readonly MachineSpeedWindow[];
+  private readonly laneTargetLimit: number;
   private readonly steering: Required<MachineSteeringTuning>;
 
   constructor(
@@ -68,6 +72,11 @@ export class MachineLinePilot {
     this.finalBrakeScale = clamp(options.finalBrakeScale ?? 1, 0.35, 1.15);
     this.brakeWindows = options.brakeWindows ?? [];
     this.speedWindows = options.speedWindows ?? [];
+    this.laneTargetLimit = clamp(
+      options.laneTargetLimit ?? REFERENCE_LANE_LIMIT,
+      0,
+      TRACK_BARRIER_OFFSET - 0.25,
+    );
     this.steering = {
       lookAheadScale: clamp(options.lookAheadScale ?? 1, 0.65, 1.40),
       headingGainScale: clamp(options.headingGainScale ?? 1, 0.55, 1.55),
@@ -118,11 +127,11 @@ export class MachineLinePilot {
       * technicalLookahead
       * this.steering.lookAheadScale;
     const targetProgress = progress + lookAheadMetres / TRACK_LENGTH;
-    const targetLane = clamp(sampleCircular(this.lanes, targetProgress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
-    const currentLane = clamp(sampleCircular(this.lanes, progress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
+    const targetLane = clamp(sampleCircular(this.lanes, targetProgress), -this.laneTargetLimit, this.laneTargetLimit);
+    const currentLane = clamp(sampleCircular(this.lanes, progress), -this.laneTargetLimit, this.laneTargetLimit);
     const target = sampleTrack(targetProgress, targetLane);
     const tangentProgress = targetProgress + 8 * this.steering.tangentScale / TRACK_LENGTH;
-    const tangentLane = clamp(sampleCircular(this.lanes, tangentProgress), -REFERENCE_LANE_LIMIT, REFERENCE_LANE_LIMIT);
+    const tangentLane = clamp(sampleCircular(this.lanes, tangentProgress), -this.laneTargetLimit, this.laneTargetLimit);
     const tangent = sampleTrack(tangentProgress, tangentLane);
 
     const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
