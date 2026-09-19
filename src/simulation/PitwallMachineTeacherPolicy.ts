@@ -1,6 +1,7 @@
 import {
   createPitwallAbsolutePilot,
   createPitwallAbsoluteSeed,
+  type PitwallAbsoluteGenome,
 } from './PitwallAbsoluteOptimizer';
 import type {
   PitwallLearningPolicy,
@@ -14,11 +15,13 @@ import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
  * environment policy interface. This is a seed/teacher only: optimized residual
  * traces can later be distilled into a standalone neural policy.
  */
-export function createPitwallMachineTeacherPolicy(): PitwallLearningPolicy {
+export function createPitwallMachineTeacherPolicy(
+  genome: PitwallAbsoluteGenome = createPitwallAbsoluteSeed(),
+): PitwallLearningPolicy {
   installReferenceLineCalibration();
   const teacher = createPitwallAbsolutePilot(
     OPTIMIZED_REFERENCE_LANES['pitwall-gp'],
-    createPitwallAbsoluteSeed(),
+    genome,
   );
 
   return (context: PitwallLearningPolicyContext) => {
