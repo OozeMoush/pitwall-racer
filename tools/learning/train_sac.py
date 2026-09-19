@@ -58,6 +58,7 @@ class Config:
     dagger_rounds: int
     dagger_episodes: int
     dagger_epochs: int
+    dagger_stabilization_rounds: int
     bootstrap_only: bool
 
 
@@ -353,6 +354,16 @@ def parse_args() -> Config:
     parser.add_argument("--dagger-episodes", type=int, default=4)
     parser.add_argument("--dagger-epochs", type=int, default=160)
     parser.add_argument(
+        "--dagger-stabilization-rounds",
+        type=int,
+        default=2,
+        help=(
+            "Additional learner-only DAgger rounds after the mixed-control "
+            "ramp. These collect exactly the states where the current actor "
+            "still leaves the circuit."
+        ),
+    )
+    parser.add_argument(
         "--bootstrap-only",
         action="store_true",
         help="Pretrain/evaluate the actor from the machine teacher and exit.",
@@ -383,6 +394,10 @@ def parse_args() -> Config:
         dagger_rounds=max(0, args.dagger_rounds),
         dagger_episodes=max(1, args.dagger_episodes),
         dagger_epochs=max(1, args.dagger_epochs),
+        dagger_stabilization_rounds=max(
+            0,
+            args.dagger_stabilization_rounds,
+        ),
         bootstrap_only=bool(args.bootstrap_only),
     )
 
@@ -579,6 +594,7 @@ def pretrain_actor_from_teacher(
     dagger_rounds: int,
     dagger_episodes: int,
     dagger_epochs: int,
+    dagger_stabilization_rounds: int,
 ) -> dict[str, Any]:
     teacher_path = (
         repo_root
@@ -601,8 +617,15 @@ def pretrain_actor_from_teacher(
     aggregate_actions = actions
     rounds: list[dict[str, Any]] = []
 
-    for round_index in range(1, dagger_rounds + 1):
-        learner_probability = round_index / dagger_rounds
+    total_rounds = dagger_rounds + dagger_stabilization_rounds
+    for round_index in range(1, total_rounds + 1):
+        if round_index <= dagger_rounds:
+            learner_probability = round_index / max(1, dagger_rounds)
+            phase = "ramp"
+        else:
+            learner_probability = 1.0
+            phase = "learner-only-stabilization"
+
         dagger_x, dagger_y, collector_summary = collect_dagger_teacher(
             repo_root,
             actor,
@@ -630,6 +653,7 @@ def pretrain_actor_from_teacher(
         )
         rounds.append({
             "round": round_index,
+            "phase": phase,
             "learnerProbability": learner_probability,
             "newSamples": int(dagger_x.shape[0]),
             "aggregateSamples": int(aggregate_observations.shape[0]),
@@ -653,6 +677,7 @@ def pretrain_actor_from_teacher(
         "daggerRounds": dagger_rounds,
         "daggerEpisodes": dagger_episodes,
         "daggerEpochs": dagger_epochs,
+        "daggerStabilizationRounds": dagger_stabilization_rounds,
         "aggregateSamples": int(aggregate_observations.shape[0]),
         "rounds": rounds,
     }
@@ -821,6 +846,9 @@ def write_meta(
         "daggerRounds": config.dagger_rounds,
         "daggerEpisodes": config.dagger_episodes,
         "daggerEpochs": config.dagger_epochs,
+        "daggerStabilizationRounds": (
+            config.dagger_stabilization_rounds
+        ),
         "evaluation": evaluation,
     }
     path.write_text(
@@ -863,6 +891,9 @@ def main() -> int:
                 "daggerRounds": config.dagger_rounds,
                 "daggerEpisodes": config.dagger_episodes,
                 "daggerEpochs": config.dagger_epochs,
+                "daggerStabilizationRounds": (
+                    config.dagger_stabilization_rounds
+                ),
                 "bootstrapOnly": config.bootstrap_only,
             }
         ),
@@ -892,6 +923,7 @@ def main() -> int:
             config.dagger_rounds,
             config.dagger_episodes,
             config.dagger_epochs,
+            config.dagger_stabilization_rounds,
         )
         bootstrap_env = VectorRapierEnv(
             repo_root,
