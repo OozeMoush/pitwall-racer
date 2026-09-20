@@ -56,6 +56,8 @@ class Config:
     actor_init: Path | None
     actor_init_log_std: float
     actor_learning_starts: int
+    bootstrap_prefill_episodes: int
+    policy_delay: int
     target_entropy: float
     model_dtype: str
     initial_eval_only: bool
@@ -482,6 +484,21 @@ def parse_args() -> Config:
         ),
     )
     parser.add_argument(
+        "--bootstrap-prefill-episodes",
+        type=int,
+        default=0,
+        help=(
+            "Seed replay with this many deterministic completed episodes from "
+            "the validated initial actor before online exploration."
+        ),
+    )
+    parser.add_argument(
+        "--policy-delay",
+        type=int,
+        default=1,
+        help="Run one actor/temperature update per N critic updates.",
+    )
+    parser.add_argument(
         "--target-entropy",
         type=float,
         default=-3.0,
@@ -561,6 +578,11 @@ def parse_args() -> Config:
             if args.actor_learning_starts is not None
             else args.learning_starts,
         ),
+        bootstrap_prefill_episodes=max(
+            0,
+            args.bootstrap_prefill_episodes,
+        ),
+        policy_delay=max(1, args.policy_delay),
         target_entropy=float(args.target_entropy),
         model_dtype=str(args.model_dtype),
         initial_eval_only=bool(args.initial_eval_only),
@@ -1044,6 +1066,77 @@ def evaluate_actor(
             return info
 
 
+def prefill_replay_from_actor(
+    repo_root: Path,
+    replay: ReplayBuffer,
+    deployment_actor: DeploymentActorMirror,
+    *,
+    episodes: int,
+    seed: int,
+) -> dict[str, Any]:
+    if episodes <= 0:
+        return {
+            "episodes": 0,
+            "transitions": 0,
+            "summaries": [],
+        }
+
+    environment = VectorRapierEnv(
+        repo_root,
+        1,
+        random_starts=False,
+        seed=seed,
+    )
+    observation = environment.observations.copy()
+    completed = 0
+    transition_count = 0
+    summaries: list[dict[str, Any]] = []
+
+    try:
+        while completed < episodes:
+            action = deployment_actor.deterministic_batch(observation)
+            (
+                next_observation,
+                rewards,
+                terminated,
+                truncated,
+                infos,
+            ) = environment.step(action)
+            done = np.logical_or(terminated, truncated)
+            replay.add_batch(
+                observation,
+                action,
+                rewards,
+                next_observation,
+                done,
+            )
+            transition_count += 1
+            observation = next_observation
+
+            if not done[0]:
+                continue
+            info = infos[0]
+            if not isinstance(info, dict):
+                raise RuntimeError(
+                    "Deterministic replay prefill episode ended without info"
+                )
+            summaries.append(dict(info))
+            if info.get("status") != "COMPLETED":
+                raise RuntimeError(
+                    "Validated actor failed deterministic replay prefill: "
+                    + json.dumps(info)
+                )
+            completed += 1
+    finally:
+        environment.close()
+
+    return {
+        "episodes": completed,
+        "transitions": transition_count,
+        "summaries": summaries,
+    }
+
+
 def authoritative_evaluate_actor(
     actor: Actor,
     repo_root: Path,
@@ -1178,6 +1271,10 @@ def write_meta(
         ),
         "actorInitLogStd": config.actor_init_log_std,
         "actorLearningStarts": config.actor_learning_starts,
+        "bootstrapPrefillEpisodes": (
+            config.bootstrap_prefill_episodes
+        ),
+        "policyDelay": config.policy_delay,
         "targetEntropy": config.target_entropy,
         "modelDtype": config.model_dtype,
         "rolloutInference": "scalar-float64-deployment-order",
@@ -1238,6 +1335,10 @@ def main() -> int:
                 ),
                 "actorInitLogStd": config.actor_init_log_std,
                 "actorLearningStarts": config.actor_learning_starts,
+                "bootstrapPrefillEpisodes": (
+                    config.bootstrap_prefill_episodes
+                ),
+                "policyDelay": config.policy_delay,
                 "targetEntropy": config.target_entropy,
                 "modelDtype": config.model_dtype,
                 "initialEvalOnly": config.initial_eval_only,
@@ -1411,6 +1512,23 @@ def main() -> int:
         ACTION_SIZE,
     )
 
+    prefill = prefill_replay_from_actor(
+        repo_root,
+        replay,
+        deployment_actor,
+        episodes=config.bootstrap_prefill_episodes,
+        seed=config.seed + 10,
+    )
+    if config.bootstrap_prefill_episodes > 0:
+        print(
+            json.dumps({
+                "event": "SAC_REPLAY_PREFILL",
+                "replay": replay.size,
+                **prefill,
+            }),
+            flush=True,
+        )
+
     train_env = VectorRapierEnv(
         repo_root,
         config.envs,
@@ -1509,6 +1627,8 @@ def main() -> int:
     episode_progress_sum = 0.0
     episode_progress_max = 0.0
     invalid_reasons: dict[str, int] = {}
+    critic_update_count = 0
+    actor_update_count = 0
 
     try:
         while transitions < config.steps:
@@ -1594,8 +1714,12 @@ def main() -> int:
                     critic_optimizer.zero_grad(set_to_none=True)
                     critic_loss.backward()
                     critic_optimizer.step()
+                    critic_update_count += 1
 
-                    if transitions >= config.actor_learning_starts:
+                    if (
+                        transitions >= config.actor_learning_starts
+                        and critic_update_count % config.policy_delay == 0
+                    ):
                         sampled_action, log_prob, _ = actor.sample(batch_obs)
                         min_q = torch.minimum(
                             q1(batch_obs, sampled_action),
@@ -1608,6 +1732,7 @@ def main() -> int:
                         actor_optimizer.zero_grad(set_to_none=True)
                         actor_loss.backward()
                         actor_optimizer.step()
+                        actor_update_count += 1
 
                         alpha_loss = -(
                             log_alpha
@@ -1646,6 +1771,8 @@ def main() -> int:
                         "alpha": float(
                             log_alpha.exp().detach().cpu()
                         ),
+                        "criticUpdates": critic_update_count,
+                        "actorUpdates": actor_update_count,
                         "episodes": episode_count,
                         "trainingLaps": training_lap_count,
                         "invalidEpisodes": invalid_count,
