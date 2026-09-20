@@ -58,6 +58,8 @@ class Config:
     actor_learning_starts: int
     bootstrap_prefill_episodes: int
     policy_delay: int
+    bootstrap_anchor_coef: float
+    bootstrap_anchor_transitions: int
     target_entropy: float
     model_dtype: str
     initial_eval_only: bool
@@ -499,6 +501,24 @@ def parse_args() -> Config:
         help="Run one actor/temperature update per N critic updates.",
     )
     parser.add_argument(
+        "--bootstrap-anchor-coef",
+        type=float,
+        default=0.0,
+        help=(
+            "Behavior-regularization strength toward the validated initial "
+            "actor while online critics become reliable."
+        ),
+    )
+    parser.add_argument(
+        "--bootstrap-anchor-transitions",
+        type=int,
+        default=100_000,
+        help=(
+            "Linearly decay bootstrap behavior regularization to zero over "
+            "this many online transitions after actor updates begin."
+        ),
+    )
+    parser.add_argument(
         "--target-entropy",
         type=float,
         default=-3.0,
@@ -583,6 +603,14 @@ def parse_args() -> Config:
             args.bootstrap_prefill_episodes,
         ),
         policy_delay=max(1, args.policy_delay),
+        bootstrap_anchor_coef=max(
+            0.0,
+            float(args.bootstrap_anchor_coef),
+        ),
+        bootstrap_anchor_transitions=max(
+            1,
+            args.bootstrap_anchor_transitions,
+        ),
         target_entropy=float(args.target_entropy),
         model_dtype=str(args.model_dtype),
         initial_eval_only=bool(args.initial_eval_only),
@@ -1275,6 +1303,10 @@ def write_meta(
             config.bootstrap_prefill_episodes
         ),
         "policyDelay": config.policy_delay,
+        "bootstrapAnchorCoef": config.bootstrap_anchor_coef,
+        "bootstrapAnchorTransitions": (
+            config.bootstrap_anchor_transitions
+        ),
         "targetEntropy": config.target_entropy,
         "modelDtype": config.model_dtype,
         "rolloutInference": "scalar-float64-deployment-order",
@@ -1339,6 +1371,10 @@ def main() -> int:
                     config.bootstrap_prefill_episodes
                 ),
                 "policyDelay": config.policy_delay,
+                "bootstrapAnchorCoef": config.bootstrap_anchor_coef,
+                "bootstrapAnchorTransitions": (
+                    config.bootstrap_anchor_transitions
+                ),
                 "targetEntropy": config.target_entropy,
                 "modelDtype": config.model_dtype,
                 "initialEvalOnly": config.initial_eval_only,
@@ -1505,6 +1541,16 @@ def main() -> int:
         )
 
     deployment_actor = DeploymentActorMirror(actor)
+    bootstrap_anchor: Actor | None = None
+    if config.bootstrap_anchor_coef > 0:
+        bootstrap_anchor = Actor().to(
+            device=device,
+            dtype=model_dtype,
+        )
+        bootstrap_anchor.load_state_dict(actor.state_dict())
+        bootstrap_anchor.eval()
+        for parameter in bootstrap_anchor.parameters():
+            parameter.requires_grad_(False)
 
     replay = ReplayBuffer(
         config.replay_size,
@@ -1629,6 +1675,8 @@ def main() -> int:
     invalid_reasons: dict[str, int] = {}
     critic_update_count = 0
     actor_update_count = 0
+    last_anchor_loss = math.nan
+    last_anchor_weight = 0.0
 
     try:
         while transitions < config.steps:
@@ -1729,6 +1777,43 @@ def main() -> int:
                         actor_loss = (
                             alpha_detached * log_prob - min_q
                         ).mean()
+
+                        anchor_loss = torch.zeros(
+                            (),
+                            device=device,
+                            dtype=model_dtype,
+                        )
+                        anchor_weight = 0.0
+                        if bootstrap_anchor is not None:
+                            with torch.no_grad():
+                                anchor_action = (
+                                    bootstrap_anchor.deterministic(batch_obs)
+                                )
+                            current_action = actor.deterministic(batch_obs)
+                            anchor_loss = F.mse_loss(
+                                current_action,
+                                anchor_action,
+                            )
+                            anchor_elapsed = max(
+                                0,
+                                transitions
+                                - config.actor_learning_starts,
+                            )
+                            anchor_fraction = max(
+                                0.0,
+                                1.0
+                                - anchor_elapsed
+                                / config.bootstrap_anchor_transitions,
+                            )
+                            anchor_weight = (
+                                config.bootstrap_anchor_coef
+                                * anchor_fraction
+                            )
+                            actor_loss = (
+                                actor_loss
+                                + anchor_weight * anchor_loss
+                            )
+
                         actor_optimizer.zero_grad(set_to_none=True)
                         actor_loss.backward()
                         actor_optimizer.step()
@@ -1745,6 +1830,10 @@ def main() -> int:
                         last_actor_loss = float(
                             actor_loss.detach().cpu()
                         )
+                        last_anchor_loss = float(
+                            anchor_loss.detach().cpu()
+                        )
+                        last_anchor_weight = anchor_weight
                         last_alpha_loss = float(
                             alpha_loss.detach().cpu()
                         )
@@ -1773,6 +1862,8 @@ def main() -> int:
                         ),
                         "criticUpdates": critic_update_count,
                         "actorUpdates": actor_update_count,
+                        "anchorLoss": last_anchor_loss,
+                        "anchorWeight": last_anchor_weight,
                         "episodes": episode_count,
                         "trainingLaps": training_lap_count,
                         "invalidEpisodes": invalid_count,
