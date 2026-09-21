@@ -31,3 +31,8 @@ canvas{display:block;width:100%!important;height:100%!important}
 
 @media(max-width:1450px){.race-telemetry{width:440px}.lap-head,.lap-row{grid-template-columns:30px 30px 66px 66px 66px 1fr}.lap-head{font-size:12px}.lap-row{font-size:13px}.lap-row strong{font-size:14px}.race-data{min-width:680px;grid-template-columns:repeat(4,minmax(135px,1fr))}.race-data.core-race-data{min-width:610px;grid-template-columns:repeat(3,minmax(170px,1fr))}.timing-strip{gap:12px;font-size:13px;padding:12px 14px}.timing-strip b{font-size:14px}.race-id{font-size:15px}.race-id b{font-size:16px}}
 @media(max-width:1050px){#hud{padding:12px}.tower{left:12px;top:74px}.tower span{font-size:13px}.race-telemetry{display:none}.hud-bottom{bottom:12px;width:calc(100% - 24px)}.race-data,.race-data.core-race-data{min-width:0;flex:1;grid-template-columns:repeat(2,1fr)}.speedo{min-width:112px}.speedo strong{font-size:38px}.controls{display:none}.timing-strip{display:none}.race-data>div{min-height:68px;padding:9px 11px}.race-data b{font-size:15px}.race-data span,.race-data small{font-size:10px}.finish-card{min-width:0;width:calc(100% - 30px)}.track-choice-grid{grid-template-columns:1fr}.setup-split{grid-template-columns:1fr}.pre-race-header{align-items:flex-start;flex-direction:column}.pre-race-header h1{font-size:38px}.pre-race-panel{padding:22px}}
+
+
+/* CPU racing-line source selector. */
+.cpu-line-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.cpu-line-choice{min-height:84px}
