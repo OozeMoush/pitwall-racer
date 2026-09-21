@@ -5,9 +5,14 @@ import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { stepSteering } from '../simulation/InputModel';
+import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { assessEmpiricalLap, calibratedPaceBenchmark } from '../simulation/PaceBenchmarkModel';
 import { PaceEvidenceAccumulator } from '../simulation/PaceEvidenceAccumulator';
 import { loadPaceEvidence, savePaceEvidence } from '../simulation/PaceBenchmarkStore';
+import {
+  PlayerRacingLineCandidateRecorder,
+  saveBestPlayerRacingLineCandidate,
+} from '../simulation/PlayerRacingLineCandidate';
 import {
   qualifyingBenchmarkSeconds,
   qualifyingClassification,
@@ -64,6 +69,8 @@ class QualifyingGame {
   private readonly audio = new RaceAudio();
   private readonly physics: RapierRacePhysics;
   private readonly paceEvidence = new PaceEvidenceAccumulator();
+  private readonly lapValidity = new LapValidityTracker();
+  private readonly lineCandidate = new PlayerRacingLineCandidateRecorder();
 
   private vehicle: VehicleState;
   private tire: TireState = createTire('SOFT');
@@ -78,6 +85,8 @@ class QualifyingGame {
   private nextCheckpoint = 1;
   private lapTime = 0;
   private resultHold = 0;
+  private lapNotice = '';
+  private lapNoticeRemaining = 0;
   private result?: QualifyingSessionResult;
   private resolved = false;
 
@@ -176,6 +185,8 @@ class QualifyingGame {
   private readonly frame = (now: number): void => {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
     this.lastFrame = now;
+    this.lapNoticeRemaining = Math.max(0, this.lapNoticeRemaining - dt);
+    if (this.lapNoticeRemaining === 0) this.lapNotice = '';
 
     if (this.phase !== 'RESULTS') {
       this.fixedAccumulator += dt;
@@ -255,8 +266,25 @@ class QualifyingGame {
         this.lapTime = 0;
         this.nextCheckpoint = 1;
         this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+        this.lapValidity.reset();
+        this.lineCandidate.begin(this.setup.trackId);
       }
       return;
+    }
+
+    const validityEvent = this.lapValidity.sample(
+      after.laneOffset,
+      after.heading,
+      this.vehicle.heading,
+    );
+    this.lineCandidate.sample(after.progress, after.laneOffset, this.vehicle.speed);
+    if (validityEvent !== 'NONE') {
+      this.lineCandidate.markIneligible();
+      const snapshot = this.lapValidity.snapshot();
+      this.lapNotice = snapshot.invalid
+        ? 'LAP INVALID · TRACK LIMITS'
+        : `TRACK LIMITS WARNING ${snapshot.warnings}/3`;
+      this.lapNoticeRemaining = 2.2;
     }
 
     this.lapTime += dt;
@@ -266,8 +294,19 @@ class QualifyingGame {
     }
 
     if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 20) {
-      this.completeLap();
+      if (this.lapValidity.invalid) this.restartInvalidFlyingLap();
+      else this.completeLap();
     }
+  }
+
+  private restartInvalidFlyingLap(): void {
+    this.lapTime = 0;
+    this.nextCheckpoint = 1;
+    this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+    this.lapValidity.reset();
+    this.lineCandidate.begin(this.setup.trackId);
+    this.lapNotice = 'LAP INVALID · NEXT LAP STARTED';
+    this.lapNoticeRemaining = 2.8;
   }
 
   private completeLap(): void {
@@ -285,6 +324,23 @@ class QualifyingGame {
       rejectionReasons: assessment.reasons,
       benchmark: calibratedBenchmark,
     });
+
+    const candidate = this.lapValidity.snapshot().candidateEligible
+      && assessment.eligibleForMachineLimit
+      ? this.lineCandidate.finish(this.lapTime)
+      : undefined;
+    if (candidate) {
+      const storedCandidate = saveBestPlayerRacingLineCandidate(
+        window.localStorage,
+        candidate,
+      );
+      console.info('RACING_LINE_CANDIDATE', {
+        trackId: storedCandidate.trackId,
+        source: storedCandidate.source,
+        lapSeconds: storedCandidate.lapSeconds,
+        points: storedCandidate.points.length,
+      });
+    }
 
     const ai = createAiField();
     const classification = qualifyingClassification(
@@ -305,7 +361,13 @@ class QualifyingGame {
   }
 
   private recover(): void {
-    if (this.phase === 'FLYING') this.paceEvidence.markRecovered();
+    if (this.phase === 'FLYING') {
+      this.paceEvidence.markRecovered();
+      this.lapValidity.invalidate();
+      this.lineCandidate.markIneligible();
+      this.lapNotice = 'LAP INVALID · RECOVERY';
+      this.lapNoticeRemaining = 2.8;
+    }
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const p = sampleTrack(projection.progress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
@@ -369,11 +431,14 @@ class QualifyingGame {
       : this.phase === 'APPROACH'
         ? '<div class="qualifying-banner">BUILD SPEED · TIMER STARTS AT LINE</div>'
         : '';
+    const limitBanner = this.lapNotice
+      ? `<div class="qualifying-banner">${this.lapNotice}</div>`
+      : '';
     const timer = this.phase === 'FLYING' ? formatLapTime(this.lapTime) : '--:--.---';
     const speed = Math.round(this.vehicle.speed * 3.6);
     const state = this.phase === 'FLYING' ? 'FLYING LAP' : this.phase === 'APPROACH' ? 'APPROACH' : 'GET READY';
 
-    this.hud.innerHTML = `${countdownBanner}
+    this.hud.innerHTML = `${countdownBanner}${limitBanner}
       <div class="qualifying-hud-top">
         <div><small>PITWALL RACER · QUALIFYING</small><b>${getActiveTrack().name}</b></div>
         <strong>${timer}</strong>
