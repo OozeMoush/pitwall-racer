@@ -20,6 +20,7 @@ import {
   type QualifyingEntry,
 } from '../simulation/QualifyingModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
+import { referenceTarget } from '../simulation/ReferenceDriverModel';
 import { createAiField } from '../simulation/RaceModel';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type TireState } from '../simulation/TireModel';
@@ -31,8 +32,7 @@ import type { RaceSetup } from './RaceSetup';
 const FIXED_DT = 1 / 120;
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
-const START_PROGRESS = 0.90;
-const APPROACH_START_SPEED = 46;
+const START_PROGRESS = 0.72;
 const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
 
@@ -102,9 +102,13 @@ class QualifyingGame {
     this.resolve = resolve;
 
     const start = sampleTrack(START_PROGRESS);
+    const approachSpeed = qualifyingApproachSpeed(
+      setup.trackId,
+      this.tire.grip,
+    );
     this.vehicle = {
       ...createVehicle(start.x, start.y, start.heading),
-      speed: APPROACH_START_SPEED,
+      speed: approachSpeed,
     };
     this.physics = new RapierRacePhysics(this.vehicle, []);
     this.physics.setPlayerState(this.vehicle);
@@ -220,7 +224,10 @@ class QualifyingGame {
       this.physics.stopPlayer();
       if (this.countdown === 0) {
         const start = sampleTrack(START_PROGRESS);
-        this.vehicle = { ...createVehicle(start.x, start.y, start.heading), speed: APPROACH_START_SPEED };
+        this.vehicle = {
+          ...createVehicle(start.x, start.y, start.heading),
+          speed: qualifyingApproachSpeed(this.setup.trackId, this.tire.grip),
+        };
         this.physics.setPlayerState(this.vehicle);
         this.phase = 'APPROACH';
       }
@@ -432,7 +439,7 @@ class QualifyingGame {
     const countdownBanner = this.phase === 'COUNTDOWN'
       ? `<div class="race-banner">${Math.max(1, Math.ceil(this.countdown))}</div>`
       : this.phase === 'APPROACH'
-        ? '<div class="qualifying-banner">BUILD SPEED · TIMER STARTS AT LINE</div>'
+        ? '<div class="qualifying-banner">ROLLING START · TAKE CONTROL · TIMER STARTS AT LINE</div>'
         : '';
     const limitBanner = this.lapNotice
       ? `<div class="qualifying-banner">${this.lapNotice}</div>`
@@ -467,4 +474,14 @@ class QualifyingGame {
     this.hud.innerHTML = '';
     this.resolve(this.result);
   }
+}
+
+
+function qualifyingApproachSpeed(trackId: RaceSetup['trackId'], tireGrip: number): number {
+  const reference = referenceTarget(trackId, START_PROGRESS, tireGrip);
+  return clamp(reference.targetSpeed * 0.96, 56, 76);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
