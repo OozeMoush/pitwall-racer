@@ -1,9 +1,19 @@
 import { DEFAULT_RACE_SETUP, LAP_OPTIONS, type RaceSetup } from '../game/RaceSetup';
+import { loadPlayerRacingLineCandidate } from '../simulation/PlayerRacingLineCandidate';
+import {
+  saveSelectedRacingLineSource,
+  selectedRacingLineSource,
+  type SelectableRacingLineSource,
+} from '../simulation/RacingLineSelectionStore';
 import { TRACKS, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
 import type { Compound } from '../simulation/TireModel';
 
 export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
   let selectedTrack: TrackId = DEFAULT_RACE_SETUP.trackId;
+  let selectedCpuLine: SelectableRacingLineSource = selectedRacingLineSource(
+    window.localStorage,
+    selectedTrack,
+  );
   let selectedCompound: Compound = DEFAULT_RACE_SETUP.startCompound;
   let selectedLaps = DEFAULT_RACE_SETUP.totalLaps;
 
@@ -21,9 +31,23 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
         </div>
       </section>
 
+      <section class="setup-section">
+        <div class="setup-title"><b>02 · CPU RACING LINE</b><span>Choose the baseline CPU line. Player best appears after a clean qualifying lap has been captured.</span></div>
+        <div class="track-choice-grid cpu-line-choice-grid">
+          <button class="track-choice cpu-line-choice" data-cpu-line="AUTO">
+            <strong>AUTO</strong>
+            <span>Current machine-generated baseline</span>
+          </button>
+          <button class="track-choice cpu-line-choice" data-cpu-line="PLAYER">
+            <strong>PLAYER BEST</strong>
+            <span data-player-line-status>No clean lap captured yet</span>
+          </button>
+        </div>
+      </section>
+
       <section class="setup-split">
         <div class="setup-section">
-          <div class="setup-title"><b>02 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
+          <div class="setup-title"><b>03 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
           <div class="tyre-choice-row">
             ${tyreButton('SOFT', 'FAST / SHORT', selectedCompound === 'SOFT')}
             ${tyreButton('MEDIUM', 'BALANCED', selectedCompound === 'MEDIUM')}
@@ -31,7 +55,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
           </div>
         </div>
         <div class="setup-section">
-          <div class="setup-title"><b>03 · DISTANCE</b><span>Long enough for tyre strategy to matter.</span></div>
+          <div class="setup-title"><b>04 · DISTANCE</b><span>Long enough for tyre strategy to matter.</span></div>
           <div class="lap-choice-row">
             ${LAP_OPTIONS.map((laps) => `<button class="lap-choice ${laps === selectedLaps ? 'selected' : ''}" data-laps="${laps}"><strong>${laps}</strong><span>LAPS</span></button>`).join('')}
           </div>
@@ -50,11 +74,54 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       root.querySelectorAll<HTMLElement>('[data-track]').forEach((node) => node.classList.toggle('selected', node.dataset.track === selectedTrack));
       root.querySelectorAll<HTMLElement>('[data-compound]').forEach((node) => node.classList.toggle('selected', node.dataset.compound === selectedCompound));
       root.querySelectorAll<HTMLElement>('[data-laps]').forEach((node) => node.classList.toggle('selected', Number(node.dataset.laps) === selectedLaps));
+      root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
+        node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
+      });
+
+      const playerCandidate = loadPlayerRacingLineCandidate(
+        window.localStorage,
+        selectedTrack,
+      );
+      const playerButton = root.querySelector<HTMLButtonElement>('[data-cpu-line="PLAYER"]');
+      if (playerButton) playerButton.disabled = !playerCandidate;
+      const status = root.querySelector<HTMLElement>('[data-player-line-status]');
+      if (status) {
+        status.textContent = playerCandidate?.lapSeconds !== undefined
+          ? `Clean player lap · ${playerCandidate.lapSeconds.toFixed(3)} s`
+          : 'No clean lap captured yet';
+      }
+      if (!playerCandidate && selectedCpuLine === 'PLAYER') {
+        selectedCpuLine = 'AUTO';
+        saveSelectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+          selectedCpuLine,
+        );
+        root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
+          node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
+        });
+      }
     };
 
     root.querySelectorAll<HTMLButtonElement>('[data-track]').forEach((button) => {
       button.addEventListener('click', () => {
         selectedTrack = button.dataset.track as TrackId;
+        selectedCpuLine = selectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+        );
+        refreshSelected();
+      });
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-cpu-line]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        selectedCpuLine = button.dataset.cpuLine as SelectableRacingLineSource;
+        saveSelectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+          selectedCpuLine,
+        );
         refreshSelected();
       });
     });
@@ -70,6 +137,8 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
         refreshSelected();
       });
     });
+    refreshSelected();
+
     root.querySelector<HTMLButtonElement>('[data-start-race]')?.addEventListener('click', () => {
       root.innerHTML = '';
       resolve({ trackId: selectedTrack, startCompound: selectedCompound, totalLaps: selectedLaps });
