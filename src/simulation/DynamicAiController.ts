@@ -1,7 +1,7 @@
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill } from './ReferenceDriverModel';
-import { activeReferenceTarget } from './RacingLineRuntime';
+import { activeReferenceTarget, runtimeRacingLine } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
@@ -130,9 +130,13 @@ export function dynamicAiControl(
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
+  const lineAsset = runtimeRacingLine(trackId);
+  const highFidelityLine = lineAsset?.source === 'PLAYER' || lineAsset?.source === 'EDITOR';
 
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
-  const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+  const lookAheadMetres = highFidelityLine
+    ? clamp(16 + speed * 0.22, 24, 46) * technicalLookahead
+    : clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = activeReferenceTarget(trackId, targetProgress, driver.tire.grip);
   const currentLineReference = activeReferenceTarget(trackId, projection.progress, driver.tire.grip);
@@ -142,7 +146,11 @@ export function dynamicAiControl(
   // visible weaving was primarily tactical side switching, not the reference
   // path itself; replacing this loop made the car miss the final complex and
   // lose the qualifying lap entirely.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
+  let targetLane = approachLane(
+    projection.laneOffset,
+    baseLane,
+    highFidelityLine ? 4.6 : 2.6,
+  );
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -194,7 +202,7 @@ export function dynamicAiControl(
     ? projection.progress + 18 / TRACK_LENGTH
     : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentDistance = battleActive ? 6 : 8;
+  const tangentDistance = battleActive ? 6 : highFidelityLine ? 5 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
   const tangentLane = offRoad
     ? 0
@@ -226,14 +234,23 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * 2.15
-        + bearingError * 0.82
-        + lateralError * 0.52
-        - vehicle.yawRate * 0.38;
+      : highFidelityLine
+        ? headingError * 2.45
+          + bearingError * 1.05
+          + lateralError * 0.82
+          - vehicle.yawRate * 0.42
+        : headingError * 2.15
+          + bearingError * 0.82
+          + lateralError * 0.52
+          - vehicle.yawRate * 0.38;
   const baselineSteer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
-  const predictionWeight = !offRoad && !battleActive && trackId === 'pitwall-gp'
+  const pitwallPrediction = !offRoad && !battleActive && trackId === 'pitwall-gp'
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
+  const explicitLinePrediction = !offRoad && !battleActive && highFidelityLine
+    ? clamp(0.24 + profile.severity * 0.14, 0.24, 0.40)
+    : 0;
+  const predictionWeight = Math.max(pitwallPrediction, explicitLinePrediction);
   const steer = predictiveAiSteer(
     vehicle,
     driver.tire.grip,
@@ -246,6 +263,12 @@ export function dynamicAiControl(
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
   let cornerAttackConfidence = 0;
+
+  if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
+    const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
+    const recoveryScale = 1 - clamp((lineError - 2.2) / 7.0, 0, 1) * 0.14;
+    targetSpeed *= recoveryScale;
+  }
 
   // The generated reference is intentionally conservative about transient
   // rotation. Once the real car is demonstrably on the line, allow a small
