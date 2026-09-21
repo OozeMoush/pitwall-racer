@@ -9,6 +9,17 @@ import { gridPositionFor, gridSlotForPosition, PLAYER_GRID } from '../simulation
 import { stepSteering } from '../simulation/InputModel';
 import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
+import {
+  loadPlayerRacingLineCandidate,
+  PlayerRacingLineCandidateRecorder,
+  saveBestPlayerRacingLineCandidate,
+} from '../simulation/PlayerRacingLineCandidate';
+import {
+  RaceRacingLineCandidateFilter,
+  normalizedRaceCandidateSpeed,
+} from '../simulation/RaceRacingLineCandidatePolicy';
+import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
+import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
 import {
   estimatedSignedGapSeconds,
@@ -97,6 +108,8 @@ export class CoreRaceGame {
   private readonly audio = new RaceAudio();
   private readonly raceIntervals = new RaceIntervalTracker();
   private readonly lapValidity = new LapValidityTracker();
+  private readonly lineCandidate = new PlayerRacingLineCandidateRecorder();
+  private readonly lineCandidateFilter = new RaceRacingLineCandidateFilter();
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -132,6 +145,9 @@ export class CoreRaceGame {
   private launchEffectRemaining = 0;
   private launchFeedback = '';
   private launchFeedbackTone: 'good' | 'bad' | 'neutral' = 'neutral';
+  private lineCandidateReferenceGrip = 1;
+  private racingLineNotice = '';
+  private racingLineNoticeRemaining = 0;
 
   constructor(container: HTMLElement, hud: HTMLElement, setup: RaceSetup) {
     this.container = container;
@@ -232,6 +248,8 @@ export class CoreRaceGame {
   private readonly frame = (now: number): void => {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
     this.lastFrame = now;
+    this.racingLineNoticeRemaining = Math.max(0, this.racingLineNoticeRemaining - dt);
+    if (this.racingLineNoticeRemaining === 0) this.racingLineNotice = '';
 
     if (this.flow.phase !== 'FINISHED') {
       this.fixedAccumulator += dt;
@@ -337,16 +355,39 @@ export class CoreRaceGame {
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterTrack.progress;
     if (this.lap >= 1) {
-      this.lapValidity.sample(
+      const validityEvent = this.lapValidity.sample(
         afterTrack.laneOffset,
         afterTrack.heading,
         this.vehicle.heading,
+      );
+      if (validityEvent !== 'NONE') this.lineCandidate.markIneligible();
+
+      this.lineCandidateFilter.sampleTraffic(
+        dt,
+        aero.tow,
+        aero.dirtyAir,
+        this.trafficPressure,
+      );
+      if (!this.lineCandidateFilter.eligible) this.lineCandidate.markIneligible();
+
+      const normalizedSpeed = normalizedRaceCandidateSpeed(
+        this.setup.trackId,
+        afterTrack.progress,
+        this.vehicle.speed,
+        this.tire.grip,
+        this.lineCandidateReferenceGrip,
+      );
+      this.lineCandidate.sample(
+        afterTrack.progress,
+        afterTrack.laneOffset,
+        normalizedSpeed,
       );
     }
     this.updateSectorTiming();
     this.updateLapAndCheckpoints(afterTrack.distance);
 
     if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterTrack.distance, this.pitRequested)) {
+      this.lineCandidate.markIneligible();
       this.pitStop = beginPitStop();
       this.pitRequested = false;
       this.steerInput = 0;
@@ -359,6 +400,7 @@ export class CoreRaceGame {
   private stepPhysicalPit(dt: number): boolean {
     if (!isPitActive(this.pitStop)) return false;
 
+    this.lineCandidate.markIneligible();
     const previous = this.pitStop;
     this.pitStop = stepPitStop(this.pitStop, dt);
     if (!previous.tyreChanged && this.pitStop.tyreChanged) {
@@ -417,6 +459,8 @@ export class CoreRaceGame {
         this.lapStartCompound = this.tire.compound;
         this.lapPitted = false;
         this.lapValidity.reset();
+        this.beginRaceLineCandidate();
+        this.lineCandidate.markIneligible();
       }
       return;
     }
@@ -450,6 +494,7 @@ export class CoreRaceGame {
     });
     this.lapHistory = this.lapHistory.slice(-this.totalLaps);
     if (validLap && this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
+    this.commitRaceLineCandidate(lapTime, validLap);
 
     this.timing = completeLap(this.timing, validLap);
     this.lap += 1;
@@ -461,6 +506,7 @@ export class CoreRaceGame {
     this.lapStartCompound = this.tire.compound;
     this.lapPitted = false;
     this.lapValidity.reset();
+    this.beginRaceLineCandidate();
 
     if (this.lap > this.totalLaps) {
       const legal = isTwoCompoundLegal(this.usedCompounds);
@@ -471,6 +517,64 @@ export class CoreRaceGame {
       this.physics.stopPlayer();
       this.vehicle = this.physics.playerState();
     }
+  }
+
+  private beginRaceLineCandidate(): void {
+    this.lineCandidateReferenceGrip = this.tire.grip;
+    this.lineCandidate.begin(this.setup.trackId, this.lineCandidateReferenceGrip);
+    this.lineCandidateFilter.reset();
+  }
+
+  private commitRaceLineCandidate(lapTime: number, validLap: boolean): void {
+    const eligibility = this.lapValidity.snapshot();
+    if (
+      !validLap
+      || this.lap < 2
+      || this.lapPitted
+      || !eligibility.candidateEligible
+      || !this.lineCandidateFilter.eligible
+    ) {
+      return;
+    }
+
+    const candidate = this.lineCandidate.finish(lapTime);
+    if (!candidate) return;
+
+    const previous = loadPlayerRacingLineCandidate(
+      window.localStorage,
+      this.setup.trackId,
+    );
+    const previousSeconds = previous?.lapSeconds;
+    const saved = saveBestPlayerRacingLineCandidate(
+      window.localStorage,
+      candidate,
+    );
+    const improved = previousSeconds === undefined
+      || (saved.lapSeconds !== undefined && saved.lapSeconds < previousSeconds - 0.0005);
+    if (!improved) return;
+
+    const usingPlayerLine = selectedRacingLineSource(
+      window.localStorage,
+      this.setup.trackId,
+    ) === 'PLAYER';
+    if (usingPlayerLine) {
+      activateStoredRacingLine(window.localStorage, this.setup.trackId);
+    }
+
+    this.racingLineNotice = usingPlayerLine
+      ? `CPU LINE UPDATED · ${lapTime.toFixed(3)}s`
+      : `PLAYER LINE SAVED · ${lapTime.toFixed(3)}s`;
+    this.racingLineNoticeRemaining = 3.2;
+
+    console.info('RACING_LINE_CANDIDATE', {
+      trackId: saved.trackId,
+      source: saved.source,
+      lapSeconds: saved.lapSeconds,
+      points: saved.points.length,
+      raceLap: this.lap,
+      trafficAffectedSeconds: this.lineCandidateFilter.affectedSeconds,
+      activatedForCpu: usingPlayerLine,
+    });
   }
 
   private updateAiLapTiming(): void {
@@ -628,7 +732,10 @@ export class CoreRaceGame {
     }
     if (isPitActive(this.pitStop)) return;
     if (this.flow.phase !== 'RACING' || !canRecover(this.trackDistance, this.vehicle.speed)) return;
-    if (this.lap >= 1) this.lapValidity.invalidate();
+    if (this.lap >= 1) {
+      this.lapValidity.invalidate();
+      this.lineCandidate.markIneligible();
+    }
     const p = sampleTrack(this.trackProgress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
     this.physics.setPlayerState(this.vehicle);
@@ -664,6 +771,10 @@ export class CoreRaceGame {
     this.lapStartCompound = selection.startCompound;
     this.lapPitted = false;
     this.lapValidity.reset();
+    this.lineCandidateFilter.reset();
+    this.lineCandidateReferenceGrip = this.tire.grip;
+    this.racingLineNotice = '';
+    this.racingLineNoticeRemaining = 0;
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
@@ -890,6 +1001,9 @@ export class CoreRaceGame {
       ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
+    const racingLineHtml = this.racingLineNotice
+      ? `<div class="racing-line-notice">${this.racingLineNotice}</div>`
+      : '';
     const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS C TO RECOVER</div>` : '';
     const referenceLap = Math.max(35, Math.min(90, this.sessionFastestLap ?? this.playerBestLap() ?? TRACK_LENGTH / 82));
     const towerHtml = standings.map((driver, index) => {
@@ -903,7 +1017,7 @@ export class CoreRaceGame {
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${recoveryHtml}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${racingLineHtml}${recoveryHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
