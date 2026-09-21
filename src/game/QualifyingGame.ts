@@ -267,7 +267,7 @@ class QualifyingGame {
         this.nextCheckpoint = 1;
         this.paceEvidence.begin(this.tire.compound, this.tire.wear);
         this.lapValidity.reset();
-        this.lineCandidate.begin(this.setup.trackId);
+        this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
       }
       return;
     }
@@ -304,7 +304,7 @@ class QualifyingGame {
     this.nextCheckpoint = 1;
     this.paceEvidence.begin(this.tire.compound, this.tire.wear);
     this.lapValidity.reset();
-    this.lineCandidate.begin(this.setup.trackId);
+    this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
     this.lapNotice = 'LAP INVALID · NEXT LAP STARTED';
     this.lapNoticeRemaining = 2.8;
   }
