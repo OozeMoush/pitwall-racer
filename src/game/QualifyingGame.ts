@@ -330,7 +330,6 @@ class QualifyingGame {
     });
 
     const candidate = this.lapValidity.snapshot().candidateEligible
-      && assessment.eligibleForMachineLimit
       ? this.lineCandidate.finish(this.lapTime)
       : undefined;
     if (candidate) {
