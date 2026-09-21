@@ -1,7 +1,11 @@
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill } from './ReferenceDriverModel';
-import { activeReferenceTarget, runtimeRacingLine } from './RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  racingLineBrakeIntent,
+  runtimeRacingLine,
+} from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
@@ -146,11 +150,9 @@ export function dynamicAiControl(
   // visible weaving was primarily tactical side switching, not the reference
   // path itself; replacing this loop made the car miss the final complex and
   // lose the qualifying lap entirely.
-  let targetLane = approachLane(
-    projection.laneOffset,
-    baseLane,
-    highFidelityLine ? 4.6 : 2.6,
-  );
+  let targetLane = highFidelityLine
+    ? baseLane
+    : approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -266,7 +268,7 @@ export function dynamicAiControl(
 
   if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
     const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
-    const recoveryScale = 1 - clamp((lineError - 2.2) / 7.0, 0, 1) * 0.14;
+    const recoveryScale = 1 - clamp((lineError - 1.5) / 6.0, 0, 1) * 0.28;
     targetSpeed *= recoveryScale;
   }
 
@@ -326,7 +328,12 @@ export function dynamicAiControl(
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
-  let brake = Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
+  const explicitProfileBrake = highFidelityLine
+    ? racingLineBrakeIntent(trackId, projection.progress, driver.tire.grip, speed)
+    : 0;
+  let brake = highFidelityLine
+    ? Math.max(feedbackBrake, explicitProfileBrake)
+    : Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
 
   let throttle: number;
   if (brake > 0.06) {
