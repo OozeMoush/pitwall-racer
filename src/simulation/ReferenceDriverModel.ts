@@ -1,4 +1,5 @@
 import { controlArcadeCar } from './ArcadeCarController';
+import type { RacingLineAsset } from './RacingLineAsset';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 import { FREE_KERB_DISTANCE } from './TrackLimitsModel';
 import { getTrackDefinition, type TrackId, type TrackPoint } from './TrackModel';
@@ -125,6 +126,24 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   };
   cache.set(key, lap);
   return lap;
+}
+
+export function referenceRacingLineAsset(
+  trackId: TrackId,
+  tireGrip: number,
+): RacingLineAsset {
+  const lap = referenceLap(trackId, tireGrip);
+  return {
+    version: 1,
+    trackId,
+    source: 'OPTIMIZER',
+    lapSeconds: lap.lapSeconds,
+    points: lap.samples.map((sample) => ({
+      progress: sample.progress,
+      laneOffset: sample.laneOffset,
+      targetSpeed: sample.targetSpeed,
+    })),
+  };
 }
 
 export function referenceTarget(
