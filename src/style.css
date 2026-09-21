@@ -36,3 +36,5 @@ canvas{display:block;width:100%!important;height:100%!important}
 /* CPU racing-line source selector. */
 .cpu-line-choice-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cpu-line-choice{min-height:84px}
+
+.racing-line-notice{position:absolute;left:50%;top:150px;transform:translateX(-50%);z-index:18;padding:11px 16px;background:rgba(8,12,14,.9);border:1px solid rgba(104,215,255,.42);box-shadow:0 14px 40px rgba(0,0,0,.3);color:#9fe7ff;font-size:13px;font-weight:900;letter-spacing:.07em}
