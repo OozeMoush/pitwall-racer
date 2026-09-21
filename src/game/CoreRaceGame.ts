@@ -798,7 +798,7 @@ export class CoreRaceGame {
         const liveSectorCompleted = index < this.sectorTimes.length;
         const tone = current && value > 0
           ? liveTimingTone(value, bestSectors[index], this.sessionFastestSectors[index], liveSectorCompleted)
-          : completed
+          : completed && row.valid
             ? timingTone(value, bestSectors[index], this.sessionFastestSectors[index])
             : 'neutral';
         return `<span class="${this.timingClass(tone)}">${value > 0 ? formatShortTime(value) : '—'}</span>`;
