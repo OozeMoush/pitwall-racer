@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { referenceTarget } from './ReferenceDriverModel';
-import { activeReferenceTarget, setRuntimeRacingLine } from './RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  racingLineBrakeIntent,
+  setRuntimeRacingLine,
+} from './RacingLineRuntime';
 
 afterEach(() => {
   setRuntimeRacingLine('pitwall-gp', undefined);
@@ -12,6 +16,28 @@ describe('RacingLineRuntime', () => {
     const actual = activeReferenceTarget('pitwall-gp', 0.37, 1.1);
     expect(actual.laneOffset).toBeCloseTo(expected.laneOffset);
     expect(actual.targetSpeed).toBeCloseTo(expected.targetSpeed);
+  });
+
+  it('derives early braking from a player speed profile instead of the old machine brake trace', () => {
+    const grip = 1.1;
+    const points = Array.from({ length: 160 }, (_, index) => {
+      const progress = index / 160;
+      return {
+        progress,
+        laneOffset: 0,
+        targetSpeed: progress >= 0.34 && progress <= 0.48 ? 34 : 82,
+      };
+    });
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points,
+    });
+
+    const brake = racingLineBrakeIntent('pitwall-gp', 0.30, grip, 82);
+    expect(brake).toBeGreaterThan(0.15);
   });
 
   it('lets a selected asset own lane placement and relative speed intent', () => {
