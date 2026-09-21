@@ -2,6 +2,7 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
 import { runQualifyingSession } from './game/QualifyingGame';
 import { installReferenceLineCalibration } from './simulation/ReferenceLineCalibration';
+import { activateStoredRacingLine } from './simulation/RacingLineActivation';
 import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { installRacePauseController } from './ui/RacePauseController';
@@ -28,8 +29,12 @@ async function bootstrap(): Promise<void> {
 
   const setup = await showPreRaceMenu(hud);
   setActiveTrack(setup.trackId);
+  activateStoredRacingLine(window.localStorage, setup.trackId);
 
   const qualifying = await runQualifyingSession(game, hud, setup);
+  // A clean qualifying lap can become the PLAYER racing-line source for the
+  // race immediately in the same weekend. Re-read storage after qualifying.
+  activateStoredRacingLine(window.localStorage, setup.trackId);
   const raceSetup = {
     ...setup,
     qualifyingTime: qualifying.playerTime,
