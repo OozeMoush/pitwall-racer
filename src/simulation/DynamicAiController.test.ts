@@ -121,6 +121,31 @@ describe('dynamicAiControl', () => {
     expect(control.targetLane).toBeGreaterThan(6.5);
   });
 
+  it('brakes before a future player-line speed drop reaches the car', () => {
+    const driver = createAiField()[0];
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 82 };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: driver.tire.grip,
+      points: Array.from({ length: 160 }, (_, index) => {
+        const progress = index / 160;
+        const distanceAhead = ((progress - driver.progress + 1) % 1) * TRACK_LENGTH;
+        return {
+          progress,
+          laneOffset: 0,
+          targetSpeed: distanceAhead >= 84 && distanceAhead <= 144 ? 34 : 82,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.brake).toBeGreaterThan(0.15);
+    expect(control.throttle).toBe(0);
+  });
+
   it('aims straight back at the circuit after an excursion', () => {
     const driver = createAiField()[2];
     const laneOffset = TRACK_RUNOFF_HALF_WIDTH + 5;
