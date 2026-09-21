@@ -40,6 +40,24 @@ describe('RacingLineRuntime', () => {
     expect(brake).toBeGreaterThan(0.15);
   });
 
+  it('preserves the demonstrated player speed at the grip where it was recorded', () => {
+    const grip = 1.1;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 34,
+      })),
+    });
+
+    const target = activeReferenceTarget('pitwall-gp', 0.37, grip);
+    expect(target.targetSpeed).toBeCloseTo(34, 6);
+  });
+
   it('lets a selected asset own lane placement and relative speed intent', () => {
     const grip = 1.1;
     const baseline = referenceTarget('pitwall-gp', 0.25, grip);
