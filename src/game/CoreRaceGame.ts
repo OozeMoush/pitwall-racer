@@ -7,6 +7,7 @@ import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { gridPositionFor, gridSlotForPosition, PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
+import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
 import {
@@ -62,6 +63,7 @@ interface LapTelemetry {
   startCompound: Compound;
   endCompound: Compound;
   pitted: boolean;
+  valid: boolean;
   s1: number;
   s2: number;
   s3: number;
@@ -94,6 +96,7 @@ export class CoreRaceGame {
   private readonly physics: RapierRacePhysics;
   private readonly audio = new RaceAudio();
   private readonly raceIntervals = new RaceIntervalTracker();
+  private readonly lapValidity = new LapValidityTracker();
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -333,6 +336,13 @@ export class CoreRaceGame {
     this.trackDistance = afterTrack.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterTrack.progress;
+    if (this.lap >= 1) {
+      this.lapValidity.sample(
+        afterTrack.laneOffset,
+        afterTrack.heading,
+        this.vehicle.heading,
+      );
+    }
     this.updateSectorTiming();
     this.updateLapAndCheckpoints(afterTrack.distance);
 
@@ -389,7 +399,6 @@ export class CoreRaceGame {
         const sectorTime = this.timing.raceTime - this.sectorStartTime;
         this.sectorTimes.push(sectorTime);
         this.sectorTones.push(this.newSectorTone(index, sectorTime));
-        this.registerSessionFastestSector(index, sectorTime);
         this.sectorStartTime = this.timing.raceTime;
         this.nextSector += 1;
       } else break;
@@ -407,6 +416,7 @@ export class CoreRaceGame {
         this.sectorStartTime = this.timing.raceTime;
         this.lapStartCompound = this.tire.compound;
         this.lapPitted = false;
+        this.lapValidity.reset();
       }
       return;
     }
@@ -420,22 +430,28 @@ export class CoreRaceGame {
     const s2 = this.sectorTimes[1] ?? lapTime / 3;
     const s3 = Math.max(0, lapTime - s1 - s2);
     this.sectorTones[2] = this.newSectorTone(2, s3);
-    this.registerSessionFastestSector(2, s3);
+    const validLap = !this.lapValidity.invalid;
+    if (validLap) {
+      [s1, s2, s3].forEach((sectorTime, index) => {
+        this.registerSessionFastestSector(index, sectorTime);
+      });
+    }
     this.lapHistory.push({
       lap: this.lap,
       compound: this.tire.compound,
       startCompound: this.lapStartCompound,
       endCompound: this.tire.compound,
       pitted: this.lapPitted,
+      valid: validLap,
       s1,
       s2,
       s3,
       lapTime,
     });
     this.lapHistory = this.lapHistory.slice(-this.totalLaps);
-    if (this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
+    if (validLap && this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
 
-    this.timing = completeLap(this.timing);
+    this.timing = completeLap(this.timing, validLap);
     this.lap += 1;
     this.nextCheckpoint = 1;
     this.nextSector = 1;
@@ -444,6 +460,7 @@ export class CoreRaceGame {
     this.sectorTones = [];
     this.lapStartCompound = this.tire.compound;
     this.lapPitted = false;
+    this.lapValidity.reset();
 
     if (this.lap > this.totalLaps) {
       const legal = isTwoCompoundLegal(this.usedCompounds);
@@ -611,6 +628,7 @@ export class CoreRaceGame {
     }
     if (isPitActive(this.pitStop)) return;
     if (this.flow.phase !== 'RACING' || !canRecover(this.trackDistance, this.vehicle.speed)) return;
+    if (this.lap >= 1) this.lapValidity.invalidate();
     const p = sampleTrack(this.trackProgress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
     this.physics.setPlayerState(this.vehicle);
@@ -645,6 +663,7 @@ export class CoreRaceGame {
     this.lapHistory = [];
     this.lapStartCompound = selection.startCompound;
     this.lapPitted = false;
+    this.lapValidity.reset();
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
@@ -719,11 +738,15 @@ export class CoreRaceGame {
   }
 
   private playerBestLap(): number | undefined {
-    return minimumPositive(this.lapHistory.map((row) => row.lapTime));
+    return minimumPositive(
+      this.lapHistory.filter((row) => row.valid).map((row) => row.lapTime),
+    );
   }
 
   private playerBestSector(key: 's1' | 's2' | 's3'): number | undefined {
-    return minimumPositive(this.lapHistory.map((row) => row[key]));
+    return minimumPositive(
+      this.lapHistory.filter((row) => row.valid).map((row) => row[key]),
+    );
   }
 
   private timingClass(tone: TimingTone): string {
@@ -744,6 +767,7 @@ export class CoreRaceGame {
         startCompound: this.lapStartCompound,
         endCompound: this.tire.compound,
         pitted: this.lapPitted,
+        valid: !this.lapValidity.invalid,
         s1: s1 ?? (this.nextSector === 1 ? currentSectorElapsed : 0),
         s2: s2 ?? (this.nextSector === 2 ? currentSectorElapsed : 0),
         s3: this.nextSector === 3 ? currentSectorElapsed : 0,
@@ -765,7 +789,9 @@ export class CoreRaceGame {
     return rows.slice(-10).map((row) => {
       const current = row.lap === displayLap && this.flow.phase !== 'FINISHED';
       const completed = !current;
-      const lapTone = completed ? timingTone(row.lapTime, personalBest, this.sessionFastestLap) : 'neutral';
+      const lapTone = completed && row.valid
+        ? timingTone(row.lapTime, personalBest, this.sessionFastestLap)
+        : 'neutral';
       const sectorValues = [row.s1, row.s2, row.s3];
       const sectorCell = (index: number) => {
         const value = sectorValues[index];
@@ -779,7 +805,7 @@ export class CoreRaceGame {
       };
       const tyreLabel = lapTyreLabel(row.startCompound, row.endCompound, row.pitted);
       const tyreStyle = tyreLabel.length > 1 ? 'font-size:10px;padding:2px 1px;white-space:nowrap' : '';
-      return `<div class="lap-row ${current ? 'current' : ''}" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><b>${row.lap}</b><i class="compound-pill tyre-${row.endCompound.toLowerCase()}" style="${tyreStyle}">${tyreLabel}</i>${sectorCell(0)}${sectorCell(1)}${sectorCell(2)}<strong class="${this.timingClass(lapTone)}">${row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong></div>`;
+      return `<div class="lap-row ${current ? 'current' : ''}" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><b>${row.lap}</b><i class="compound-pill tyre-${row.endCompound.toLowerCase()}" style="${tyreStyle}">${tyreLabel}</i>${sectorCell(0)}${sectorCell(1)}${sectorCell(2)}<strong class="${this.timingClass(lapTone)}">${completed && !row.valid ? 'INVALID' : row.lapTime > 0 ? formatLapTime(row.lapTime) : '—'}</strong></div>`;
     }).join('');
   }
 
@@ -816,8 +842,13 @@ export class CoreRaceGame {
             ? `BOX THIS LAP → ${this.selectedCompound}`
             : `NEXT ${this.selectedCompound} · F TO BOX`;
     const slideSeverity = this.physics.playerSlideSeverity();
-    const raceState = slideSeverity > 0.15
-      ? 'REAR SLIDE'
+    const validity = this.lapValidity.snapshot();
+    const raceState = validity.invalid
+      ? 'LAP INVALID · TRACK LIMITS'
+      : validity.warnings > 0
+        ? `TRACK LIMITS ${validity.warnings}/3`
+        : slideSeverity > 0.15
+          ? 'REAR SLIDE'
       : surface.label !== 'TRACK'
         ? surface.label
         : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
