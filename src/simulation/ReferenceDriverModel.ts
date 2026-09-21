@@ -137,6 +137,7 @@ export function referenceRacingLineAsset(
     version: 1,
     trackId,
     source: 'OPTIMIZER',
+    referenceGrip: lap.tireGrip,
     lapSeconds: lap.lapSeconds,
     points: lap.samples.map((sample) => ({
       progress: sample.progress,
