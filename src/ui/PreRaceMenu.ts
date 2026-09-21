@@ -32,7 +32,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       </section>
 
       <section class="setup-section">
-        <div class="setup-title"><b>02 · CPU RACING LINE</b><span>Choose the baseline CPU line. Player best appears after a clean qualifying lap has been captured.</span></div>
+        <div class="setup-title"><b>02 · CPU RACING LINE</b><span>Choose the baseline CPU line. Player best improves from clean qualifying or race laps.</span></div>
         <div class="track-choice-grid cpu-line-choice-grid">
           <button class="track-choice cpu-line-choice" data-cpu-line="AUTO">
             <strong>AUTO</strong>
@@ -86,7 +86,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       if (status) {
         status.textContent = playerCandidate?.lapSeconds !== undefined
           ? `Clean player lap · ${playerCandidate.lapSeconds.toFixed(3)} s`
-          : 'Uses the next clean qualifying lap';
+          : 'Uses the next clean qualifying/race lap';
       }
     };
 
