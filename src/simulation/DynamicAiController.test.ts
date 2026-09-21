@@ -1,9 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { dynamicAiControl } from './DynamicAiController';
 import { createAiField, type RaceTrafficCar } from './RaceModel';
+import { setRuntimeRacingLine } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
 import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
+
+afterEach(() => {
+  setRuntimeRacingLine('pitwall-gp', undefined);
+});
 
 describe('dynamicAiControl', () => {
   it('uses the tow first, then moves off line smoothly to attack without crossing the road', () => {
@@ -93,6 +98,27 @@ describe('dynamicAiControl', () => {
     expect(control.battleState).toBe('SIDE_BY_SIDE');
     expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.0);
     expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+  });
+
+  it('locks directly onto an explicit player lane instead of soft-clamping the target', () => {
+    const driver = createAiField()[0];
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 64 };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: driver.tire.grip,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 8,
+        targetSpeed: 64,
+      })),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.battleState).toBe('CLEAR');
+    expect(control.targetLane).toBeGreaterThan(6.5);
   });
 
   it('aims straight back at the circuit after an excursion', () => {
