@@ -30,13 +30,15 @@ export interface RacingLineCandidateStorage {
  */
 export class PlayerRacingLineCandidateRecorder {
   private trackId?: TrackId;
+  private referenceGrip?: number;
   private samples: RawSample[] = [];
   private lastProgress?: number;
   private wrapped = false;
   private eligible = true;
 
-  begin(trackId: TrackId): void {
+  begin(trackId: TrackId, referenceGrip?: number): void {
     this.trackId = trackId;
+    this.referenceGrip = referenceGrip;
     this.samples = [];
     this.lastProgress = undefined;
     this.wrapped = false;
@@ -87,6 +89,7 @@ export class PlayerRacingLineCandidateRecorder {
       version: 1,
       trackId: this.trackId,
       source: 'PLAYER',
+      referenceGrip: this.referenceGrip,
       lapSeconds,
       points,
     };
