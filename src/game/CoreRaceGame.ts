@@ -441,6 +441,9 @@ export class CoreRaceGame {
         const sectorTime = this.timing.raceTime - this.sectorStartTime;
         this.sectorTimes.push(sectorTime);
         this.sectorTones.push(this.newSectorTone(index, sectorTime));
+        if (!this.lapValidity.invalid) {
+          this.registerSessionFastestSector(index, sectorTime);
+        }
         this.sectorStartTime = this.timing.raceTime;
         this.nextSector += 1;
       } else break;
