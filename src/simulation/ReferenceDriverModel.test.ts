@@ -3,6 +3,7 @@ import {
   REFERENCE_LANE_LIMIT,
   referenceExecutionForSkill,
   referenceLap,
+  referenceRacingLineAsset,
 } from './ReferenceDriverModel';
 import { compoundPeakGrip } from './TireModel';
 import { TRACKS } from './TrackModel';
@@ -30,6 +31,17 @@ describe('machine-limit reference driver', () => {
 
     console.log(`REFERENCE_DRIVER ${JSON.stringify(telemetry)}`);
   }, 20_000);
+
+  it('exposes the current optimized CPU reference through the shared racing-line asset contract', () => {
+    const asset = referenceRacingLineAsset(
+      'pitwall-gp',
+      compoundPeakGrip('SOFT', 'PUSH'),
+    );
+
+    expect(asset.source).toBe('OPTIMIZER');
+    expect(asset.points).toHaveLength(320);
+    expect(asset.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
+  });
 
   it('makes tyre grip change the physical reference instead of changing engine power', () => {
     const soft = referenceLap('pitwall-gp', compoundPeakGrip('SOFT', 'PUSH'));
