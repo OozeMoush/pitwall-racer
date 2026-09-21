@@ -1,6 +1,7 @@
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
-import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
+import { referenceExecutionForSkill } from './ReferenceDriverModel';
+import { activeReferenceTarget } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
@@ -133,8 +134,8 @@ export function dynamicAiControl(
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
   const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
-  const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
-  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  const lineReference = activeReferenceTarget(trackId, targetProgress, driver.tire.grip);
+  const currentLineReference = activeReferenceTarget(trackId, projection.progress, driver.tire.grip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   // Keep the proven closed-loop reference follower for clean-air pace. The
@@ -198,7 +199,7 @@ export function dynamicAiControl(
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      ? clamp(activeReferenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
