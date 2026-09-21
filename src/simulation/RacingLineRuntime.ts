@@ -1,6 +1,11 @@
-import { referenceTarget, type ReferenceLapSample } from './ReferenceDriverModel';
+import { controlArcadeCar } from './ArcadeCarController';
+import {
+  REFERENCE_POWER_BOOST,
+  referenceTarget,
+  type ReferenceLapSample,
+} from './ReferenceDriverModel';
 import { sampleRacingLineAsset, type RacingLineAsset } from './RacingLineAsset';
-import type { TrackId } from './TrackModel';
+import { TRACK_LENGTH, type TrackId } from './TrackModel';
 
 const active = new Map<TrackId, RacingLineAsset>();
 
@@ -17,6 +22,52 @@ export function setRuntimeRacingLine(
 
 export function runtimeRacingLine(trackId: TrackId): RacingLineAsset | undefined {
   return active.get(trackId);
+}
+
+
+export function racingLineBrakeIntent(
+  trackId: TrackId,
+  progress: number,
+  tireGrip: number,
+  currentSpeed: number,
+): number {
+  const asset = active.get(trackId);
+  if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR')) return 0;
+
+  const fullBrake = controlArcadeCar(
+    { vx: currentSpeed, vy: 0, heading: 0, angularVelocity: 0 },
+    {
+      throttle: 0,
+      brake: 1,
+      steer: 0,
+      tireGrip,
+      powerBoost: REFERENCE_POWER_BOOST,
+    },
+    1 / 120,
+  );
+  const availableDeceleration = Math.max(8, -fullBrake.acceleration);
+  const lookaheads = [10, 18, 30, 46, 64] as const;
+  let intent = 0;
+
+  for (const distance of lookaheads) {
+    const futureSpeed = activeReferenceTarget(
+      trackId,
+      progress + distance / TRACK_LENGTH,
+      tireGrip,
+    ).targetSpeed;
+    if (currentSpeed <= futureSpeed + 0.35) continue;
+
+    const requiredDeceleration = Math.max(
+      0,
+      (currentSpeed * currentSpeed - futureSpeed * futureSpeed) / (2 * distance),
+    );
+    intent = Math.max(
+      intent,
+      clamp((requiredDeceleration / availableDeceleration - 0.04) * 1.08, 0, 1),
+    );
+  }
+
+  return intent;
 }
 
 /**
