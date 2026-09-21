@@ -12,6 +12,7 @@ export interface RacingLineAsset {
   version: 1;
   trackId: TrackId;
   source: RacingLineSource;
+  referenceGrip?: number;
   lapSeconds?: number;
   points: readonly RacingLinePoint[];
 }
