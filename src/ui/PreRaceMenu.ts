@@ -82,24 +82,11 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
         window.localStorage,
         selectedTrack,
       );
-      const playerButton = root.querySelector<HTMLButtonElement>('[data-cpu-line="PLAYER"]');
-      if (playerButton) playerButton.disabled = !playerCandidate;
       const status = root.querySelector<HTMLElement>('[data-player-line-status]');
       if (status) {
         status.textContent = playerCandidate?.lapSeconds !== undefined
           ? `Clean player lap · ${playerCandidate.lapSeconds.toFixed(3)} s`
-          : 'No clean lap captured yet';
-      }
-      if (!playerCandidate && selectedCpuLine === 'PLAYER') {
-        selectedCpuLine = 'AUTO';
-        saveSelectedRacingLineSource(
-          window.localStorage,
-          selectedTrack,
-          selectedCpuLine,
-        );
-        root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
-          node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
-        });
+          : 'Uses the next clean qualifying lap';
       }
     };
 
