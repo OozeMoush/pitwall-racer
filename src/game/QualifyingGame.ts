@@ -31,8 +31,8 @@ import type { RaceSetup } from './RaceSetup';
 const FIXED_DT = 1 / 120;
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
-const START_PROGRESS = 0.958;
-const FLYING_START_SPEED = 72;
+const START_PROGRESS = 0.90;
+const APPROACH_START_SPEED = 46;
 const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
 
@@ -74,7 +74,7 @@ class QualifyingGame {
 
   private vehicle: VehicleState;
   private tire: TireState = createTire('SOFT');
-  private phase: QualifyingPhase = 'COUNTDOWN';
+  private phase: QualifyingPhase = 'APPROACH';
   private countdown = 3;
   private fixedAccumulator = 0;
   private lastFrame = performance.now();
@@ -102,8 +102,12 @@ class QualifyingGame {
     this.resolve = resolve;
 
     const start = sampleTrack(START_PROGRESS);
-    this.vehicle = createVehicle(start.x, start.y, start.heading);
+    this.vehicle = {
+      ...createVehicle(start.x, start.y, start.heading),
+      speed: APPROACH_START_SPEED,
+    };
     this.physics = new RapierRacePhysics(this.vehicle, []);
+    this.physics.setPlayerState(this.vehicle);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -216,7 +220,7 @@ class QualifyingGame {
       this.physics.stopPlayer();
       if (this.countdown === 0) {
         const start = sampleTrack(START_PROGRESS);
-        this.vehicle = { ...createVehicle(start.x, start.y, start.heading), speed: FLYING_START_SPEED };
+        this.vehicle = { ...createVehicle(start.x, start.y, start.heading), speed: APPROACH_START_SPEED };
         this.physics.setPlayerState(this.vehicle);
         this.phase = 'APPROACH';
       }
