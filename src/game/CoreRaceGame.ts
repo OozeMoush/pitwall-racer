@@ -1189,6 +1189,7 @@ export class CoreRaceGame {
         <span>HEADING / BEARING err</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
         <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
         <span>BRAKE feedback / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
+        <span>THROTTLE profile</span><b>${fixed(control?.debug.profileThrottle)}</b>
         <span>LOOKAHEAD</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m</b>
         <span>PREDICT</span><b>${percent(control?.debug.predictionWeight)}</b>
       </div>
@@ -1202,6 +1203,7 @@ export class CoreRaceGame {
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
         <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
         <span>BRAKE</span><b>${fixed(ghostControl?.brake)}</b>
+        <span>THROTTLE profile</span><b>${fixed(ghostControl?.debug.profileThrottle)}</b>
       </div>
       <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
     </div>`;
