@@ -92,6 +92,17 @@ describe('AiReferenceGhost', () => {
     let maxPathError = 0;
     let errorSum = 0;
     let samples = 0;
+    const replayBins = Array.from({ length: 20 }, () => ({
+      samples: 0,
+      pathError: 0,
+      maxPathError: 0,
+      speed: 0,
+      targetSpeed: 0,
+      headingError: 0,
+      yawError: 0,
+      steer: 0,
+      brake: 0,
+    }));
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       replay.step(1 / 120);
@@ -112,6 +123,22 @@ describe('AiReferenceGhost', () => {
       maxPathError = Math.max(maxPathError, lineProjection.distance);
       errorSum += lineProjection.distance;
       samples += 1;
+      const control = replay.latestControl();
+      const bin = replayBins[Math.min(
+        replayBins.length - 1,
+        Math.floor(lineProjection.progress * replayBins.length),
+      )];
+      bin.samples += 1;
+      bin.pathError += lineProjection.distance;
+      bin.maxPathError = Math.max(bin.maxPathError, lineProjection.distance);
+      bin.speed += state.speed;
+      bin.targetSpeed += control?.targetSpeed ?? 0;
+      bin.headingError += Math.abs(control?.debug.pathHeadingError ?? 0);
+      bin.yawError += Math.abs(
+        (control?.debug.targetYawRate ?? state.yawRate) - state.yawRate,
+      );
+      bin.steer += Math.abs(control?.steer ?? 0);
+      bin.brake += control?.brake ?? 0;
 
       if (replayPreviousProgress > 0.90 && projection.progress < 0.10) {
         replayLapSeconds = replayElapsed;
@@ -125,6 +152,19 @@ describe('AiReferenceGhost', () => {
       replayLapSeconds,
       maxPathError,
       avgPathError: samples > 0 ? errorSum / samples : 0,
+      bins: replayBins.map((bin, index) => ({
+        p: `${index * 5}-${(index + 1) * 5}%`,
+        avgError: bin.samples > 0 ? bin.pathError / bin.samples : 0,
+        maxError: bin.maxPathError,
+        avgKmh: bin.samples > 0 ? bin.speed / bin.samples * 3.6 : 0,
+        targetKmh: bin.samples > 0 ? bin.targetSpeed / bin.samples * 3.6 : 0,
+        headingDeg: bin.samples > 0
+          ? bin.headingError / bin.samples * 180 / Math.PI
+          : 0,
+        yawError: bin.samples > 0 ? bin.yawError / bin.samples : 0,
+        avgSteer: bin.samples > 0 ? bin.steer / bin.samples : 0,
+        avgBrake: bin.samples > 0 ? bin.brake / bin.samples : 0,
+      })),
     });
 
     expect(replayLapSeconds).toBeGreaterThan(0);
