@@ -409,7 +409,10 @@ export function dynamicAiControl(
         )
     : 0;
   let brake = highFidelityLine
-    ? Math.max(feedbackBrake, explicitProfileBrake)
+    ? Math.max(
+        feedbackBrake,
+        explicitProfileBrake * plannedBrakeWeight,
+      )
     : Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
 
   const explicitProfileThrottle = highFidelityLine
