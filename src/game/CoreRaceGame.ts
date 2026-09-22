@@ -574,13 +574,22 @@ export class CoreRaceGame {
       this.setup.trackId,
     );
     const previousSeconds = previous?.lapSeconds;
+    const previousHasDynamics = previous?.points.some(
+      (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
+    ) ?? false;
     const saved = saveBestPlayerRacingLineCandidate(
       window.localStorage,
       candidate,
     );
+    const savedHasDynamics = saved.points.some(
+      (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
+    );
+    const dynamicsUpgrade = previous !== undefined
+      && !previousHasDynamics
+      && savedHasDynamics;
     const improved = previousSeconds === undefined
       || (saved.lapSeconds !== undefined && saved.lapSeconds < previousSeconds - 0.0005);
-    if (!improved) return;
+    if (!improved && !dynamicsUpgrade) return;
 
     const usingPlayerLine = selectedRacingLineSource(
       window.localStorage,
@@ -590,9 +599,13 @@ export class CoreRaceGame {
       activateStoredRacingLine(window.localStorage, this.setup.trackId);
     }
 
-    this.racingLineNotice = usingPlayerLine
-      ? `CPU LINE UPDATED · ${lapTime.toFixed(3)}s`
-      : `PLAYER LINE SAVED · ${lapTime.toFixed(3)}s`;
+    this.racingLineNotice = dynamicsUpgrade
+      ? usingPlayerLine
+        ? `CPU LINE UPGRADED · HEADING + YAW`
+        : `PLAYER LINE UPGRADED · HEADING + YAW`
+      : usingPlayerLine
+        ? `CPU LINE UPDATED · ${lapTime.toFixed(3)}s`
+        : `PLAYER LINE SAVED · ${lapTime.toFixed(3)}s`;
     this.racingLineNoticeRemaining = 3.2;
 
     console.info('RACING_LINE_CANDIDATE', {
@@ -603,6 +616,8 @@ export class CoreRaceGame {
       raceLap: this.lap,
       trafficAffectedSeconds: this.lineCandidateFilter.affectedSeconds,
       activatedForCpu: usingPlayerLine,
+      dynamicsUpgrade,
+      demonstratedDynamics: savedHasDynamics,
     });
   }
 
