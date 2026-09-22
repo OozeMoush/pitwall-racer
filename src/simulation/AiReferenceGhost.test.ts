@@ -4,7 +4,6 @@ import { AiReferenceGhost } from './AiReferenceGhost';
 import { PlayerRacingLineCandidateRecorder } from './PlayerRacingLineCandidate';
 import { referenceRacingLineAsset } from './ReferenceDriverModel';
 import {
-  activeReferenceTarget,
   projectRuntimeRacingLineNear,
   setRuntimeRacingLine,
 } from './RacingLineRuntime';
@@ -90,20 +89,8 @@ describe('AiReferenceGhost', () => {
     let replayPreviousProgress = 0.01;
     let replayLapSeconds = 0;
     let maxPathError = 0;
-    let maxReplayErrorSnapshot: unknown;
     let errorSum = 0;
     let samples = 0;
-    const replayBins = Array.from({ length: 20 }, () => ({
-      samples: 0,
-      pathError: 0,
-      maxPathError: 0,
-      speed: 0,
-      targetSpeed: 0,
-      headingError: 0,
-      yawError: 0,
-      steer: 0,
-      brake: 0,
-    }));
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       replay.step(1 / 120);
@@ -121,51 +108,9 @@ describe('AiReferenceGhost', () => {
         state.y,
         projection.progress,
       );
-      if (lineProjection.distance > maxPathError) {
-        maxPathError = lineProjection.distance;
-        const control = replay.latestControl();
-        maxReplayErrorSnapshot = {
-          progress: lineProjection.progress,
-          centreProgress: projection.progress,
-          actualLane: projection.laneOffset,
-          speedKmh: state.speed * 3.6,
-          heading: state.heading,
-          yawRate: state.yawRate,
-          control: control
-            ? {
-                steer: control.steer,
-                brake: control.brake,
-                throttle: control.throttle,
-                targetSpeedKmh: control.targetSpeed * 3.6,
-                debug: {
-                  laneError: control.debug.laneError,
-                  pathHeadingError: control.debug.pathHeadingError,
-                  bearingError: control.debug.bearingError,
-                  targetYawRate: control.debug.targetYawRate,
-                },
-              }
-            : undefined,
-        };
-      }
+      maxPathError = Math.max(maxPathError, lineProjection.distance);
       errorSum += lineProjection.distance;
       samples += 1;
-      const control = replay.latestControl();
-      const bin = replayBins[Math.min(
-        replayBins.length - 1,
-        Math.floor(lineProjection.progress * replayBins.length),
-      )];
-      bin.samples += 1;
-      bin.pathError += lineProjection.distance;
-      bin.maxPathError = Math.max(bin.maxPathError, lineProjection.distance);
-      bin.speed += state.speed;
-      bin.targetSpeed += control?.targetSpeed ?? 0;
-      bin.headingError += Math.abs(control?.debug.pathHeadingError ?? 0);
-      bin.yawError += Math.abs(
-        (control?.debug.targetYawRate ?? state.yawRate) - state.yawRate,
-      );
-      bin.steer += Math.abs(control?.steer ?? 0);
-      bin.brake += control?.brake ?? 0;
-
       if (replayPreviousProgress > 0.90 && projection.progress < 0.10) {
         replayLapSeconds = replayElapsed;
         break;
@@ -173,25 +118,11 @@ describe('AiReferenceGhost', () => {
       replayPreviousProgress = projection.progress;
     }
 
-    console.info('DEMONSTRATED_REPLAY_DIAGNOSTIC', {
+    console.info('DEMONSTRATED_REPLAY_METRICS', {
       recordedLapSeconds,
       replayLapSeconds,
       maxPathError,
       avgPathError: samples > 0 ? errorSum / samples : 0,
-      maxReplayErrorSnapshot,
-      bins: replayBins.map((bin, index) => ({
-        p: `${index * 5}-${(index + 1) * 5}%`,
-        avgError: bin.samples > 0 ? bin.pathError / bin.samples : 0,
-        maxError: bin.maxPathError,
-        avgKmh: bin.samples > 0 ? bin.speed / bin.samples * 3.6 : 0,
-        targetKmh: bin.samples > 0 ? bin.targetSpeed / bin.samples * 3.6 : 0,
-        headingDeg: bin.samples > 0
-          ? bin.headingError / bin.samples * 180 / Math.PI
-          : 0,
-        yawError: bin.samples > 0 ? bin.yawError / bin.samples : 0,
-        avgSteer: bin.samples > 0 ? bin.steer / bin.samples : 0,
-        avgBrake: bin.samples > 0 ? bin.brake / bin.samples : 0,
-      })),
     });
 
     expect(replayLapSeconds).toBeGreaterThan(0);
@@ -220,19 +151,6 @@ describe('AiReferenceGhost', () => {
     const ghost = new AiReferenceGhost(0.95, 'pitwall-gp');
     let maxLaneError = 0;
     let maxTrackDistance = 0;
-    let lastProgress = ghost.driver.progress;
-    let maxErrorSnapshot: unknown;
-    const bins = Array.from({ length: 20 }, () => ({
-      samples: 0,
-      pathError: 0,
-      maxPathError: 0,
-      speed: 0,
-      targetSpeed: 0,
-      steer: 0,
-      brake: 0,
-      headingError: 0,
-      yawError: 0,
-    }));
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       ghost.step(1 / 120);
@@ -249,90 +167,20 @@ describe('AiReferenceGhost', () => {
         state.y,
         projection.progress,
       );
-      const reference = activeReferenceTarget(
-        'pitwall-gp',
-        lineProjection.progress,
-        ghost.driver.tire.grip,
-      );
       const laneError = lineProjection.distance;
-      const control = ghost.latestControl();
-      const bin = bins[Math.min(
-        bins.length - 1,
-        Math.floor(lineProjection.progress * bins.length),
-      )];
-      bin.samples += 1;
-      bin.pathError += laneError;
-      bin.maxPathError = Math.max(bin.maxPathError, laneError);
-      bin.speed += state.speed;
-      bin.targetSpeed += control?.targetSpeed ?? 0;
-      bin.steer += Math.abs(control?.steer ?? 0);
-      bin.brake += control?.brake ?? 0;
-      bin.headingError += Math.abs(control?.debug.pathHeadingError ?? 0);
-      bin.yawError += Math.abs(
-        (control?.debug.targetYawRate ?? state.yawRate) - state.yawRate,
-      );
-
-      if (laneError > maxLaneError) {
-        maxLaneError = laneError;
-        maxErrorSnapshot = {
-          tick,
-          centreProgress: projection.progress,
-          pathProgress: lineProjection.progress,
-          actualLane: projection.laneOffset,
-          referenceLane: reference.laneOffset,
-          pathDistance: lineProjection.distance,
-          trackDistance: projection.distance,
-          speedKmh: state.speed * 3.6,
-          heading: state.heading,
-          yawRate: state.yawRate,
-          control: ghost.latestControl()
-            ? {
-                steer: ghost.latestControl()!.steer,
-                brake: ghost.latestControl()!.brake,
-                throttle: ghost.latestControl()!.throttle,
-                targetSpeed: ghost.latestControl()!.targetSpeed,
-                debug: {
-                  lineSource: ghost.latestControl()!.debug.lineSource,
-                  laneError: ghost.latestControl()!.debug.laneError,
-                  pathHeadingError: ghost.latestControl()!.debug.pathHeadingError,
-                  bearingError: ghost.latestControl()!.debug.bearingError,
-                  targetYawRate: ghost.latestControl()!.debug.targetYawRate,
-                  demonstratedDynamics: ghost.latestControl()!.debug.demonstratedDynamics,
-                },
-              }
-            : undefined,
-        };
-      }
+      maxLaneError = Math.max(maxLaneError, laneError);
       maxTrackDistance = Math.max(maxTrackDistance, projection.distance);
-      lastProgress = projection.progress;
       if (ghost.lastLapSeconds() !== undefined) break;
     }
 
-    console.info('EXPLICIT_REPLAY_DIAGNOSTIC', {
+    console.info('LEGACY_REPLAY_METRICS', {
       lastLapSeconds: ghost.lastLapSeconds(),
-      lastProgress,
       maxLaneError,
       maxTrackDistance,
-      speedKmh: (ghost.state()?.speed ?? 0) * 3.6,
-      control: ghost.latestControl(),
-      maxErrorSnapshot,
-      bins: bins.map((bin, index) => ({
-        p: `${index * 5}-${(index + 1) * 5}%`,
-        avgError: bin.samples > 0 ? bin.pathError / bin.samples : 0,
-        maxError: bin.maxPathError,
-        avgKmh: bin.samples > 0 ? bin.speed / bin.samples * 3.6 : 0,
-        targetKmh: bin.samples > 0 ? bin.targetSpeed / bin.samples * 3.6 : 0,
-        avgSteer: bin.samples > 0 ? bin.steer / bin.samples : 0,
-        avgBrake: bin.samples > 0 ? bin.brake / bin.samples : 0,
-        headingDeg: bin.samples > 0
-          ? bin.headingError / bin.samples * 180 / Math.PI
-          : 0,
-        yawError: bin.samples > 0 ? bin.yawError / bin.samples : 0,
-      })),
     });
     expect(ghost.lastLapSeconds()).toBeDefined();
     // Legacy position+speed assets remain a migration fallback. New PLAYER
-    // recordings are held to the much tighter 2.5 m demonstrated-state test
+    // recordings are held to the much tighter 1.8 m demonstrated-state test
     // above and replace a legacy candidate after one clean lap.
     expect(maxLaneError).toBeLessThan(8.0);
   }, 15_000);
