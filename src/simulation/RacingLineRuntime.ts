@@ -258,9 +258,22 @@ export function racingLineLocalBrakeIntent(
     progress + distance / TRACK_LENGTH,
     tireGrip,
   ).targetSpeed;
-  const desiredAcceleration =
+  // If the replay exactly matches the trace this reduces to the recorded
+  // local speed derivative. If it arrives even slightly too fast, solve for
+  // the extra deceleration required to reach the *next demonstrated speed*
+  // over the same physical distance. This is important at tight transitions:
+  // otherwise a transient overspeed survives until the generic feedback loop
+  // notices it, by which point the chassis may already be yaw-limited.
+  const traceAcceleration =
     (futureTarget * futureTarget - currentTarget * currentTarget)
     / (2 * distance);
+  const catchUpAcceleration =
+    (futureTarget * futureTarget - currentSpeed * currentSpeed)
+    / (2 * distance);
+  const desiredAcceleration = Math.min(
+    traceAcceleration,
+    catchUpAcceleration,
+  );
 
   const coast = runtimeLongitudinalAcceleration(
     currentSpeed,
