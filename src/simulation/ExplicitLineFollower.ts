@@ -130,6 +130,16 @@ export function explicitLineFollower(
   const headingLead = wrapAngle(previewHeading - pathHeading);
   const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);
 
+  // A chicane can move the explicit line from one side of the road to the
+  // other while the path headings before and after the transition are nearly
+  // parallel. Heading preview alone then misses the most important information.
+  // Read the recorded lane schedule directly and begin that lateral transfer
+  // before the near pursuit target reaches it.
+  const laneTransitionAngle = Math.atan2(
+    previewReference.laneOffset - currentReference.laneOffset,
+    Math.max(12, previewMetres),
+  );
+
   // The cross-track term is intentionally speed-aware: at high speed the
   // heading terms do most of the work, while a multi-metre miss still commands
   // an unmistakable correction instead of the old /9 soft nudge.
@@ -171,6 +181,7 @@ export function explicitLineFollower(
       + bearingError * (0.94 + errorSeverity * 0.24)
       + crossTrackAngle * 3.35
       + headingLead * (0.70 + leadWeight * 0.52)
+      + laneTransitionAngle * (1.55 + leadWeight * 0.70)
       - vehicle.yawRate * 0.30,
     -1,
     1,
