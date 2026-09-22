@@ -6,6 +6,7 @@ import { referenceExecutionForSkill } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
+  racingLineThrottleIntent,
   runtimeRacingLine,
 } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -23,6 +24,7 @@ export interface DynamicAiDebug {
   predictionWeight: number;
   feedbackBrake: number;
   profileBrake: number;
+  profileThrottle: number;
   demonstratedDynamics: boolean;
   targetYawRate?: number;
   pathHeadingError: number;
@@ -401,9 +403,29 @@ export function dynamicAiControl(
     ? Math.max(feedbackBrake, explicitProfileBrake)
     : Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
 
+  const explicitProfileThrottle = highFidelityLine
+    ? racingLineThrottleIntent(
+        trackId,
+        explicitFollower?.pathProgress ?? projection.progress,
+        driver.tire.grip,
+        speed,
+        steer,
+      )
+    : 0;
+
   let throttle: number;
   if (brake > 0.06) {
     throttle = 0;
+  } else if (highFidelityLine) {
+    if (speedError > 2.0) {
+      throttle = 1;
+    } else {
+      throttle = clamp(
+        explicitProfileThrottle + speedError * 0.20,
+        0,
+        1,
+      );
+    }
   } else if (speedError > 0.45) {
     throttle = 1;
   } else if (speedError > -0.55) {
@@ -436,6 +458,7 @@ export function dynamicAiControl(
       predictionWeight,
       feedbackBrake,
       profileBrake: explicitProfileBrake,
+      profileThrottle: explicitProfileThrottle,
       demonstratedDynamics: explicitFollower?.demonstratedDynamics ?? false,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
