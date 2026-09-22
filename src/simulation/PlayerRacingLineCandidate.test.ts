@@ -39,7 +39,7 @@ describe('player racing-line candidates', () => {
     const candidate = recordedLap(24.5);
     expect(candidate).toBeDefined();
     expect(candidate?.source).toBe('PLAYER');
-    expect(candidate?.points).toHaveLength(160);
+    expect(candidate?.points).toHaveLength(320);
     expect(candidate?.points[0].progress).toBe(0);
     expect(candidate?.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
   });
