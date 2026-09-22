@@ -248,10 +248,10 @@ export function dynamicAiControl(
   const bearingHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
-  const referenceLaneNow = offRoad
-    ? 0
-    : explicitFollower
-      ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+  const referenceLaneNow = explicitFollower
+    ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+    : offRoad
+      ? 0
       : battleState === 'CLEAR' || battleState === 'FOLLOW'
         ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
         : targetLane;
@@ -297,12 +297,16 @@ export function dynamicAiControl(
         predictionWeight,
       );
 
-  const speedReference = currentLineReference;
+  const speedReference = explicitFollower
+    ? activeReferenceTarget(trackId, explicitFollower.pathProgress, driver.tire.grip)
+    : currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
   let cornerAttackConfidence = 0;
 
   if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
-    const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
+    const lineError = explicitFollower
+      ? Math.abs(explicitFollower.laneError)
+      : Math.abs(referenceLaneNow - projection.laneOffset);
     const recoveryScale = 1 - clamp((lineError - 1.5) / 6.0, 0, 1) * 0.28;
     targetSpeed *= recoveryScale;
   }
@@ -366,7 +370,12 @@ export function dynamicAiControl(
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
   const explicitProfileBrake = highFidelityLine
-    ? racingLineBrakeIntent(trackId, projection.progress, driver.tire.grip, speed)
+    ? racingLineBrakeIntent(
+        trackId,
+        explicitFollower?.pathProgress ?? projection.progress,
+        driver.tire.grip,
+        speed,
+      )
     : 0;
   let brake = highFidelityLine
     ? Math.max(feedbackBrake, explicitProfileBrake)
@@ -397,9 +406,11 @@ export function dynamicAiControl(
     battleState,
     debug: {
       lineSource: lineAsset?.source ?? 'AUTO',
-      progress: projection.progress,
+      progress: explicitFollower?.pathProgress ?? projection.progress,
       referenceLane: referenceLaneNow,
-      laneError: projection.laneOffset - referenceLaneNow,
+      laneError: explicitFollower
+        ? -explicitFollower.laneError
+        : projection.laneOffset - referenceLaneNow,
       lookAheadMetres: steeringLookAheadMetres,
       steeringProgress: wrap01(steeringProgress),
       predictionWeight,
