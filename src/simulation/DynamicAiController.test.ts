@@ -143,6 +143,42 @@ describe('dynamicAiControl', () => {
     expect(control.targetSpeed).toBeLessThanOrEqual(64);
   });
 
+  it('corrects overspeed more aggressively when PLAYER dynamics are demonstrated', () => {
+    const driver = createAiField()[0];
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 64 };
+    const basePoints = Array.from({ length: 160 }, (_, index) => ({
+      progress: index / 160,
+      laneOffset: 0,
+      targetSpeed: 60,
+    }));
+
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: driver.tire.grip,
+      points: basePoints,
+    });
+    const legacy = dynamicAiControl(driver, vehicle, []);
+
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: driver.tire.grip,
+      points: basePoints.map((point) => ({
+        ...point,
+        headingOffset: 0,
+        yawRate: 0,
+      })),
+    });
+    const enriched = dynamicAiControl(driver, vehicle, []);
+
+    expect(enriched.debug.demonstratedDynamics).toBe(true);
+    expect(enriched.brake).toBeGreaterThan(legacy.brake);
+  });
+
   it('brakes before a future player-line speed drop reaches the car', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
