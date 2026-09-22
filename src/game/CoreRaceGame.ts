@@ -1138,6 +1138,10 @@ export class CoreRaceGame {
       value === undefined || !Number.isFinite(value) ? '—' : value.toFixed(digits);
     const percent = (value: number | undefined): string =>
       value === undefined || !Number.isFinite(value) ? '—' : `${Math.round(value * 100)}%`;
+    const degreesPerSecond = (value: number | undefined): string =>
+      value === undefined || !Number.isFinite(value)
+        ? '—'
+        : `${(value * 180 / Math.PI).toFixed(0)}°/s`;
     const lap = line?.lapSeconds === undefined ? '—' : `${line.lapSeconds.toFixed(3)}s`;
     const ghostLap = this.debugGhost?.lastLapSeconds();
     const ghostCurrent = this.debugGhost?.currentLapSeconds();
@@ -1153,11 +1157,13 @@ export class CoreRaceGame {
         <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
+        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY PATH ONLY'}</b>
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
         <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
+        <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
         <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
         <span>BRAKE feedback / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
         <span>LOOKAHEAD</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m</b>
@@ -1169,6 +1175,8 @@ export class CoreRaceGame {
         <span>LAP</span><b>${ghostTime}</b>
         <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY'}</b>
+        <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
         <span>BRAKE</span><b>${fixed(ghostControl?.brake)}</b>
       </div>
       <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
