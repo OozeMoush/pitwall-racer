@@ -11,6 +11,18 @@ import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './T
 import { trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
 
+export interface DynamicAiDebug {
+  lineSource: 'AUTO' | 'PLAYER' | 'EDITOR' | 'OPTIMIZER';
+  progress: number;
+  referenceLane: number;
+  laneError: number;
+  lookAheadMetres: number;
+  steeringProgress: number;
+  predictionWeight: number;
+  feedbackBrake: number;
+  profileBrake: number;
+}
+
 export interface DynamicAiControl {
   throttle: number;
   brake: number;
@@ -18,6 +30,7 @@ export interface DynamicAiControl {
   targetSpeed: number;
   targetLane: number;
   battleState: BattleState;
+  debug: DynamicAiDebug;
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
@@ -351,7 +364,25 @@ export function dynamicAiControl(
     throttle = brake > 0.08 ? 0 : Math.max(throttle, 0.58);
   }
 
-  return { throttle, brake, steer, targetSpeed, targetLane, battleState };
+  return {
+    throttle,
+    brake,
+    steer,
+    targetSpeed,
+    targetLane,
+    battleState,
+    debug: {
+      lineSource: lineAsset?.source ?? 'AUTO',
+      progress: projection.progress,
+      referenceLane: referenceLaneNow,
+      laneError: projection.laneOffset - referenceLaneNow,
+      lookAheadMetres: steeringLookAheadMetres,
+      steeringProgress: wrap01(steeringProgress),
+      predictionWeight,
+      feedbackBrake,
+      profileBrake: explicitProfileBrake,
+    },
+  };
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {
