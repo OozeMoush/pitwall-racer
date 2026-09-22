@@ -60,6 +60,17 @@ describe('AiReferenceGhost', () => {
     let maxTrackDistance = 0;
     let lastProgress = ghost.driver.progress;
     let maxErrorSnapshot: unknown;
+    const bins = Array.from({ length: 20 }, () => ({
+      samples: 0,
+      pathError: 0,
+      maxPathError: 0,
+      speed: 0,
+      targetSpeed: 0,
+      steer: 0,
+      brake: 0,
+      headingError: 0,
+      yawError: 0,
+    }));
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       ghost.step(1 / 120);
@@ -82,6 +93,23 @@ describe('AiReferenceGhost', () => {
         ghost.driver.tire.grip,
       );
       const laneError = lineProjection.distance;
+      const control = ghost.latestControl();
+      const bin = bins[Math.min(
+        bins.length - 1,
+        Math.floor(lineProjection.progress * bins.length),
+      )];
+      bin.samples += 1;
+      bin.pathError += laneError;
+      bin.maxPathError = Math.max(bin.maxPathError, laneError);
+      bin.speed += state.speed;
+      bin.targetSpeed += control?.targetSpeed ?? 0;
+      bin.steer += Math.abs(control?.steer ?? 0);
+      bin.brake += control?.brake ?? 0;
+      bin.headingError += Math.abs(control?.debug.pathHeadingError ?? 0);
+      bin.yawError += Math.abs(
+        (control?.debug.targetYawRate ?? state.yawRate) - state.yawRate,
+      );
+
       if (laneError > maxLaneError) {
         maxLaneError = laneError;
         maxErrorSnapshot = {
@@ -119,6 +147,19 @@ describe('AiReferenceGhost', () => {
       speedKmh: (ghost.state()?.speed ?? 0) * 3.6,
       control: ghost.latestControl(),
       maxErrorSnapshot,
+      bins: bins.map((bin, index) => ({
+        p: `${index * 5}-${(index + 1) * 5}%`,
+        avgError: bin.samples > 0 ? bin.pathError / bin.samples : 0,
+        maxError: bin.maxPathError,
+        avgKmh: bin.samples > 0 ? bin.speed / bin.samples * 3.6 : 0,
+        targetKmh: bin.samples > 0 ? bin.targetSpeed / bin.samples * 3.6 : 0,
+        avgSteer: bin.samples > 0 ? bin.steer / bin.samples : 0,
+        avgBrake: bin.samples > 0 ? bin.brake / bin.samples : 0,
+        headingDeg: bin.samples > 0
+          ? bin.headingError / bin.samples * 180 / Math.PI
+          : 0,
+        yawError: bin.samples > 0 ? bin.yawError / bin.samples : 0,
+      })),
     });
     expect(ghost.lastLapSeconds()).toBeDefined();
     expect(maxLaneError).toBeLessThan(5.5);
