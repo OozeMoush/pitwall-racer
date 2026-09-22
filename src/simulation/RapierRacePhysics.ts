@@ -1,7 +1,7 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { aerodynamicEffect } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
-import { dynamicAiControl } from './DynamicAiController';
+import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
 import {
   PIT_SPEED,
   beginPitStop,
@@ -68,6 +68,7 @@ export class RapierRacePhysics {
   private playerSlideSeverityValue = 0;
   private aiSlideStates: TyreSlideState[];
   private latestAi: DriverState[] = [];
+  private latestAiControls: Array<DynamicAiControl | undefined> = [];
   private playerLap = 0;
 
   constructor(playerStart: VehicleState, ai: readonly DriverState[]) {
@@ -122,6 +123,7 @@ export class RapierRacePhysics {
       }
 
       const control = dynamicAiControl(driver, state, traffic);
+      this.latestAiControls[index] = control;
       driver.battleState = control.battleState;
       const projection = projectTrackNear(state.x, state.y, driver.progress);
       const surface = surfaceEffect(projection.distance);
@@ -176,6 +178,10 @@ export class RapierRacePhysics {
     return this.aiBodies.map((body) => this.bodyState(body));
   }
 
+  aiControls(): ReadonlyArray<DynamicAiControl | undefined> {
+    return this.latestAiControls;
+  }
+
   isAiPitting(index: number): boolean {
     return isPitActive(this.aiPitStops[index] ?? createPitStopState());
   }
@@ -207,6 +213,7 @@ export class RapierRacePhysics {
   reset(playerStart: VehicleState, ai: readonly DriverState[]): void {
     this.setPlayerState(playerStart);
     this.playerLap = 0;
+    this.latestAiControls = [];
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
     ai.forEach((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
