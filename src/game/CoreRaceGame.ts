@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
+import { AiReferenceGhost } from '../simulation/AiReferenceGhost';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
@@ -19,6 +20,7 @@ import {
   normalizedRaceCandidateSpeed,
 } from '../simulation/RaceRacingLineCandidatePolicy';
 import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
+import { activeReferenceTarget, runtimeRacingLine } from '../simulation/RacingLineRuntime';
 import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
 import {
@@ -148,6 +150,17 @@ export class CoreRaceGame {
   private lineCandidateReferenceGrip = 1;
   private racingLineNotice = '';
   private racingLineNoticeRemaining = 0;
+  private debugEnabled = false;
+  private debugAiIndex = 0;
+  private debugGhost?: AiReferenceGhost;
+  private debugGhostCar?: FormulaCar3D;
+  private debugReferenceLine?: THREE.LineLoop;
+  private debugActualTrail?: THREE.Line;
+  private debugGhostTrail?: THREE.Line;
+  private debugTargetMarker?: THREE.Mesh;
+  private debugActualTrailPoints: THREE.Vector3[] = [];
+  private debugGhostTrailPoints: THREE.Vector3[] = [];
+  private debugLineRefreshRemaining = 0;
 
   constructor(container: HTMLElement, hud: HTMLElement, setup: RaceSetup) {
     this.container = container;
@@ -186,6 +199,7 @@ export class CoreRaceGame {
     });
     this.physics = new RapierRacePhysics(this.vehicle, this.ai);
     this.resetAiTiming();
+    this.setupAiDebugVisuals();
 
     this.bindInput();
     this.resize();
@@ -227,6 +241,14 @@ export class CoreRaceGame {
       if (event.code === 'KeyR') this.chooseCompound('HARD');
       if (event.code === 'KeyF' && this.flow.phase === 'RACING' && !isPitActive(this.pitStop)) this.pitRequested = !this.pitRequested;
       if (event.code === 'KeyC') this.handleRecoveryOrRestart();
+      if (event.code === 'F3') {
+        event.preventDefault();
+        this.toggleAiDebug();
+      }
+      if (event.code === 'F4' && this.debugEnabled) {
+        event.preventDefault();
+        this.cycleDebugAi();
+      }
     });
     this.container.addEventListener('pointerdown', () => this.audio.unlock(), { passive: true });
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
@@ -260,6 +282,7 @@ export class CoreRaceGame {
     }
 
     this.syncVisuals(false);
+    this.syncAiDebugVisuals(dt);
     this.updateCamera(dt);
     this.updateAudio(dt);
     this.renderHud();
@@ -348,6 +371,7 @@ export class CoreRaceGame {
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
+    this.stepAiDebugGhost(dt);
     this.updateAiLapTiming();
 
     const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
