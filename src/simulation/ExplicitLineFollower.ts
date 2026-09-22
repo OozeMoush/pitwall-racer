@@ -109,13 +109,35 @@ export function explicitLineFollower(
     ? wrapAngle(pathNow.heading + demonstrated.headingOffset)
     : pathHeading;
   const recordedYawRate = demonstrated?.yawRate;
-  const targetYawRate = recordedYawRate !== undefined && demonstrated
+  const currentTargetYawRate = recordedYawRate !== undefined && demonstrated
     ? recordedYawRate * clamp(
         vehicle.speed / Math.max(1, demonstrated.targetSpeed),
         0.55,
         1.65,
       )
     : undefined;
+
+  // Recorded yaw is a *result* of steering that happened slightly earlier.
+  // Replaying that yaw only when we reach the same point is therefore one
+  // chassis response-time too late. Anticipate yaw by roughly the shared
+  // controller's angular time constant, while keeping heading/cross-track
+  // feedback anchored to the current demonstrated pose so this does not cut
+  // toward a future apex.
+  const yawLeadMetres = clamp(vehicle.speed * 0.11, 3.5, 9);
+  const yawLeadProgress = wrap01(
+    pathProgress + yawLeadMetres / TRACK_LENGTH,
+  );
+  const yawLeadDemonstrated = lineAsset
+    ? sampleRacingLineAsset(lineAsset, yawLeadProgress)
+    : undefined;
+  const targetYawRate = demonstratedDynamics
+    && yawLeadDemonstrated?.yawRate !== undefined
+    ? yawLeadDemonstrated.yawRate * clamp(
+        vehicle.speed / Math.max(1, yawLeadDemonstrated.targetSpeed),
+        0.55,
+        1.65,
+      )
+    : currentTargetYawRate;
 
   const pathNormalX = -Math.sin(pathHeading);
   const pathNormalY = Math.cos(pathHeading);
