@@ -56,6 +56,7 @@ export function explicitLineFollower(
     pathProgress,
     tireGrip,
   );
+  const errorSeverity = clamp(lineProjection.distance / 5.5, 0, 1);
 
   // Use one near target for cross-track convergence and a separate farther
   // preview for anticipation. The previous follower shortened lookahead as the
@@ -83,7 +84,7 @@ export function explicitLineFollower(
     tireGrip,
   );
   const pathNow = sampleTrack(
-    projection.progress,
+    pathProgress,
     currentReference.laneOffset,
   );
   const pathAhead = sampleTrack(
@@ -100,7 +101,6 @@ export function explicitLineFollower(
     (vehicle.x - pathNow.x) * pathNormalX
     + (vehicle.y - pathNow.y) * pathNormalY;
   const laneError = -signedOffsetFromPath;
-  const errorSeverity = clamp(Math.abs(laneError) / 5.5, 0, 1);
 
   const targetBearing = Math.atan2(
     target.y - vehicle.y,
