@@ -4,7 +4,7 @@ import type {
 } from './RacingLineAsset';
 import type { TrackId } from './TrackModel';
 
-const SAMPLE_COUNT = 320;
+const SAMPLE_COUNT = 640;
 const STORAGE_KEY = 'pitwall-racer:racing-line-candidates:v1';
 
 interface RawSample {
