@@ -195,8 +195,8 @@ describe('AiReferenceGhost', () => {
     });
 
     expect(replayLapSeconds).toBeGreaterThan(0);
-    expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.08);
-    expect(maxPathError).toBeLessThan(2.0);
+    expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.05);
+    expect(maxPathError).toBeLessThan(1.8);
   }, 15_000);
 
   it('keeps a legacy position+speed PLAYER line physically recoverable', () => {
