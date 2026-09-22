@@ -1160,6 +1160,10 @@ export class CoreRaceGame {
       value === undefined || !Number.isFinite(value)
         ? '—'
         : `${(value * 180 / Math.PI).toFixed(0)}°/s`;
+    const degrees = (value: number | undefined): string =>
+      value === undefined || !Number.isFinite(value)
+        ? '—'
+        : `${(value * 180 / Math.PI).toFixed(1)}°`;
     const lap = line?.lapSeconds === undefined ? '—' : `${line.lapSeconds.toFixed(3)}s`;
     const ghostLap = this.debugGhost?.lastLapSeconds();
     const ghostCurrent = this.debugGhost?.currentLapSeconds();
@@ -1182,7 +1186,7 @@ export class CoreRaceGame {
         <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
-        <span>HEADING / BEARING err</span><b>${degreesPerSecond(control?.debug.pathHeadingError)} / ${degreesPerSecond(control?.debug.bearingError)}</b>
+        <span>HEADING / BEARING err</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
         <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
         <span>BRAKE feedback / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
         <span>LOOKAHEAD</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m</b>
@@ -1196,7 +1200,7 @@ export class CoreRaceGame {
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY'}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
-        <span>HEADING err</span><b>${degreesPerSecond(ghostControl?.debug.pathHeadingError)}</b>
+        <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
         <span>BRAKE</span><b>${fixed(ghostControl?.brake)}</b>
       </div>
       <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
