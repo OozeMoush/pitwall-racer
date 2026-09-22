@@ -54,10 +54,11 @@ export function predictiveExplicitLineSteer(
     }
   }
 
-  // The explicit predictor is allowed much more authority than the AUTO helper,
-  // but retaining a small amount of the continuous baseline prevents the
-  // discrete candidate set from chattering frame to frame.
-  return clamp(baselineSteer * 0.18 + bestSteer * 0.82, -1, 1);
+  // Keep the continuous follower authoritative. The predictor supplies the
+  // early S-bend correction, but must not replace a stable high-speed steering
+  // solution merely because one discrete future candidate scores slightly
+  // better.
+  return clamp(baselineSteer * 0.52 + bestSteer * 0.48, -1, 1);
 }
 
 function scoreCandidate(
