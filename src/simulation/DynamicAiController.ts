@@ -1,5 +1,6 @@
 import { explicitLineFollower } from './ExplicitLineFollower';
 import { predictiveAiSteer } from './PredictiveAiSteering';
+import { predictiveExplicitLineSteer } from './PredictiveExplicitLineSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill } from './ReferenceDriverModel';
 import {
@@ -287,7 +288,13 @@ export function dynamicAiControl(
     : 0;
   const predictionWeight = pitwallPrediction;
   const steer = explicitFollower
-    ? baselineSteer
+    ? predictiveExplicitLineSteer(
+        trackId,
+        vehicle,
+        driver.tire.grip,
+        explicitFollower.pathProgress,
+        baselineSteer,
+      )
     : predictiveAiSteer(
         vehicle,
         driver.tire.grip,
