@@ -240,10 +240,10 @@ export function explicitLineFollower(
   const steer = demonstratedDynamics
     ? clamp(
         feedForwardSteer * 1.02
-          + pathHeadingError * 3.05
-          + yawError * 0.92
-          + crossTrackAngle * 1.85
-          + bearingError * 0.30,
+          + pathHeadingError * (3.05 + errorSeverity * 1.45)
+          + yawError * (0.92 + errorSeverity * 0.62)
+          + crossTrackAngle * (1.85 + errorSeverity * 1.20)
+          + bearingError * (0.30 + errorSeverity * 0.28),
         -1,
         1,
       )
