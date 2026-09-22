@@ -19,6 +19,26 @@ describe('AiReferenceGhost', () => {
     await RAPIER.init();
   });
 
+  it('replays at the grip under which the PLAYER line was demonstrated', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.225,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 65,
+        headingOffset: 0,
+        yawRate: 0,
+      })),
+    });
+
+    const ghost = new AiReferenceGhost(0.2, 'pitwall-gp');
+    expect(ghost.driver.tire.grip).toBeCloseTo(1.225, 6);
+  });
+
   it('runs the active PLAYER line with racecraft traffic removed', () => {
     setActiveTrack('pitwall-gp');
     setRuntimeRacingLine('pitwall-gp', {
