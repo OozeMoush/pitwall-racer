@@ -401,12 +401,15 @@ export class CoreRaceGame {
         this.tire.grip,
         this.lineCandidateReferenceGrip,
       );
+      const normalizedYawRate = this.vehicle.speed > 1
+        ? this.vehicle.yawRate * normalizedSpeed / this.vehicle.speed
+        : this.vehicle.yawRate;
       this.lineCandidate.sample(
         afterTrack.progress,
         afterTrack.laneOffset,
         normalizedSpeed,
         wrapAngle(this.vehicle.heading - afterTrack.heading),
-        this.vehicle.yawRate,
+        normalizedYawRate,
       );
     }
     this.updateSectorTiming();
