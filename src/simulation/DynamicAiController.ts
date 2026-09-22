@@ -335,16 +335,20 @@ export function dynamicAiControl(
   let cornerAttackConfidence = 0;
 
   if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
-    // Recovery must use the physical distance to the demonstrated path. Once a
-    // car is far away, a local signed lane error can become deceptively small
-    // because the nearest path segment has changed orientation. The screenshot
-    // that motivated this showed ~30 m PATH ERROR but only ~1.6 m lane error,
-    // leaving the stranded CPU on full throttle.
-    const lineError = explicitFollower
-      ? explicitFollower.pathError
+    // Preserve the normal signed-lane recovery that keeps small tracking errors
+    // damped, but add a second physical-distance guard for true departures.
+    // Far from the path, the nearest segment can rotate enough that signed lane
+    // error looks deceptively small (the human report showed ~30 m PATH ERROR
+    // with only ~1.6 m lane error), so either signal may demand a slowdown.
+    const laneError = explicitFollower
+      ? Math.abs(explicitFollower.laneError)
       : Math.abs(referenceLaneNow - projection.laneOffset);
-    const recoveryScale = 1 - clamp((lineError - 3.0) / 2.5, 0, 1) * 0.62;
-    targetSpeed *= recoveryScale;
+    const pathError = explicitFollower?.pathError ?? laneError;
+    const normalRecoveryScale =
+      1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
+    const emergencyPathScale =
+      1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
+    targetSpeed *= Math.min(normalRecoveryScale, emergencyPathScale);
   }
 
   // The generated AUTO reference is intentionally conservative about transient
