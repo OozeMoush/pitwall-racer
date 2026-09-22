@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import RAPIER from '@dimforge/rapier2d-compat';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
 import { setRuntimeRacingLine } from './RacingLineRuntime';
 import { setActiveTrack } from './TrackModel';
@@ -9,6 +10,10 @@ afterEach(() => {
 });
 
 describe('AiReferenceGhost', () => {
+  beforeAll(async () => {
+    await RAPIER.init();
+  });
+
   it('runs the active PLAYER line with racecraft traffic removed', () => {
     setActiveTrack('pitwall-gp');
     setRuntimeRacingLine('pitwall-gp', {
