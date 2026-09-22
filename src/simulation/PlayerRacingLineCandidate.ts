@@ -11,6 +11,8 @@ interface RawSample {
   progress: number;
   laneOffset: number;
   speed: number;
+  headingOffset?: number;
+  yawRate?: number;
 }
 
 interface CandidateStore {
@@ -45,7 +47,13 @@ export class PlayerRacingLineCandidateRecorder {
     this.eligible = true;
   }
 
-  sample(progress: number, laneOffset: number, speed: number): void {
+  sample(
+    progress: number,
+    laneOffset: number,
+    speed: number,
+    headingOffset?: number,
+    yawRate?: number,
+  ): void {
     if (!this.trackId || this.wrapped) return;
     const p = wrap01(progress);
 
@@ -62,6 +70,8 @@ export class PlayerRacingLineCandidateRecorder {
       progress: p,
       laneOffset,
       speed: Math.max(0, speed),
+      headingOffset: Number.isFinite(headingOffset) ? headingOffset : undefined,
+      yawRate: Number.isFinite(yawRate) ? yawRate : undefined,
     });
     this.lastProgress = p;
   }
@@ -102,10 +112,23 @@ export function saveBestPlayerRacingLineCandidate(
 ): RacingLineAsset {
   const store = loadStore(storage);
   const previous = store.candidates[candidate.trackId];
+  const previousHasDynamics = previous?.points.some(
+    (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
+  ) ?? false;
+  const candidateHasDynamics = candidate.points.some(
+    (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
+  );
+
+  // Legacy PLAYER lines only stored position + speed. A single clean modern
+  // lap is allowed to replace that legacy candidate even when it is slower,
+  // because without demonstrated heading/yaw the CPU cannot reproduce the
+  // player's transient rotation reliably. Once upgraded, normal best-lap
+  // selection resumes.
   if (
     previous?.lapSeconds !== undefined
     && candidate.lapSeconds !== undefined
     && previous.lapSeconds <= candidate.lapSeconds
+    && (previousHasDynamics || !candidateHasDynamics)
   ) {
     return previous;
   }
@@ -156,6 +179,8 @@ function interpolateSample(
       progress,
       laneOffset: first.laneOffset,
       targetSpeed: first.speed,
+      headingOffset: first.headingOffset,
+      yawRate: first.yawRate,
     };
   }
   if (high >= samples.length) {
@@ -164,6 +189,8 @@ function interpolateSample(
       progress,
       laneOffset: last.laneOffset,
       targetSpeed: last.speed,
+      headingOffset: last.headingOffset,
+      yawRate: last.yawRate,
     };
   }
 
@@ -175,7 +202,38 @@ function interpolateSample(
     progress,
     laneOffset: lerp(a.laneOffset, b.laneOffset, t),
     targetSpeed: lerp(a.speed, b.speed, t),
+    headingOffset: interpolateOptionalAngle(a.headingOffset, b.headingOffset, t),
+    yawRate: interpolateOptional(a.yawRate, b.yawRate, t),
   };
+}
+
+function interpolateOptional(
+  a: number | undefined,
+  b: number | undefined,
+  t: number,
+): number | undefined {
+  if (a === undefined && b === undefined) return undefined;
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return lerp(a, b, t);
+}
+
+function interpolateOptionalAngle(
+  a: number | undefined,
+  b: number | undefined,
+  t: number,
+): number | undefined {
+  if (a === undefined && b === undefined) return undefined;
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return wrapAngle(a + wrapAngle(b - a) * t);
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
 }
 
 function wrap01(value: number): number {
