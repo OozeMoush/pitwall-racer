@@ -205,23 +205,32 @@ export function racingLineThrottleIntent(
   ).targetSpeed;
   const selected = sampleRacingLineAsset(asset, progress);
   const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
+  const sourceGripMatched = Math.abs(tireGrip - sourceGrip) < 0.015;
+  const useForwardAcceleration =
+    selected.forwardAcceleration !== undefined && sourceGripMatched;
   const demonstratedAcceleration =
     selected.forwardAcceleration ?? selected.longitudinalAcceleration;
   const desiredAcceleration =
-    demonstratedAcceleration !== undefined
-      && Math.abs(tireGrip - sourceGrip) < 0.015
+    demonstratedAcceleration !== undefined && sourceGripMatched
       ? demonstratedAcceleration
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
 
-  const coast = runtimeLongitudinalAcceleration(
+  // forwardAcceleration is captured directly from controlArcadeCar's physical
+  // forward-axis result, before Rapier's lateral scrub / linear damping. Solve
+  // against that same quantity. Legacy dv/dt traces keep the old net-speed
+  // solver so the two meanings are never mixed.
+  const accelerationModel = useForwardAcceleration
+    ? runtimeForwardAcceleration
+    : runtimeLongitudinalAcceleration;
+  const coast = accelerationModel(
     currentSpeed,
     tireGrip,
     0,
     0,
     steer,
   );
-  const fullThrottle = runtimeLongitudinalAcceleration(
+  const fullThrottle = accelerationModel(
     currentSpeed,
     tireGrip,
     1,
@@ -273,14 +282,13 @@ export function racingLineLocalBrakeIntent(
   // transient overspeed from carrying the chassis beyond the recorded apex.
   const selected = sampleRacingLineAsset(asset, progress);
   const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
-  const useDemonstratedAcceleration =
-    selected.longitudinalAcceleration !== undefined
-    && Math.abs(tireGrip - sourceGrip) < 0.015;
+  const sourceGripMatched = Math.abs(tireGrip - sourceGrip) < 0.015;
+  const useForwardAcceleration =
+    selected.forwardAcceleration !== undefined && sourceGripMatched;
   const demonstratedAcceleration =
     selected.forwardAcceleration ?? selected.longitudinalAcceleration;
   const traceAcceleration =
-    demonstratedAcceleration !== undefined
-      && Math.abs(tireGrip - sourceGrip) < 0.015
+    demonstratedAcceleration !== undefined && sourceGripMatched
       ? demonstratedAcceleration
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
@@ -291,7 +299,10 @@ export function racingLineLocalBrakeIntent(
     : 0;
   const desiredAcceleration = traceAcceleration + overspeedCorrection;
 
-  const coast = runtimeLongitudinalAcceleration(
+  const accelerationModel = useForwardAcceleration
+    ? runtimeForwardAcceleration
+    : runtimeLongitudinalAcceleration;
+  const coast = accelerationModel(
     currentSpeed,
     tireGrip,
     0,
@@ -300,7 +311,7 @@ export function racingLineLocalBrakeIntent(
   );
   if (desiredAcceleration >= coast) return 0;
 
-  const fullBrake = runtimeLongitudinalAcceleration(
+  const fullBrake = accelerationModel(
     currentSpeed,
     tireGrip,
     0,
@@ -313,6 +324,26 @@ export function racingLineLocalBrakeIntent(
     0,
     1,
   );
+}
+
+function runtimeForwardAcceleration(
+  speed: number,
+  tireGrip: number,
+  throttle: number,
+  brake: number,
+  steer: number,
+): number {
+  return controlArcadeCar(
+    { vx: speed, vy: 0, heading: 0, angularVelocity: 0 },
+    {
+      throttle,
+      brake,
+      steer,
+      tireGrip,
+      powerBoost: REFERENCE_POWER_BOOST,
+    },
+    1 / 120,
+  ).acceleration;
 }
 
 function runtimeLongitudinalAcceleration(

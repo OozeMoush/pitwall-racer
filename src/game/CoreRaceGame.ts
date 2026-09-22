@@ -412,7 +412,6 @@ export class CoreRaceGame {
         normalizedYawRate,
         dt,
         this.lineCandidateReferenceGrip,
-        this.physics.playerLongitudinalAcceleration(),
       );
     }
     this.updateSectorTiming();
