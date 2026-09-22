@@ -1,5 +1,4 @@
 import { referenceSteerForCurvature } from './ReferenceDriverModel';
-import { controlArcadeCar } from './ArcadeCarController';
 import type { TrackId } from './TrackModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import {
@@ -110,6 +109,31 @@ export function explicitLineFollower(
   const pathHeadingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(targetBearing - vehicle.heading);
 
+  // When the car is already several metres away from the demonstrated path,
+  // steering-sign heuristics become fragile: the car may be rotated or the
+  // local normal may have changed quickly through an S-bend. Point at an
+  // actual nearby path point instead. The bearing is expressed in the car's
+  // own heading frame, so it remains geometrically correct even after a large
+  // excursion.
+  const recoveryLookAheadMetres = clamp(7 + vehicle.speed * 0.08, 10, 16);
+  const recoveryProgress = wrap01(
+    pathProgress + recoveryLookAheadMetres / TRACK_LENGTH,
+  );
+  const recoveryReference = activeReferenceTarget(
+    trackId,
+    recoveryProgress,
+    tireGrip,
+  );
+  const recoveryPoint = sampleTrack(
+    recoveryProgress,
+    recoveryReference.laneOffset,
+  );
+  const recoveryBearing = Math.atan2(
+    recoveryPoint.y - vehicle.y,
+    recoveryPoint.x - vehicle.x,
+  );
+  const recoveryBearingError = wrapAngle(recoveryBearing - vehicle.heading);
+
   // Preview the *shape* of the explicit path well beyond the near pursuit
   // target. This is feed-forward only: it rotates the car before an S-bend
   // changes side, without asking the car to cut directly toward a far-away
@@ -191,7 +215,7 @@ export function explicitLineFollower(
     signedCurvature,
     tireGrip,
   );
-  const unconstrainedSteer = clamp(
+  const normalSteer = clamp(
     feedForwardSteer * 0.92
       + pathHeadingError * (1.72 + errorSeverity * 0.38)
       + bearingError * (0.94 + errorSeverity * 0.24)
@@ -202,12 +226,19 @@ export function explicitLineFollower(
     -1,
     1,
   );
-  const recoveryDirection = Math.sign(laneError);
-  const recoveryFloor = clamp((Math.abs(laneError) - 2.0) / 5.5, 0, 0.78);
-  const steer = recoveryFloor > 0
-    && unconstrainedSteer * recoveryDirection < recoveryFloor
-      ? recoveryDirection * recoveryFloor
-      : unconstrainedSteer;
+  const recoverySteer = clamp(
+    recoveryBearingError * 2.65 - vehicle.yawRate * 0.18,
+    -1,
+    1,
+  );
+  const recoveryBlend = smoothstep(
+    clamp((lineProjection.distance - 2.5) / 3.0, 0, 1),
+  );
+  const steer = clamp(
+    normalSteer * (1 - recoveryBlend) + recoverySteer * recoveryBlend,
+    -1,
+    1,
+  );
 
   return {
     steer,
@@ -236,6 +267,11 @@ function pathCurvature(
     (current.x - previous.x) * (next.y - previous.y)
     - (current.y - previous.y) * (next.x - previous.x);
   return (2 * cross) / denominator;
+}
+
+function smoothstep(value: number): number {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function wrap01(value: number): number {
