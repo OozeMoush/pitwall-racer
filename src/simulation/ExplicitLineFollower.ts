@@ -108,7 +108,14 @@ export function explicitLineFollower(
   const desiredHeading = demonstrated?.headingOffset !== undefined
     ? wrapAngle(pathNow.heading + demonstrated.headingOffset)
     : pathHeading;
-  const targetYawRate = demonstrated?.yawRate;
+  const recordedYawRate = demonstrated?.yawRate;
+  const targetYawRate = recordedYawRate !== undefined && demonstrated
+    ? recordedYawRate * clamp(
+        vehicle.speed / Math.max(1, demonstrated.targetSpeed),
+        0.55,
+        1.65,
+      )
+    : undefined;
 
   const pathNormalX = -Math.sin(pathHeading);
   const pathNormalY = Math.cos(pathHeading);
@@ -185,7 +192,10 @@ export function explicitLineFollower(
   );
 
   // Feed forward the steering that the shared chassis physics says is required
-  // by the *upcoming explicit-path curvature*. This replaces guesswork with the
+  // by the *upcoming explicit-path curvature*. A recorded yaw rate belongs to
+  // the speed at which it was demonstrated; scale it with current speed so it
+  // continues to represent the same geometric curvature when the follower is
+  // temporarily faster or slower than the trace. This replaces guesswork with the
   // same yaw capability model used by the machine reference solver, while
   // still deriving everything from line + speed rather than replaying pedals.
   const curvatureLeadMetres = clamp(vehicle.speed * 0.20, 8, 19);
