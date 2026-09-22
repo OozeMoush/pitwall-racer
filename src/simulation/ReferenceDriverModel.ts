@@ -330,6 +330,16 @@ function maximumReferenceYaw(speed: number, tireGrip: number): number {
   return best;
 }
 
+export function referenceSteerForCurvature(
+  speed: number,
+  signedCurvature: number,
+  tireGrip: number,
+): number {
+  if (Math.abs(signedCurvature) < 0.0002 || speed < 1) return 0;
+  return Math.sign(signedCurvature)
+    * steeringDemand(speed, Math.abs(signedCurvature), tireGrip);
+}
+
 function steeringDemand(speed: number, curvature: number, tireGrip: number): number {
   if (curvature < 0.0002 || speed < 1) return 0;
   const available = Math.max(0.0001, maximumReferenceYaw(speed, tireGrip));
