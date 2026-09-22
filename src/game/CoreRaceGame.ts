@@ -1185,6 +1185,7 @@ export class CoreRaceGame {
         <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
         <span>PATH ERROR</span><b style="color:${(control?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+        <span>GRIP actual / source</span><b>${fixed(driver?.tire.grip, 3)} / ${fixed(line?.referenceGrip, 3)}</b>
         <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
         <span>HEADING / BEARING err</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
@@ -1201,10 +1202,11 @@ export class CoreRaceGame {
         <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
         <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+        <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(line?.referenceGrip, 3)}</b>
         <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY · UPGRADE NEEDED'}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
         <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
-        <span>BRAKE</span><b>${fixed(ghostControl?.brake)}</b>
+        <span>BRAKE / THROTTLE</span><b>${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>
         <span>THROTTLE profile</span><b>${fixed(ghostControl?.debug.profileThrottle)}</b>
       </div>
       <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
