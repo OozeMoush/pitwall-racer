@@ -30,14 +30,21 @@ export class AiReferenceGhost {
 
   constructor(startProgress: number, trackId: TrackId = getActiveTrack().id) {
     const base = createAiField()[0];
-    const tire = createTire('SOFT');
+    const lineAsset = runtimeRacingLine(trackId);
+    const freshSoft = createTire('SOFT');
+    // The isolated ghost answers one specific question: can this exact
+    // demonstrated asset be replayed under the physical conditions in which
+    // it was recorded? Tyre/grip transfer to race compounds is a separate
+    // execution problem and must not contaminate this baseline.
+    const tire = lineAsset?.referenceGrip !== undefined
+      ? { ...freshSoft, grip: lineAsset.referenceGrip }
+      : freshSoft;
     const reference = activeReferenceTarget(trackId, startProgress, tire.grip);
     const pose = sampleTrack(startProgress, reference.laneOffset);
     const aheadProgress = startProgress + 6 / Math.max(1, TRACK_LENGTH);
     const aheadReference = activeReferenceTarget(trackId, aheadProgress, tire.grip);
     const ahead = sampleTrack(aheadProgress, aheadReference.laneOffset);
     const geometricHeading = Math.atan2(ahead.y - pose.y, ahead.x - pose.x);
-    const lineAsset = runtimeRacingLine(trackId);
     const demonstrated = lineAsset
       ? sampleRacingLineAsset(lineAsset, startProgress)
       : undefined;
