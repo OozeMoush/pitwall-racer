@@ -54,7 +54,11 @@ describe('RacingLineRuntime', () => {
         return {
           progress,
           laneOffset: 0,
-          targetSpeed: 82 - progress * 28,
+          targetSpeed: progress < 0.30
+            ? 82
+            : progress < 0.40
+              ? 82 - (progress - 0.30) * 400
+              : 42,
         };
       }),
     });
@@ -63,7 +67,7 @@ describe('RacingLineRuntime', () => {
       'pitwall-gp',
       0.35,
       grip,
-      72.2,
+      62,
       0.25,
     );
     expect(brake).toBeGreaterThan(0.01);
