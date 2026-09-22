@@ -3,6 +3,7 @@ import { referenceTarget } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
+  racingLineLocalBrakeIntent,
   racingLineThrottleIntent,
   setRuntimeRacingLine,
 } from './RacingLineRuntime';
@@ -39,6 +40,34 @@ describe('RacingLineRuntime', () => {
 
     const brake = racingLineBrakeIntent('pitwall-gp', 0.30, grip, 82);
     expect(brake).toBeGreaterThan(0.15);
+  });
+
+  it('derives local braking from the demonstrated speed derivative', () => {
+    const grip = 1.1;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        return {
+          progress,
+          laneOffset: 0,
+          targetSpeed: 82 - progress * 28,
+        };
+      }),
+    });
+
+    const brake = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.35,
+      grip,
+      72.2,
+      0.25,
+    );
+    expect(brake).toBeGreaterThan(0.01);
+    expect(brake).toBeLessThan(1);
   });
 
   it('derives sustaining throttle from a flat explicit speed trace', () => {
