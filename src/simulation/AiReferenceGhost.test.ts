@@ -49,7 +49,9 @@ describe('AiReferenceGhost', () => {
       source: 'PLAYER',
     });
 
-    const ghost = new AiReferenceGhost(0.05, 'pitwall-gp');
+    // Start just before the line so the ghost arms its timed lap almost
+    // immediately instead of spending a whole untimed lap before measurement.
+    const ghost = new AiReferenceGhost(0.95, 'pitwall-gp');
     let maxLaneError = 0;
     let maxTrackDistance = 0;
     let lastProgress = ghost.driver.progress;
