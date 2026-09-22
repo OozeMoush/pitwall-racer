@@ -1,7 +1,10 @@
 import { referenceSteerForCurvature } from './ReferenceDriverModel';
 import type { TrackId } from './TrackModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
-import { activeReferenceTarget } from './RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  projectRuntimeRacingLineNear,
+} from './RacingLineRuntime';
 import type { VehicleState } from './VehicleModel';
 
 export interface ExplicitLineFollowerTarget {
@@ -9,6 +12,7 @@ export interface ExplicitLineFollowerTarget {
   lookAheadMetres: number;
   steeringProgress: number;
   targetLane: number;
+  pathProgress: number;
   referenceLane: number;
   laneError: number;
   pathHeadingError: number;
@@ -40,14 +44,18 @@ export function explicitLineFollower(
     vehicle.y,
     referenceProgress,
   );
+  const lineProjection = projectRuntimeRacingLineNear(
+    trackId,
+    vehicle.x,
+    vehicle.y,
+    projection.progress,
+  );
+  const pathProgress = lineProjection.progress;
   const currentReference = activeReferenceTarget(
     trackId,
-    projection.progress,
+    pathProgress,
     tireGrip,
   );
-
-  const laneError = currentReference.laneOffset - projection.laneOffset;
-  const errorSeverity = clamp(Math.abs(laneError) / 5.5, 0, 1);
 
   // Use one near target for cross-track convergence and a separate farther
   // preview for anticipation. The previous follower shortened lookahead as the
@@ -56,7 +64,7 @@ export function explicitLineFollower(
   const nominalLookAhead = clamp(12 + vehicle.speed * 0.18, 18, 34);
   const lookAheadMetres = nominalLookAhead * (1 - errorSeverity * 0.14);
   const steeringProgress = wrap01(
-    projection.progress + lookAheadMetres / TRACK_LENGTH,
+    pathProgress + lookAheadMetres / TRACK_LENGTH,
   );
   const targetReference = activeReferenceTarget(
     trackId,
@@ -67,7 +75,7 @@ export function explicitLineFollower(
 
   const headingProbeMetres = clamp(4.5 + vehicle.speed * 0.025, 5, 7);
   const pathAheadProgress = wrap01(
-    projection.progress + headingProbeMetres / TRACK_LENGTH,
+    pathProgress + headingProbeMetres / TRACK_LENGTH,
   );
   const pathAheadReference = activeReferenceTarget(
     trackId,
@@ -86,6 +94,13 @@ export function explicitLineFollower(
     pathAhead.y - pathNow.y,
     pathAhead.x - pathNow.x,
   );
+  const pathNormalX = -Math.sin(pathHeading);
+  const pathNormalY = Math.cos(pathHeading);
+  const signedOffsetFromPath =
+    (vehicle.x - pathNow.x) * pathNormalX
+    + (vehicle.y - pathNow.y) * pathNormalY;
+  const laneError = -signedOffsetFromPath;
+  const errorSeverity = clamp(Math.abs(laneError) / 5.5, 0, 1);
 
   const targetBearing = Math.atan2(
     target.y - vehicle.y,
@@ -100,7 +115,7 @@ export function explicitLineFollower(
   // point.
   const previewMetres = clamp(24 + vehicle.speed * 0.26, 32, 58);
   const previewProgress = wrap01(
-    projection.progress + previewMetres / TRACK_LENGTH,
+    pathProgress + previewMetres / TRACK_LENGTH,
   );
   const previewReference = activeReferenceTarget(
     trackId,
@@ -154,7 +169,7 @@ export function explicitLineFollower(
   // still deriving everything from line + speed rather than replaying pedals.
   const curvatureLeadMetres = clamp(vehicle.speed * 0.20, 8, 19);
   const curvatureProgress = wrap01(
-    projection.progress + curvatureLeadMetres / TRACK_LENGTH,
+    pathProgress + curvatureLeadMetres / TRACK_LENGTH,
   );
   const curvatureProbeMetres = 4.5;
   const beforeProgress = wrap01(
@@ -192,6 +207,7 @@ export function explicitLineFollower(
     lookAheadMetres,
     steeringProgress,
     targetLane: targetReference.laneOffset,
+    pathProgress,
     referenceLane: currentReference.laneOffset,
     laneError,
     pathHeadingError,
