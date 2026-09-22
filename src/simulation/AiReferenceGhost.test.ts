@@ -55,6 +55,7 @@ describe('AiReferenceGhost', () => {
     let maxLaneError = 0;
     let maxTrackDistance = 0;
     let lastProgress = ghost.driver.progress;
+    let maxErrorSnapshot: unknown;
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       ghost.step(1 / 120);
@@ -70,10 +71,19 @@ describe('AiReferenceGhost', () => {
         projection.progress,
         ghost.driver.tire.grip,
       );
-      maxLaneError = Math.max(
-        maxLaneError,
-        Math.abs(reference.laneOffset - projection.laneOffset),
-      );
+      const laneError = Math.abs(reference.laneOffset - projection.laneOffset);
+      if (laneError > maxLaneError) {
+        maxLaneError = laneError;
+        maxErrorSnapshot = {
+          tick,
+          progress: projection.progress,
+          actualLane: projection.laneOffset,
+          referenceLane: reference.laneOffset,
+          trackDistance: projection.distance,
+          speedKmh: state.speed * 3.6,
+          control: ghost.latestControl(),
+        };
+      }
       maxTrackDistance = Math.max(maxTrackDistance, projection.distance);
       lastProgress = projection.progress;
       if (ghost.lastLapSeconds() !== undefined) break;
@@ -86,6 +96,7 @@ describe('AiReferenceGhost', () => {
       maxTrackDistance,
       speedKmh: (ghost.state()?.speed ?? 0) * 3.6,
       control: ghost.latestControl(),
+      maxErrorSnapshot,
     });
     expect(ghost.lastLapSeconds()).toBeDefined();
     expect(maxLaneError).toBeLessThan(5.5);
