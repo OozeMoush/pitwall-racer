@@ -167,11 +167,11 @@ export function explicitLineFollower(
   // by the *upcoming explicit-path curvature*. This replaces guesswork with the
   // same yaw capability model used by the machine reference solver, while
   // still deriving everything from line + speed rather than replaying pedals.
-  const curvatureLeadMetres = clamp(vehicle.speed * 0.55, 14, 34);
+  const curvatureLeadMetres = clamp(vehicle.speed * 0.20, 8, 19);
   const curvatureProgress = wrap01(
     pathProgress + curvatureLeadMetres / TRACK_LENGTH,
   );
-  const curvatureProbeMetres = clamp(7.5 + vehicle.speed * 0.045, 8, 12);
+  const curvatureProbeMetres = 4.5;
   const beforeProgress = wrap01(
     curvatureProgress - curvatureProbeMetres / TRACK_LENGTH,
   );
