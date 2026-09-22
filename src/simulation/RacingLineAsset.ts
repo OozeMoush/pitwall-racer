@@ -17,6 +17,12 @@ export interface RacingLinePoint {
    * rotation timing of a physically proven lap.
    */
   yawRate?: number;
+  /**
+   * Demonstrated scalar speed acceleration (dv/dt) in m/s². This is vehicle
+   * state, not pedal input. It preserves the longitudinal timing of a proven
+   * lap without assuming centreline metres equal travelled path metres.
+   */
+  longitudinalAcceleration?: number;
 }
 
 export interface RacingLineAsset {
@@ -50,6 +56,11 @@ export function sampleRacingLineAsset(
     targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
     headingOffset: interpolateOptionalAngle(a.headingOffset, b.headingOffset, t),
     yawRate: interpolateOptional(a.yawRate, b.yawRate, t),
+    longitudinalAcceleration: interpolateOptional(
+      a.longitudinalAcceleration,
+      b.longitudinalAcceleration,
+      t,
+    ),
   };
 }
 

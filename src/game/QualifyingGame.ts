@@ -294,6 +294,7 @@ class QualifyingGame {
       this.vehicle.speed,
       wrapAngle(this.vehicle.heading - after.heading),
       this.vehicle.yawRate,
+      dt,
     );
     if (validityEvent !== 'NONE') {
       this.lineCandidate.markIneligible();

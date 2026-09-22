@@ -175,4 +175,31 @@ describe('RacingLineRuntime', () => {
     expect(target.laneOffset).toBeCloseTo(4);
     expect(target.targetSpeed).toBeLessThan(baseline.targetSpeed);
   });
+  it('uses demonstrated acceleration for source-grip throttle feed-forward', () => {
+    const grip = 1.2;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 60,
+        headingOffset: 0,
+        yawRate: 0,
+        longitudinalAcceleration: 3.5,
+      })),
+    });
+
+    const throttle = racingLineThrottleIntent(
+      'pitwall-gp',
+      0.4,
+      grip,
+      60,
+      0.2,
+    );
+    expect(throttle).toBeGreaterThan(0.1);
+  });
+
 });

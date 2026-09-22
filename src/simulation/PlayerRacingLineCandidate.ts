@@ -13,6 +13,7 @@ interface RawSample {
   speed: number;
   headingOffset?: number;
   yawRate?: number;
+  longitudinalAcceleration?: number;
 }
 
 interface CandidateStore {
@@ -53,6 +54,7 @@ export class PlayerRacingLineCandidateRecorder {
     speed: number,
     headingOffset?: number,
     yawRate?: number,
+    dt?: number,
   ): void {
     if (!this.trackId || this.wrapped) return;
     const p = wrap01(progress);
@@ -66,12 +68,18 @@ export class PlayerRacingLineCandidateRecorder {
       return;
     }
 
+    const safeSpeed = Math.max(0, speed);
+    const previous = this.samples[this.samples.length - 1];
+    const longitudinalAcceleration = previous && dt !== undefined && dt > 0
+      ? clamp((safeSpeed - previous.speed) / dt, -45, 22)
+      : undefined;
     this.samples.push({
       progress: p,
       laneOffset,
-      speed: Math.max(0, speed),
+      speed: safeSpeed,
       headingOffset: Number.isFinite(headingOffset) ? headingOffset : undefined,
       yawRate: Number.isFinite(yawRate) ? yawRate : undefined,
+      longitudinalAcceleration,
     });
     this.lastProgress = p;
   }
@@ -118,6 +126,12 @@ export function saveBestPlayerRacingLineCandidate(
   const candidateHasDynamics = candidate.points.some(
     (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
   );
+  const previousHasAcceleration = previous?.points.some(
+    (point) => point.longitudinalAcceleration !== undefined,
+  ) ?? false;
+  const candidateHasAcceleration = candidate.points.some(
+    (point) => point.longitudinalAcceleration !== undefined,
+  );
 
   // Legacy PLAYER lines only stored position + speed. A single clean modern
   // lap is allowed to replace that legacy candidate even when it is slower,
@@ -129,6 +143,7 @@ export function saveBestPlayerRacingLineCandidate(
     && candidate.lapSeconds !== undefined
     && previous.lapSeconds <= candidate.lapSeconds
     && (previousHasDynamics || !candidateHasDynamics)
+    && (previousHasAcceleration || !candidateHasAcceleration)
   ) {
     return previous;
   }
@@ -205,6 +220,11 @@ function interpolateSample(
     targetSpeed: lerp(a.speed, b.speed, t),
     headingOffset: interpolateOptionalAngle(a.headingOffset, b.headingOffset, t),
     yawRate: interpolateOptional(a.yawRate, b.yawRate, t),
+    longitudinalAcceleration: interpolateOptional(
+      a.longitudinalAcceleration,
+      b.longitudinalAcceleration,
+      t,
+    ),
   };
 }
 
@@ -243,4 +263,9 @@ function wrap01(value: number): number {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

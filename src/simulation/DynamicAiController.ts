@@ -29,6 +29,7 @@ export interface DynamicAiDebug {
   profileBrake: number;
   profileThrottle: number;
   demonstratedDynamics: boolean;
+  demonstratedAcceleration: boolean;
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
@@ -502,6 +503,9 @@ export function dynamicAiControl(
       profileBrake: explicitProfileBrake,
       profileThrottle: explicitProfileThrottle,
       demonstratedDynamics: explicitFollower?.demonstratedDynamics ?? false,
+      demonstratedAcceleration: lineAsset?.points.some(
+        (point) => point.longitudinalAcceleration !== undefined,
+      ) ?? false,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,

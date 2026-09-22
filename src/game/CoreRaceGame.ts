@@ -410,6 +410,7 @@ export class CoreRaceGame {
         normalizedSpeed,
         wrapAngle(this.vehicle.heading - afterTrack.heading),
         normalizedYawRate,
+        dt,
       );
     }
     this.updateSectorTiming();
@@ -1179,7 +1180,7 @@ export class CoreRaceGame {
         <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
-        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY · RECORD CLEAN LAP'}</b>
+        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? 'HEADING + YAW + AX' : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>PROGRESS center / path</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>
         <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
@@ -1205,7 +1206,7 @@ export class CoreRaceGame {
         <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(line?.referenceGrip, 3)}</b>
-        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY · UPGRADE NEEDED'}</b>
+        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedAcceleration ? 'HEADING + YAW + AX' : ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW · UPGRADE NEEDED' : 'LEGACY · UPGRADE NEEDED'}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
         <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
         <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>

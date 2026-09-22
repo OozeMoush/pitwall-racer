@@ -203,9 +203,15 @@ export function racingLineThrottleIntent(
     progress + distance / TRACK_LENGTH,
     tireGrip,
   ).targetSpeed;
-  const desiredAcceleration =
-    (futureTarget * futureTarget - currentTarget * currentTarget)
-    / (2 * distance);
+  const selected = sampleRacingLineAsset(asset, progress);
+  const sourceGrip = asset.referenceGrip ?? tireGrip;
+  const useDemonstratedAcceleration =
+    selected.longitudinalAcceleration !== undefined
+    && Math.abs(tireGrip - sourceGrip) < 0.015;
+  const desiredAcceleration = useDemonstratedAcceleration
+    ? selected.longitudinalAcceleration!
+    : (futureTarget * futureTarget - currentTarget * currentTarget)
+      / (2 * distance);
 
   const coast = runtimeLongitudinalAcceleration(
     currentSpeed,
@@ -264,9 +270,15 @@ export function racingLineLocalBrakeIntent(
   // correction distance. This avoids turning the whole trace into an
   // artificially early-braking line while still preventing a 10-15 km/h
   // transient overspeed from carrying the chassis beyond the recorded apex.
-  const traceAcceleration =
-    (futureTarget * futureTarget - currentTarget * currentTarget)
-    / (2 * distance);
+  const selected = sampleRacingLineAsset(asset, progress);
+  const sourceGrip = asset.referenceGrip ?? tireGrip;
+  const useDemonstratedAcceleration =
+    selected.longitudinalAcceleration !== undefined
+    && Math.abs(tireGrip - sourceGrip) < 0.015;
+  const traceAcceleration = useDemonstratedAcceleration
+    ? selected.longitudinalAcceleration!
+    : (futureTarget * futureTarget - currentTarget * currentTarget)
+      / (2 * distance);
   const overspeedCorrectionDistance = 4;
   const overspeedCorrection = currentSpeed > currentTarget
     ? (currentTarget * currentTarget - currentSpeed * currentSpeed)

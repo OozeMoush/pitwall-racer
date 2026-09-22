@@ -87,4 +87,25 @@ describe('player racing-line candidates', () => {
     recorder.markIneligible();
     expect(recorder.finish(24.5)).toBeUndefined();
   });
+  it('stores demonstrated longitudinal acceleration when samples include dt', () => {
+    const recorder = new PlayerRacingLineCandidateRecorder();
+    recorder.begin('pitwall-gp', 1.2);
+    for (let index = 0; index < 360; index++) {
+      const progress = index / 360;
+      recorder.sample(
+        progress,
+        0,
+        40 + progress * 20,
+        0,
+        0,
+        1 / 120,
+      );
+    }
+    const candidate = recorder.finish(25);
+    expect(candidate).toBeDefined();
+    expect(candidate?.points.some(
+      (point) => point.longitudinalAcceleration !== undefined,
+    )).toBe(true);
+  });
+
 });
