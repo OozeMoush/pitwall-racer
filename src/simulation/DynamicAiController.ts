@@ -23,6 +23,8 @@ export interface DynamicAiDebug {
   predictionWeight: number;
   feedbackBrake: number;
   profileBrake: number;
+  demonstratedDynamics: boolean;
+  targetYawRate?: number;
 }
 
 export interface DynamicAiControl {
@@ -287,7 +289,7 @@ export function dynamicAiControl(
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
   const predictionWeight = pitwallPrediction;
-  const explicitPredictedSteer = explicitFollower
+  const explicitPredictedSteer = explicitFollower && !explicitFollower.demonstratedDynamics
     ? predictiveExplicitLineSteer(
         trackId,
         vehicle,
@@ -297,11 +299,13 @@ export function dynamicAiControl(
       )
     : undefined;
   const steer = explicitFollower
-    ? constrainedExplicitPrediction(
-        explicitFollower.laneError,
-        baselineSteer,
-        explicitPredictedSteer ?? baselineSteer,
-      )
+    ? explicitFollower.demonstratedDynamics
+      ? baselineSteer
+      : constrainedExplicitPrediction(
+          explicitFollower.laneError,
+          baselineSteer,
+          explicitPredictedSteer ?? baselineSteer,
+        )
     : predictiveAiSteer(
         vehicle,
         driver.tire.grip,
@@ -430,6 +434,8 @@ export function dynamicAiControl(
       predictionWeight,
       feedbackBrake,
       profileBrake: explicitProfileBrake,
+      demonstratedDynamics: explicitFollower?.demonstratedDynamics ?? false,
+      targetYawRate: explicitFollower?.targetYawRate,
     },
   };
 }
