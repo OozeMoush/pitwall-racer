@@ -1,3 +1,4 @@
+import { explicitLineFollower } from './ExplicitLineFollower';
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
 import { referenceExecutionForSkill } from './ReferenceDriverModel';
@@ -210,12 +211,23 @@ export function dynamicAiControl(
   }
 
   const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
-  const steeringLookAheadMetres = battleActive
-    ? Math.min(32, lookAheadMetres)
-    : lookAheadMetres;
-  const steeringProgress = offRoad
-    ? projection.progress + 18 / TRACK_LENGTH
-    : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
+  const explicitFollower = highFidelityLine && !offRoad && !battleActive
+    ? explicitLineFollower(
+        trackId,
+        vehicle,
+        projection.progress,
+        driver.tire.grip,
+      )
+    : undefined;
+  if (explicitFollower) {
+    targetLane = clamp(explicitFollower.targetLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  }
+  const steeringLookAheadMetres = explicitFollower?.lookAheadMetres
+    ?? (battleActive ? Math.min(32, lookAheadMetres) : lookAheadMetres);
+  const steeringProgress = explicitFollower?.steeringProgress
+    ?? (offRoad
+      ? projection.progress + 18 / TRACK_LENGTH
+      : projection.progress + steeringLookAheadMetres / TRACK_LENGTH);
   const target = sampleTrack(steeringProgress, targetLane);
   const tangentDistance = battleActive ? 6 : highFidelityLine ? 5 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
@@ -231,9 +243,11 @@ export function dynamicAiControl(
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
   const referenceLaneNow = offRoad
     ? 0
-    : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
-      : targetLane;
+    : explicitFollower
+      ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      : battleState === 'CLEAR' || battleState === 'FOLLOW'
+        ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+        : targetLane;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
@@ -258,22 +272,23 @@ export function dynamicAiControl(
           + bearingError * 0.82
           + lateralError * 0.52
           - vehicle.yawRate * 0.38;
-  const baselineSteer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
-  const pitwallPrediction = !offRoad && !battleActive && trackId === 'pitwall-gp'
+  const baselineSteer = explicitFollower
+    ? explicitFollower.steer
+    : clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const pitwallPrediction = !offRoad && !battleActive && !highFidelityLine && trackId === 'pitwall-gp'
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
-  const explicitLinePrediction = !offRoad && !battleActive && highFidelityLine
-    ? clamp(0.24 + profile.severity * 0.14, 0.24, 0.40)
-    : 0;
-  const predictionWeight = Math.max(pitwallPrediction, explicitLinePrediction);
-  const steer = predictiveAiSteer(
-    vehicle,
-    driver.tire.grip,
-    target,
-    tangent,
-    baselineSteer,
-    predictionWeight,
-  );
+  const predictionWeight = pitwallPrediction;
+  const steer = explicitFollower
+    ? baselineSteer
+    : predictiveAiSteer(
+        vehicle,
+        driver.tire.grip,
+        target,
+        tangent,
+        baselineSteer,
+        predictionWeight,
+      );
 
   const speedReference = currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
