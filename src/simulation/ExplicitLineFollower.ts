@@ -110,13 +110,38 @@ export function explicitLineFollower(
     ? wrapAngle(pathNow.heading + demonstrated.headingOffset)
     : pathHeading;
   const recordedYawRate = demonstrated?.yawRate;
-  const targetYawRate = recordedYawRate !== undefined && demonstrated
+  const currentYawRate = recordedYawRate !== undefined && demonstrated
     ? recordedYawRate * clamp(
         vehicle.speed / Math.max(1, demonstrated.targetSpeed),
         0.55,
         1.65,
       )
     : undefined;
+
+  // A demonstrated S-bend can ask for a large yaw rate and then unwind it
+  // within only a few metres. Tracking only the current sample starts the
+  // counter-steer after the chassis has already accumulated too much rotation.
+  // Preview roughly 120 ms of demonstrated yaw so the controller begins
+  // unwinding before the recorded rate collapses or changes sign.
+  const yawPreviewMetres = clamp(6 + vehicle.speed * 0.10, 8, 15);
+  const yawPreviewProgress = wrap01(
+    pathProgress + yawPreviewMetres / TRACK_LENGTH,
+  );
+  const yawPreviewSample = lineAsset
+    ? sampleRacingLineAsset(lineAsset, yawPreviewProgress)
+    : undefined;
+  const previewYawRate = yawPreviewSample?.yawRate !== undefined
+    ? yawPreviewSample.yawRate * clamp(
+        vehicle.speed / Math.max(1, yawPreviewSample.targetSpeed),
+        0.55,
+        1.65,
+      )
+    : undefined;
+  const yawPreviewSeconds = yawPreviewMetres / Math.max(12, vehicle.speed);
+  const yawAnticipationWeight = clamp(0.12 / yawPreviewSeconds, 0.18, 0.62);
+  const targetYawRate = currentYawRate !== undefined && previewYawRate !== undefined
+    ? currentYawRate + (previewYawRate - currentYawRate) * yawAnticipationWeight
+    : currentYawRate;
 
   const pathNormalX = -Math.sin(pathHeading);
   const pathNormalY = Math.cos(pathHeading);

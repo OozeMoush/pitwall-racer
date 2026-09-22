@@ -18,6 +18,7 @@ import type { VehicleState } from './VehicleModel';
 export interface DynamicAiDebug {
   lineSource: 'AUTO' | 'PLAYER' | 'EDITOR' | 'OPTIMIZER';
   progress: number;
+  centerProgress: number;
   referenceLane: number;
   laneError: number;
   pathError: number;
@@ -334,8 +335,13 @@ export function dynamicAiControl(
   let cornerAttackConfidence = 0;
 
   if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
+    // Recovery must use the physical distance to the demonstrated path. Once a
+    // car is far away, a local signed lane error can become deceptively small
+    // because the nearest path segment has changed orientation. The screenshot
+    // that motivated this showed ~30 m PATH ERROR but only ~1.6 m lane error,
+    // leaving the stranded CPU on full throttle.
     const lineError = explicitFollower
-      ? Math.abs(explicitFollower.laneError)
+      ? explicitFollower.pathError
       : Math.abs(referenceLaneNow - projection.laneOffset);
     const recoveryScale = 1 - clamp((lineError - 0.9) / 4.8, 0, 1) * 0.62;
     targetSpeed *= recoveryScale;
@@ -478,6 +484,7 @@ export function dynamicAiControl(
     debug: {
       lineSource: lineAsset?.source ?? 'AUTO',
       progress: explicitFollower?.pathProgress ?? projection.progress,
+      centerProgress: projection.progress,
       referenceLane: referenceLaneNow,
       laneError: explicitFollower
         ? -explicitFollower.laneError
