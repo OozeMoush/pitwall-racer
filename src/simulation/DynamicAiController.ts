@@ -25,6 +25,8 @@ export interface DynamicAiDebug {
   profileBrake: number;
   demonstratedDynamics: boolean;
   targetYawRate?: number;
+  pathHeadingError: number;
+  bearingError: number;
 }
 
 export interface DynamicAiControl {
@@ -436,6 +438,8 @@ export function dynamicAiControl(
       profileBrake: explicitProfileBrake,
       demonstratedDynamics: explicitFollower?.demonstratedDynamics ?? false,
       targetYawRate: explicitFollower?.targetYawRate,
+      pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
+      bearingError: explicitFollower?.bearingError ?? bearingError,
     },
   };
 }
