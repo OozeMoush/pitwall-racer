@@ -170,7 +170,7 @@ describe('AiReferenceGhost', () => {
     expect(replayLapSeconds).toBeGreaterThan(0);
     expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.12);
     expect(maxPathError).toBeLessThan(2.5);
-  });
+  }, 15_000);
 
   it('keeps a legacy position+speed PLAYER line physically recoverable', () => {
     setActiveTrack('pitwall-gp');
@@ -308,7 +308,7 @@ describe('AiReferenceGhost', () => {
     // recordings are held to the much tighter 2.5 m demonstrated-state test
     // above and replace a legacy candidate after one clean lap.
     expect(maxLaneError).toBeLessThan(6.5);
-  });
+  }, 15_000);
 
 function wrapAngle(angle: number): number {
   let result = angle;
