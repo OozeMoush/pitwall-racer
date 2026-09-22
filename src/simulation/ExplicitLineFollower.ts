@@ -1,9 +1,11 @@
 import { referenceSteerForCurvature } from './ReferenceDriverModel';
+import { sampleRacingLineAsset } from './RacingLineAsset';
 import type { TrackId } from './TrackModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import {
   activeReferenceTarget,
   projectRuntimeRacingLineNear,
+  runtimeRacingLine,
 } from './RacingLineRuntime';
 import type { VehicleState } from './VehicleModel';
 
@@ -17,6 +19,8 @@ export interface ExplicitLineFollowerTarget {
   laneError: number;
   pathHeadingError: number;
   bearingError: number;
+  demonstratedDynamics: boolean;
+  targetYawRate?: number;
 }
 
 /**
@@ -95,6 +99,17 @@ export function explicitLineFollower(
     pathAhead.y - pathNow.y,
     pathAhead.x - pathNow.x,
   );
+  const lineAsset = runtimeRacingLine(trackId);
+  const demonstrated = lineAsset
+    ? sampleRacingLineAsset(lineAsset, pathProgress)
+    : undefined;
+  const demonstratedDynamics = demonstrated?.headingOffset !== undefined
+    && demonstrated?.yawRate !== undefined;
+  const desiredHeading = demonstrated?.headingOffset !== undefined
+    ? wrapAngle(pathNow.heading + demonstrated.headingOffset)
+    : pathHeading;
+  const targetYawRate = demonstrated?.yawRate;
+
   const pathNormalX = -Math.sin(pathHeading);
   const pathNormalY = Math.cos(pathHeading);
   const signedOffsetFromPath =
@@ -106,33 +121,8 @@ export function explicitLineFollower(
     target.y - vehicle.y,
     target.x - vehicle.x,
   );
-  const pathHeadingError = wrapAngle(pathHeading - vehicle.heading);
+  const pathHeadingError = wrapAngle(desiredHeading - vehicle.heading);
   const bearingError = wrapAngle(targetBearing - vehicle.heading);
-
-  // When the car is already several metres away from the demonstrated path,
-  // steering-sign heuristics become fragile: the car may be rotated or the
-  // local normal may have changed quickly through an S-bend. Point at an
-  // actual nearby path point instead. The bearing is expressed in the car's
-  // own heading frame, so it remains geometrically correct even after a large
-  // excursion.
-  const recoveryLookAheadMetres = clamp(7 + vehicle.speed * 0.08, 10, 16);
-  const recoveryProgress = wrap01(
-    pathProgress + recoveryLookAheadMetres / TRACK_LENGTH,
-  );
-  const recoveryReference = activeReferenceTarget(
-    trackId,
-    recoveryProgress,
-    tireGrip,
-  );
-  const recoveryPoint = sampleTrack(
-    recoveryProgress,
-    recoveryReference.laneOffset,
-  );
-  const recoveryBearing = Math.atan2(
-    recoveryPoint.y - vehicle.y,
-    recoveryPoint.x - vehicle.x,
-  );
-  const recoveryBearingError = wrapAngle(recoveryBearing - vehicle.heading);
 
   // Preview the *shape* of the explicit path well beyond the near pursuit
   // target. This is feed-forward only: it rotates the car before an S-bend
@@ -163,11 +153,17 @@ export function explicitLineFollower(
     previewAheadProgress,
     previewAheadReference.laneOffset,
   );
-  const previewHeading = Math.atan2(
+  const previewPathHeading = Math.atan2(
     previewAhead.y - previewPoint.y,
     previewAhead.x - previewPoint.x,
   );
-  const headingLead = wrapAngle(previewHeading - pathHeading);
+  const previewDemonstrated = lineAsset
+    ? sampleRacingLineAsset(lineAsset, previewProgress)
+    : undefined;
+  const previewHeading = previewDemonstrated?.headingOffset !== undefined
+    ? wrapAngle(previewPoint.heading + previewDemonstrated.headingOffset)
+    : previewPathHeading;
+  const headingLead = wrapAngle(previewHeading - desiredHeading);
   const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);
 
   // A chicane can move the explicit line from one side of the road to the
@@ -210,32 +206,30 @@ export function explicitLineFollower(
   const atPoint = sampleTrack(curvatureProgress, atReference.laneOffset);
   const afterPoint = sampleTrack(afterProgress, afterReference.laneOffset);
   const signedCurvature = pathCurvature(beforePoint, atPoint, afterPoint);
+  const steeringSpeed = Math.max(
+    vehicle.speed,
+    atReference.targetSpeed * 0.92,
+  );
+  const feedForwardCurvature = targetYawRate !== undefined
+    ? targetYawRate / Math.max(1, steeringSpeed)
+    : signedCurvature;
   const feedForwardSteer = referenceSteerForCurvature(
-    Math.max(vehicle.speed, atReference.targetSpeed * 0.92),
-    signedCurvature,
+    steeringSpeed,
+    feedForwardCurvature,
     tireGrip,
   );
-  const normalSteer = clamp(
-    feedForwardSteer * 0.92
-      + pathHeadingError * (1.72 + errorSeverity * 0.38)
-      + bearingError * (0.94 + errorSeverity * 0.24)
-      + crossTrackAngle * 3.35
-      + headingLead * (0.70 + leadWeight * 0.52)
-      + laneTransitionAngle * (1.55 + leadWeight * 0.70)
-      - vehicle.yawRate * 0.30,
-    -1,
-    1,
-  );
-  const recoverySteer = clamp(
-    recoveryBearingError * 2.65 - vehicle.yawRate * 0.18,
-    -1,
-    1,
-  );
-  const recoveryBlend = smoothstep(
-    clamp((lineProjection.distance - 2.5) / 3.0, 0, 1),
-  );
+  const yawCorrection = targetYawRate !== undefined
+    ? (targetYawRate - vehicle.yawRate) * 0.46
+    : -vehicle.yawRate * 0.30;
+  const stateGuidanceScale = demonstratedDynamics ? 0.72 : 1;
   const steer = clamp(
-    normalSteer * (1 - recoveryBlend) + recoverySteer * recoveryBlend,
+    feedForwardSteer * (demonstratedDynamics ? 0.98 : 0.92)
+      + pathHeadingError * (demonstratedDynamics ? 2.15 : 1.72 + errorSeverity * 0.38)
+      + bearingError * (demonstratedDynamics ? 0.82 : 0.94 + errorSeverity * 0.24)
+      + crossTrackAngle * 3.35
+      + headingLead * (0.70 + leadWeight * 0.52) * stateGuidanceScale
+      + laneTransitionAngle * (1.55 + leadWeight * 0.70) * stateGuidanceScale
+      + yawCorrection,
     -1,
     1,
   );
@@ -250,6 +244,8 @@ export function explicitLineFollower(
     laneError,
     pathHeadingError,
     bearingError,
+    demonstratedDynamics,
+    targetYawRate,
   };
 }
 
@@ -267,11 +263,6 @@ function pathCurvature(
     (current.x - previous.x) * (next.y - previous.y)
     - (current.y - previous.y) * (next.x - previous.x);
   return (2 * cross) / denominator;
-}
-
-function smoothstep(value: number): number {
-  const t = clamp(value, 0, 1);
-  return t * t * (3 - 2 * t);
 }
 
 function wrap01(value: number): number {
