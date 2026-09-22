@@ -1,3 +1,4 @@
+import { sampleRacingLineAsset } from './RacingLineAsset';
 import { explicitLineFollower } from './ExplicitLineFollower';
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { predictiveExplicitLineSteer } from './PredictiveExplicitLineSteering';
