@@ -211,12 +211,14 @@ export function racingLineThrottleIntent(
     currentSpeed,
     tireGrip,
     0,
+    0,
     steer,
   );
   const fullThrottle = runtimeLongitudinalAcceleration(
     currentSpeed,
     tireGrip,
     1,
+    0,
     steer,
   );
   if (desiredAcceleration <= coast) return 0;
@@ -229,10 +231,66 @@ export function racingLineThrottleIntent(
   );
 }
 
+/**
+ * Follow the local deceleration already present in a physically demonstrated
+ * speed trace. Unlike the legacy long-horizon envelope, this does not brake
+ * early for a slow corner that the recorded driver has not started braking for
+ * yet; it reproduces the demonstrated speed derivative with the shared chassis.
+ */
+export function racingLineLocalBrakeIntent(
+  trackId: TrackId,
+  progress: number,
+  tireGrip: number,
+  currentSpeed: number,
+  steer: number,
+): number {
+  const asset = active.get(trackId);
+  if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR')) return 0;
+
+  const distance = 8;
+  const currentTarget = activeReferenceTarget(
+    trackId,
+    progress,
+    tireGrip,
+  ).targetSpeed;
+  const futureTarget = activeReferenceTarget(
+    trackId,
+    progress + distance / TRACK_LENGTH,
+    tireGrip,
+  ).targetSpeed;
+  const desiredAcceleration =
+    (futureTarget * futureTarget - currentTarget * currentTarget)
+    / (2 * distance);
+
+  const coast = runtimeLongitudinalAcceleration(
+    currentSpeed,
+    tireGrip,
+    0,
+    0,
+    steer,
+  );
+  if (desiredAcceleration >= coast) return 0;
+
+  const fullBrake = runtimeLongitudinalAcceleration(
+    currentSpeed,
+    tireGrip,
+    0,
+    1,
+    steer,
+  );
+  return clamp(
+    (coast - desiredAcceleration)
+      / Math.max(0.001, coast - fullBrake),
+    0,
+    1,
+  );
+}
+
 function runtimeLongitudinalAcceleration(
   speed: number,
   tireGrip: number,
   throttle: number,
+  brake: number,
   steer: number,
 ): number {
   const dt = 1 / 120;
@@ -240,7 +298,7 @@ function runtimeLongitudinalAcceleration(
     { vx: speed, vy: 0, heading: 0, angularVelocity: 0 },
     {
       throttle,
-      brake: 0,
+      brake,
       steer,
       tireGrip,
       powerBoost: REFERENCE_POWER_BOOST,
