@@ -1,3 +1,4 @@
+import { referenceSteerForCurvature } from './ReferenceDriverModel';
 import type { TrackId } from './TrackModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { activeReferenceTarget } from './RacingLineRuntime';
@@ -136,12 +137,41 @@ export function explicitLineFollower(
     laneError * (2.6 + errorSeverity * 1.8),
     Math.max(16, vehicle.speed),
   );
+
+  // Feed forward the steering that the shared chassis physics says is required
+  // by the *upcoming explicit-path curvature*. This replaces guesswork with the
+  // same yaw capability model used by the machine reference solver, while
+  // still deriving everything from line + speed rather than replaying pedals.
+  const curvatureLeadMetres = clamp(vehicle.speed * 0.20, 8, 19);
+  const curvatureProgress = wrap01(
+    projection.progress + curvatureLeadMetres / TRACK_LENGTH,
+  );
+  const curvatureProbeMetres = 4.5;
+  const beforeProgress = wrap01(
+    curvatureProgress - curvatureProbeMetres / TRACK_LENGTH,
+  );
+  const afterProgress = wrap01(
+    curvatureProgress + curvatureProbeMetres / TRACK_LENGTH,
+  );
+  const beforeReference = activeReferenceTarget(trackId, beforeProgress, tireGrip);
+  const atReference = activeReferenceTarget(trackId, curvatureProgress, tireGrip);
+  const afterReference = activeReferenceTarget(trackId, afterProgress, tireGrip);
+  const beforePoint = sampleTrack(beforeProgress, beforeReference.laneOffset);
+  const atPoint = sampleTrack(curvatureProgress, atReference.laneOffset);
+  const afterPoint = sampleTrack(afterProgress, afterReference.laneOffset);
+  const signedCurvature = pathCurvature(beforePoint, atPoint, afterPoint);
+  const feedForwardSteer = referenceSteerForCurvature(
+    Math.max(vehicle.speed, atReference.targetSpeed * 0.92),
+    signedCurvature,
+    tireGrip,
+  );
   const steer = clamp(
-    pathHeadingError * (2.05 + errorSeverity * 0.45)
-      + bearingError * (1.12 + errorSeverity * 0.28)
-      + crossTrackAngle * 3.55
-      + headingLead * (0.92 + leadWeight * 0.72)
-      - vehicle.yawRate * 0.34,
+    feedForwardSteer * 0.92
+      + pathHeadingError * (1.72 + errorSeverity * 0.38)
+      + bearingError * (0.94 + errorSeverity * 0.24)
+      + crossTrackAngle * 3.35
+      + headingLead * (0.70 + leadWeight * 0.52)
+      - vehicle.yawRate * 0.30,
     -1,
     1,
   );
@@ -156,6 +186,22 @@ export function explicitLineFollower(
     pathHeadingError,
     bearingError,
   };
+}
+
+function pathCurvature(
+  previous: { x: number; y: number },
+  current: { x: number; y: number },
+  next: { x: number; y: number },
+): number {
+  const ab = Math.hypot(current.x - previous.x, current.y - previous.y);
+  const bc = Math.hypot(next.x - current.x, next.y - current.y);
+  const ac = Math.hypot(next.x - previous.x, next.y - previous.y);
+  const denominator = ab * bc * ac;
+  if (denominator < 0.0001) return 0;
+  const cross =
+    (current.x - previous.x) * (next.y - previous.y)
+    - (current.y - previous.y) * (next.x - previous.x);
+  return (2 * cross) / denominator;
 }
 
 function wrap01(value: number): number {
