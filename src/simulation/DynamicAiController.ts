@@ -343,7 +343,7 @@ export function dynamicAiControl(
     const lineError = explicitFollower
       ? explicitFollower.pathError
       : Math.abs(referenceLaneNow - projection.laneOffset);
-    const recoveryScale = 1 - clamp((lineError - 1.8) / 4.0, 0, 1) * 0.62;
+    const recoveryScale = 1 - clamp((lineError - 3.0) / 2.5, 0, 1) * 0.62;
     targetSpeed *= recoveryScale;
   }
 
