@@ -121,6 +121,28 @@ describe('dynamicAiControl', () => {
     expect(control.targetLane).toBeGreaterThan(6.5);
   });
 
+  it('does not add AUTO corner-attack speed on top of an explicit player trace', () => {
+    const driver = createAiField()[0];
+    driver.progress = 0.56;
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 64 };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: driver.tire.grip,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 64,
+      })),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.lineSource).toBe('PLAYER');
+    expect(control.targetSpeed).toBeLessThanOrEqual(64);
+  });
+
   it('brakes before a future player-line speed drop reaches the car', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
