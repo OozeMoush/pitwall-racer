@@ -1,8 +1,9 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
-import { setRuntimeRacingLine } from './RacingLineRuntime';
-import { setActiveTrack } from './TrackModel';
+import { referenceRacingLineAsset } from './ReferenceDriverModel';
+import { activeReferenceTarget, setRuntimeRacingLine } from './RacingLineRuntime';
+import { projectTrackNear, setActiveTrack } from './TrackModel';
 
 afterEach(() => {
   setRuntimeRacingLine('pitwall-gp', undefined);
@@ -40,4 +41,40 @@ describe('AiReferenceGhost', () => {
     expect(Number.isFinite(state?.speed)).toBe(true);
     expect(Math.abs(ghost.driver.progress - initial)).toBeGreaterThan(0.01);
   });
+  it('can physically replay a near-limit reference when exposed as PLAYER data', () => {
+    setActiveTrack('pitwall-gp');
+    const machine = referenceRacingLineAsset('pitwall-gp', 1.1);
+    setRuntimeRacingLine('pitwall-gp', {
+      ...machine,
+      source: 'PLAYER',
+    });
+
+    const ghost = new AiReferenceGhost(0.05, 'pitwall-gp');
+    let maxLaneError = 0;
+
+    for (let tick = 0; tick < 45 * 120; tick++) {
+      ghost.step(1 / 120);
+      const state = ghost.state();
+      if (!state) continue;
+      const projection = projectTrackNear(
+        state.x,
+        state.y,
+        ghost.driver.progress,
+      );
+      const reference = activeReferenceTarget(
+        'pitwall-gp',
+        projection.progress,
+        ghost.driver.tire.grip,
+      );
+      maxLaneError = Math.max(
+        maxLaneError,
+        Math.abs(reference.laneOffset - projection.laneOffset),
+      );
+      if (ghost.lastLapSeconds() !== undefined) break;
+    }
+
+    expect(ghost.lastLapSeconds()).toBeDefined();
+    expect(maxLaneError).toBeLessThan(5.5);
+  });
+
 });
