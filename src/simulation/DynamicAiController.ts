@@ -6,6 +6,7 @@ import { referenceExecutionForSkill } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
+  racingLineLocalBrakeIntent,
   racingLineThrottleIntent,
   runtimeRacingLine,
 } from './RacingLineRuntime';
@@ -392,12 +393,20 @@ export function dynamicAiControl(
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
   const explicitProfileBrake = highFidelityLine
-    ? racingLineBrakeIntent(
-        trackId,
-        explicitFollower?.pathProgress ?? projection.progress,
-        driver.tire.grip,
-        speed,
-      )
+    ? explicitFollower?.demonstratedDynamics
+      ? racingLineLocalBrakeIntent(
+          trackId,
+          explicitFollower.pathProgress,
+          driver.tire.grip,
+          speed,
+          steer,
+        )
+      : racingLineBrakeIntent(
+          trackId,
+          explicitFollower?.pathProgress ?? projection.progress,
+          driver.tire.grip,
+          speed,
+        )
     : 0;
   let brake = highFidelityLine
     ? Math.max(feedbackBrake, explicitProfileBrake)
