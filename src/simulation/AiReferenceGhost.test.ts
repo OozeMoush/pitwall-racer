@@ -2,7 +2,11 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
 import { referenceRacingLineAsset } from './ReferenceDriverModel';
-import { activeReferenceTarget, setRuntimeRacingLine } from './RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  projectRuntimeRacingLineNear,
+  setRuntimeRacingLine,
+} from './RacingLineRuntime';
 import { projectTrackNear, setActiveTrack } from './TrackModel';
 
 afterEach(() => {
@@ -66,19 +70,27 @@ describe('AiReferenceGhost', () => {
         state.y,
         ghost.driver.progress,
       );
+      const lineProjection = projectRuntimeRacingLineNear(
+        'pitwall-gp',
+        state.x,
+        state.y,
+        projection.progress,
+      );
       const reference = activeReferenceTarget(
         'pitwall-gp',
-        projection.progress,
+        lineProjection.progress,
         ghost.driver.tire.grip,
       );
-      const laneError = Math.abs(reference.laneOffset - projection.laneOffset);
+      const laneError = lineProjection.distance;
       if (laneError > maxLaneError) {
         maxLaneError = laneError;
         maxErrorSnapshot = {
           tick,
-          progress: projection.progress,
+          centreProgress: projection.progress,
+          pathProgress: lineProjection.progress,
           actualLane: projection.laneOffset,
           referenceLane: reference.laneOffset,
+          pathDistance: lineProjection.distance,
           trackDistance: projection.distance,
           speedKmh: state.speed * 3.6,
           control: ghost.latestControl(),
