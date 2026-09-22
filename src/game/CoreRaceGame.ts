@@ -1183,6 +1183,7 @@ export class CoreRaceGame {
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
         <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
+        <span>PATH ERROR</span><b style="color:${(control?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
@@ -1198,6 +1199,7 @@ export class CoreRaceGame {
       <div style="display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin-top:5px">
         <span>LAP</span><b>${ghostTime}</b>
         <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
+        <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
         <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY · UPGRADE NEEDED'}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
