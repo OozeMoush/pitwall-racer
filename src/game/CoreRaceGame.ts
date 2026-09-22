@@ -983,6 +983,11 @@ export class CoreRaceGame {
     this.raceIntervals.reset();
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
+    if (this.debugEnabled) {
+      this.clearAiDebugTrails();
+      this.resetAiDebugGhost();
+      this.refreshAiDebugReferenceLine();
+    }
     this.audio.reset();
     this.playerCar.setCompound(this.startCompound);
     this.syncVisuals(true);
@@ -1117,6 +1122,57 @@ export class CoreRaceGame {
     }).join('');
   }
 
+  private renderAiDebugPanel(): string {
+    if (!this.debugEnabled) return '';
+
+    const driver = this.ai[this.debugAiIndex];
+    const state = this.physics.aiStates()[this.debugAiIndex];
+    const control = this.physics.aiControls()[this.debugAiIndex];
+    const line = runtimeRacingLine(this.setup.trackId);
+    const ghostControl = this.debugGhost?.latestControl();
+    const ghostState = this.debugGhost?.state();
+    const source = control?.debug.lineSource ?? line?.source ?? 'AUTO';
+    const fixed = (value: number | undefined, digits = 2): string =>
+      value === undefined || !Number.isFinite(value) ? '—' : value.toFixed(digits);
+    const percent = (value: number | undefined): string =>
+      value === undefined || !Number.isFinite(value) ? '—' : `${Math.round(value * 100)}%`;
+    const lap = line?.lapSeconds === undefined ? '—' : `${line.lapSeconds.toFixed(3)}s`;
+    const ghostLap = this.debugGhost?.lastLapSeconds();
+    const ghostCurrent = this.debugGhost?.currentLapSeconds();
+    const ghostTime = ghostLap !== undefined
+      ? `${ghostLap.toFixed(3)}s LAST`
+      : ghostCurrent !== undefined
+        ? `${ghostCurrent.toFixed(3)}s LIVE`
+        : 'ARMING';
+
+    return `<div style="position:absolute;right:14px;top:88px;width:310px;padding:12px 14px;background:rgba(3,10,12,.92);border:1px solid rgba(72,255,116,.5);box-shadow:0 8px 28px rgba(0,0,0,.35);font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,monospace;color:#dce9e4;z-index:30">
+      <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px"><b style="color:#48ff74;letter-spacing:.08em">AI LINE DEBUG</b><span>F3 OFF · F4 NEXT</span></div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:3px 12px">
+        <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
+        <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
+        <span>LINE LAP</span><b>${lap}</b>
+        <span>MODE</span><b>${control?.battleState ?? '—'}</b>
+        <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
+        <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
+        <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+        <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
+        <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
+        <span>BRAKE feedback / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
+        <span>LOOKAHEAD</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m</b>
+        <span>PREDICT</span><b>${percent(control?.debug.predictionWeight)}</b>
+      </div>
+      <div style="height:1px;background:rgba(255,255,255,.12);margin:9px 0"></div>
+      <div style="display:flex;justify-content:space-between"><b style="color:#39dfff">REFERENCE GHOST</b><span>TRAFFIC OFF · 100%</span></div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin-top:5px">
+        <span>LAP</span><b>${ghostTime}</b>
+        <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
+        <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+        <span>BRAKE</span><b>${fixed(ghostControl?.brake)}</b>
+      </div>
+      <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
+    </div>`;
+  }
+
   private renderHud(): void {
     const standings = this.standings();
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
@@ -1202,6 +1258,7 @@ export class CoreRaceGame {
       ? `<div class="racing-line-notice">${this.racingLineNotice}</div>`
       : '';
     const recoveryHtml = recovery ? `<div class="recovery">STRANDED · PRESS C TO RECOVER</div>` : '';
+    const debugHtml = this.renderAiDebugPanel();
     const referenceLap = Math.max(35, Math.min(90, this.sessionFastestLap ?? this.playerBestLap() ?? TRACK_LENGTH / 82));
     const towerHtml = standings.map((driver, index) => {
       const compound = this.compoundFor(driver.id);
@@ -1214,7 +1271,7 @@ export class CoreRaceGame {
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${racingLineHtml}${recoveryHtml}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
@@ -1232,7 +1289,7 @@ export class CoreRaceGame {
           <div><small>RACE</small><b>${raceState}</b><span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
         </div>
       </div>
-      <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER</div>`;
+      <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER · F3 AI DEBUG · F4 NEXT AI</div>`;
   }
 }
 
