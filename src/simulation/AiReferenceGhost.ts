@@ -4,7 +4,7 @@ import { RapierRacePhysics } from './RapierRacePhysics';
 import { activeReferenceTarget } from './RacingLineRuntime';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
-import { getActiveTrack, projectTrackNear, sampleTrack, type TrackId } from './TrackModel';
+import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 import { createVehicle, type VehicleState } from './VehicleModel';
 
 const CORE_POWER_BOOST = 0.22;
@@ -32,6 +32,10 @@ export class AiReferenceGhost {
     const tire = createTire('SOFT');
     const reference = activeReferenceTarget(trackId, startProgress, tire.grip);
     const pose = sampleTrack(startProgress, reference.laneOffset);
+    const aheadProgress = startProgress + 6 / Math.max(1, TRACK_LENGTH);
+    const aheadReference = activeReferenceTarget(trackId, aheadProgress, tire.grip);
+    const ahead = sampleTrack(aheadProgress, aheadReference.laneOffset);
+    const lineHeading = Math.atan2(ahead.y - pose.y, ahead.x - pose.x);
 
     this.driver = {
       ...base,
@@ -55,7 +59,7 @@ export class AiReferenceGhost {
     const dummyPlayer = createVehicle(-10000, -10000, 0);
     this.physics = new RapierRacePhysics(dummyPlayer, [this.driver]);
     this.physics.setAiState(0, {
-      ...createVehicle(pose.x, pose.y, pose.heading),
+      ...createVehicle(pose.x, pose.y, lineHeading),
       speed: reference.targetSpeed,
     });
     this.lastProgress = startProgress;
