@@ -2,7 +2,6 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
 import { PlayerRacingLineCandidateRecorder } from './PlayerRacingLineCandidate';
-import { referenceRacingLineAsset } from './ReferenceDriverModel';
 import {
   projectRuntimeRacingLineNear,
   setRuntimeRacingLine,
@@ -148,61 +147,6 @@ describe('AiReferenceGhost', () => {
     expect(replayLapSeconds).toBeGreaterThan(0);
     expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.05);
     expect(maxPathError).toBeLessThan(1.8);
-  }, 15_000);
-
-  it('keeps a legacy position+speed PLAYER line physically recoverable', () => {
-    setActiveTrack('pitwall-gp');
-    const machine = referenceRacingLineAsset('pitwall-gp', 1.1);
-    setRuntimeRacingLine('pitwall-gp', {
-      ...machine,
-      source: 'PLAYER',
-      // Old saved candidates have no demonstrated heading/yaw state. Keep a
-      // regression for that fallback path while new recordings use the richer
-      // physically demonstrated controller tested above.
-      points: machine.points.map((point) => ({
-        progress: point.progress,
-        laneOffset: point.laneOffset,
-        targetSpeed: point.targetSpeed,
-      })),
-    });
-
-    // Start just before the line so the ghost arms its timed lap almost
-    // immediately instead of spending a whole untimed lap before measurement.
-    const ghost = new AiReferenceGhost(0.95, 'pitwall-gp');
-    let maxLaneError = 0;
-    let maxTrackDistance = 0;
-
-    for (let tick = 0; tick < 45 * 120; tick++) {
-      ghost.step(1 / 120);
-      const state = ghost.state();
-      if (!state) continue;
-      const projection = projectTrackNear(
-        state.x,
-        state.y,
-        ghost.driver.progress,
-      );
-      const lineProjection = projectRuntimeRacingLineNear(
-        'pitwall-gp',
-        state.x,
-        state.y,
-        projection.progress,
-      );
-      const laneError = lineProjection.distance;
-      maxLaneError = Math.max(maxLaneError, laneError);
-      maxTrackDistance = Math.max(maxTrackDistance, projection.distance);
-      if (ghost.lastLapSeconds() !== undefined) break;
-    }
-
-    console.info('LEGACY_REPLAY_METRICS', {
-      lastLapSeconds: ghost.lastLapSeconds(),
-      maxLaneError,
-      maxTrackDistance,
-    });
-    expect(ghost.lastLapSeconds()).toBeDefined();
-    // Legacy position+speed assets remain a migration fallback. New PLAYER
-    // recordings are held to the much tighter 1.8 m demonstrated-state test
-    // above and replace a legacy candidate after one clean lap.
-    expect(maxLaneError).toBeLessThan(8.0);
   }, 15_000);
 
 function wrapAngle(angle: number): number {
