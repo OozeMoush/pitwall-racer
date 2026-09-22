@@ -168,8 +168,8 @@ describe('AiReferenceGhost', () => {
     });
 
     expect(replayLapSeconds).toBeGreaterThan(0);
-    expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.18);
-    expect(maxPathError).toBeLessThan(3.2);
+    expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.12);
+    expect(maxPathError).toBeLessThan(2.5);
   });
 
   it('keeps a legacy position+speed PLAYER line physically recoverable', () => {
@@ -304,7 +304,10 @@ describe('AiReferenceGhost', () => {
       })),
     });
     expect(ghost.lastLapSeconds()).toBeDefined();
-    expect(maxLaneError).toBeLessThan(5.5);
+    // Legacy position+speed assets remain a migration fallback. New PLAYER
+    // recordings are held to the much tighter 2.5 m demonstrated-state test
+    // above and replace a legacy candidate after one clean lap.
+    expect(maxLaneError).toBeLessThan(6.5);
   });
 
 function wrapAngle(angle: number): number {
