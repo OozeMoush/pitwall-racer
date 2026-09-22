@@ -74,6 +74,45 @@ describe('RacingLineRuntime', () => {
     expect(brake).toBeLessThan(1);
   });
 
+  it('adds extra local braking when replay arrives above the demonstrated speed', () => {
+    const grip = 1.1;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        return {
+          progress,
+          laneOffset: 0,
+          targetSpeed: progress < 0.30
+            ? 82
+            : progress < 0.40
+              ? 82 - (progress - 0.30) * 400
+              : 42,
+        };
+      }),
+    });
+
+    const matched = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.35,
+      grip,
+      62,
+      0.25,
+    );
+    const overspeed = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.35,
+      grip,
+      66,
+      0.25,
+    );
+
+    expect(overspeed).toBeGreaterThan(matched);
+  });
+
   it('derives sustaining throttle from a flat explicit speed trace', () => {
     const grip = 1.1;
     setRuntimeRacingLine('pitwall-gp', {
