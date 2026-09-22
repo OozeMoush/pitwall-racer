@@ -48,12 +48,12 @@ export function explicitLineFollower(
   const laneError = currentReference.laneOffset - projection.laneOffset;
   const errorSeverity = clamp(Math.abs(laneError) / 5.5, 0, 1);
 
-  // Human edge lines need a substantially shorter target than AUTO. When the
-  // car is already displaced, shorten it further: looking far through the
-  // corner while several metres off-line is what caused the old controller to
-  // cut across the demonstrated path and reach the barrier.
-  const nominalLookAhead = clamp(8 + vehicle.speed * 0.13, 13, 28);
-  const lookAheadMetres = nominalLookAhead * (1 - errorSeverity * 0.32);
+  // Use one near target for cross-track convergence and a separate farther
+  // preview for anticipation. The previous follower shortened lookahead as the
+  // error grew; in Pitwall's final S-complex that made the car discover a
+  // left/right lane transition only after it was already on the wrong side.
+  const nominalLookAhead = clamp(12 + vehicle.speed * 0.18, 18, 34);
+  const lookAheadMetres = nominalLookAhead * (1 - errorSeverity * 0.14);
   const steeringProgress = wrap01(
     projection.progress + lookAheadMetres / TRACK_LENGTH,
   );
@@ -93,6 +93,42 @@ export function explicitLineFollower(
   const pathHeadingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(targetBearing - vehicle.heading);
 
+  // Preview the *shape* of the explicit path well beyond the near pursuit
+  // target. This is feed-forward only: it rotates the car before an S-bend
+  // changes side, without asking the car to cut directly toward a far-away
+  // point.
+  const previewMetres = clamp(24 + vehicle.speed * 0.26, 32, 58);
+  const previewProgress = wrap01(
+    projection.progress + previewMetres / TRACK_LENGTH,
+  );
+  const previewReference = activeReferenceTarget(
+    trackId,
+    previewProgress,
+    tireGrip,
+  );
+  const previewPoint = sampleTrack(
+    previewProgress,
+    previewReference.laneOffset,
+  );
+  const previewAheadProgress = wrap01(
+    previewProgress + headingProbeMetres / TRACK_LENGTH,
+  );
+  const previewAheadReference = activeReferenceTarget(
+    trackId,
+    previewAheadProgress,
+    tireGrip,
+  );
+  const previewAhead = sampleTrack(
+    previewAheadProgress,
+    previewAheadReference.laneOffset,
+  );
+  const previewHeading = Math.atan2(
+    previewAhead.y - previewPoint.y,
+    previewAhead.x - previewPoint.x,
+  );
+  const headingLead = wrapAngle(previewHeading - pathHeading);
+  const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);
+
   // The cross-track term is intentionally speed-aware: at high speed the
   // heading terms do most of the work, while a multi-metre miss still commands
   // an unmistakable correction instead of the old /9 soft nudge.
@@ -101,9 +137,10 @@ export function explicitLineFollower(
     Math.max(16, vehicle.speed),
   );
   const steer = clamp(
-    pathHeadingError * (2.35 + errorSeverity * 0.55)
-      + bearingError * (1.25 + errorSeverity * 0.35)
-      + crossTrackAngle * 3.65
+    pathHeadingError * (2.05 + errorSeverity * 0.45)
+      + bearingError * (1.12 + errorSeverity * 0.28)
+      + crossTrackAngle * 3.55
+      + headingLead * (0.92 + leadWeight * 0.72)
       - vehicle.yawRate * 0.34,
     -1,
     1,
