@@ -386,9 +386,19 @@ export function dynamicAiControl(
   // erase a few km/h of legitimate chicane carry with the generic speed-loop
   // deadband. This only changes braking decisions; grip and propulsion remain
   // the shared physical car. Any growing lane error collapses the allowance.
-  const feedbackBrakeThreshold = 0.65 + cornerAttackConfidence * 1.5;
+  const demonstratedSpeedTrace = explicitFollower?.demonstratedDynamics ?? false;
+  const feedbackBrakeThreshold = demonstratedSpeedTrace
+    ? 0.22
+    : 0.65 + cornerAttackConfidence * 1.5;
+  const feedbackBrakeDivisor = demonstratedSpeedTrace ? 5.1 : 9.4;
+  const feedbackBrakeBias = demonstratedSpeedTrace ? 0.22 : 0.45;
   const feedbackBrake = overspeed > feedbackBrakeThreshold
-    ? clamp((overspeed - feedbackBrakeThreshold + 0.45) / 9.4, 0.05, 1)
+    ? clamp(
+        (overspeed - feedbackBrakeThreshold + feedbackBrakeBias)
+          / feedbackBrakeDivisor,
+        0.05,
+        1,
+      )
     : 0;
   const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
