@@ -321,8 +321,14 @@ export function dynamicAiControl(
         predictionWeight,
       );
 
-  const speedReference = explicitFollower
-    ? activeReferenceTarget(trackId, explicitFollower.pathProgress, driver.tire.grip)
+  // PLAYER/EDITOR speed samples are recorded against centreline progress.
+  // Steering may project onto the explicit path itself, but longitudinal
+  // control must stay on the recorder's original phase axis; otherwise an
+  // S-bend/large lane transition can make the nearest-path projection jump a
+  // few metres ahead and expose a future exit speed too early.
+  const longitudinalProgress = projection.progress;
+  const speedReference = highFidelityLine
+    ? activeReferenceTarget(trackId, longitudinalProgress, driver.tire.grip)
     : currentLineReference;
   let targetSpeed = speedReference.targetSpeed * execution;
   let cornerAttackConfidence = 0;
@@ -407,14 +413,14 @@ export function dynamicAiControl(
     ? explicitFollower?.demonstratedDynamics
       ? racingLineLocalBrakeIntent(
           trackId,
-          explicitFollower.pathProgress,
+          longitudinalProgress,
           driver.tire.grip,
           speed,
           steer,
         )
       : racingLineBrakeIntent(
           trackId,
-          explicitFollower?.pathProgress ?? projection.progress,
+          longitudinalProgress,
           driver.tire.grip,
           speed,
         )
@@ -429,7 +435,7 @@ export function dynamicAiControl(
   const explicitProfileThrottle = highFidelityLine
     ? racingLineThrottleIntent(
         trackId,
-        explicitFollower?.pathProgress ?? projection.progress,
+        longitudinalProgress,
         driver.tire.grip,
         speed,
         steer,
