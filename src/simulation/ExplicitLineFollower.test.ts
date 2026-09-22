@@ -38,6 +38,37 @@ describe('explicitLineFollower', () => {
     expect(target.lookAheadMetres).toBeLessThan(22);
   });
 
+  it('leads demonstrated yaw so steering begins before the recorded rotation state', () => {
+    const grip = 1.1;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        return {
+          progress,
+          laneOffset: 0,
+          targetSpeed: 64,
+          headingOffset: 0,
+          yawRate: progress * 2,
+        };
+      }),
+    });
+
+    const progress = 0.08;
+    const pose = sampleTrack(progress, 0);
+    const vehicle = {
+      ...createVehicle(pose.x, pose.y, pose.heading),
+      speed: 64,
+    };
+
+    const target = explicitLineFollower('pitwall-gp', vehicle, progress, grip);
+    expect(target.demonstratedDynamics).toBe(true);
+    expect(target.targetYawRate).toBeGreaterThan(progress * 2);
+  });
+
   it('reverses the correction when the car is outside the explicit line', () => {
     const grip = 1.1;
     setRuntimeRacingLine('pitwall-gp', {
