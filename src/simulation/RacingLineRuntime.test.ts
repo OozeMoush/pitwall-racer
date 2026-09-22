@@ -202,4 +202,22 @@ describe('RacingLineRuntime', () => {
     expect(throttle).toBeGreaterThan(0.1);
   });
 
+  it('uses the pointwise demonstrated grip for explicit speed transfer', () => {
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.1,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 70,
+        tireGrip: 1.2,
+      })),
+    });
+
+    const target = activeReferenceTarget('pitwall-gp', 0.25, 1.2);
+    expect(target.targetSpeed).toBeCloseTo(70, 6);
+  });
+
 });

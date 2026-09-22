@@ -99,12 +99,16 @@ describe('player racing-line candidates', () => {
         0,
         0,
         1 / 120,
+        1.18 + progress * 0.03,
       );
     }
     const candidate = recorder.finish(25);
     expect(candidate).toBeDefined();
     expect(candidate?.points.some(
       (point) => point.longitudinalAcceleration !== undefined,
+    )).toBe(true);
+    expect(candidate?.points.some(
+      (point) => point.tireGrip !== undefined,
     )).toBe(true);
   });
 

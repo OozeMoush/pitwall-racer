@@ -23,6 +23,12 @@ export interface RacingLinePoint {
    * lap without assuming centreline metres equal travelled path metres.
    */
   longitudinalAcceleration?: number;
+  /**
+   * Grip actually available when this sample was demonstrated. Qualifying
+   * tyres warm through the lap, so one lap-start referenceGrip is not enough
+   * to reproduce the same physical capability point by point.
+   */
+  tireGrip?: number;
 }
 
 export interface RacingLineAsset {
@@ -61,6 +67,7 @@ export function sampleRacingLineAsset(
       b.longitudinalAcceleration,
       t,
     ),
+    tireGrip: interpolateOptional(a.tireGrip, b.tireGrip, t),
   };
 }
 

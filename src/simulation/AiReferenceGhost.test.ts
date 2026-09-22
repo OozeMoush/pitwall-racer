@@ -156,4 +156,28 @@ function wrapAngle(angle: number): number {
   return result;
 }
 
+  it('follows a demonstrated grip trace instead of freezing lap-start grip', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.1,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 60,
+        headingOffset: 0,
+        yawRate: 0,
+        longitudinalAcceleration: 0,
+        tireGrip: 1.1 + index / 159 * 0.1,
+      })),
+    });
+
+    const ghost = new AiReferenceGhost(0.5, 'pitwall-gp');
+    const before = ghost.driver.tire.grip;
+    for (let index = 0; index < 30; index++) ghost.step(1 / 120);
+    expect(ghost.driver.tire.grip).not.toBeCloseTo(before, 6);
+  });
+
 });

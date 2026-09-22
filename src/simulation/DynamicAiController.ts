@@ -30,6 +30,8 @@ export interface DynamicAiDebug {
   profileThrottle: number;
   demonstratedDynamics: boolean;
   demonstratedAcceleration: boolean;
+  demonstratedGripTrace: boolean;
+  sourceGrip?: number;
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
@@ -506,6 +508,15 @@ export function dynamicAiControl(
       demonstratedAcceleration: lineAsset?.points.some(
         (point) => point.longitudinalAcceleration !== undefined,
       ) ?? false,
+      demonstratedGripTrace: lineAsset?.points.some(
+        (point) => point.tireGrip !== undefined,
+      ) ?? false,
+      sourceGrip: lineAsset
+        ? sampleRacingLineAsset(
+            lineAsset,
+            longitudinalProgress,
+          ).tireGrip ?? lineAsset.referenceGrip
+        : undefined,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,

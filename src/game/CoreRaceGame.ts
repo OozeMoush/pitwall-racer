@@ -411,6 +411,7 @@ export class CoreRaceGame {
         wrapAngle(this.vehicle.heading - afterTrack.heading),
         normalizedYawRate,
         dt,
+        this.lineCandidateReferenceGrip,
       );
     }
     this.updateSectorTiming();
@@ -1180,14 +1181,14 @@ export class CoreRaceGame {
         <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
-        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? 'HEADING + YAW + AX' : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
+        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP' : 'HEADING + YAW + AX · RECORD CLEAN LAP') : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>PROGRESS center / path</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>
         <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
         <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
         <span>PATH ERROR</span><b style="color:${(control?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
-        <span>GRIP actual / source</span><b>${fixed(driver?.tire.grip, 3)} / ${fixed(line?.referenceGrip, 3)}</b>
+        <span>GRIP actual / source</span><b>${fixed(driver?.tire.grip, 3)} / ${fixed(control?.debug.sourceGrip, 3)}</b>
         <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
         <span>HEADING / BEARING err</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
@@ -1205,8 +1206,8 @@ export class CoreRaceGame {
         <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
         <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
         <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
-        <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(line?.referenceGrip, 3)}</b>
-        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedAcceleration ? 'HEADING + YAW + AX' : ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW · UPGRADE NEEDED' : 'LEGACY · UPGRADE NEEDED'}</b>
+        <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(ghostControl?.debug.sourceGrip, 3)}</b>
+        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedAcceleration ? (ghostControl?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP' : 'HEADING + YAW + AX · UPGRADE NEEDED') : ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW · UPGRADE NEEDED' : 'LEGACY · UPGRADE NEEDED'}</b>
         <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
         <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
         <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>

@@ -86,6 +86,14 @@ export class AiReferenceGhost {
     const state = this.physics.aiStates()[0];
     if (!state) return;
 
+    const lineAsset = runtimeRacingLine(getActiveTrack().id);
+    const sourceSample = lineAsset
+      ? sampleRacingLineAsset(lineAsset, this.driver.progress)
+      : undefined;
+    if (sourceSample?.tireGrip !== undefined) {
+      this.driver.tire = { ...this.driver.tire, grip: sourceSample.tireGrip };
+    }
+
     this.control = dynamicAiControl(this.driver, state, []);
     this.driver.battleState = this.control.battleState;
     const projection = projectTrackNear(state.x, state.y, this.driver.progress);

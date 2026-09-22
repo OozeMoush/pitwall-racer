@@ -14,6 +14,7 @@ interface RawSample {
   headingOffset?: number;
   yawRate?: number;
   longitudinalAcceleration?: number;
+  tireGrip?: number;
 }
 
 interface CandidateStore {
@@ -55,6 +56,7 @@ export class PlayerRacingLineCandidateRecorder {
     headingOffset?: number,
     yawRate?: number,
     dt?: number,
+    tireGrip?: number,
   ): void {
     if (!this.trackId || this.wrapped) return;
     const p = wrap01(progress);
@@ -80,6 +82,7 @@ export class PlayerRacingLineCandidateRecorder {
       headingOffset: Number.isFinite(headingOffset) ? headingOffset : undefined,
       yawRate: Number.isFinite(yawRate) ? yawRate : undefined,
       longitudinalAcceleration,
+      tireGrip: Number.isFinite(tireGrip) ? tireGrip : undefined,
     });
     this.lastProgress = p;
   }
@@ -132,6 +135,12 @@ export function saveBestPlayerRacingLineCandidate(
   const candidateHasAcceleration = candidate.points.some(
     (point) => point.longitudinalAcceleration !== undefined,
   );
+  const previousHasGripTrace = previous?.points.some(
+    (point) => point.tireGrip !== undefined,
+  ) ?? false;
+  const candidateHasGripTrace = candidate.points.some(
+    (point) => point.tireGrip !== undefined,
+  );
 
   // Legacy PLAYER lines only stored position + speed. A single clean modern
   // lap is allowed to replace that legacy candidate even when it is slower,
@@ -144,6 +153,7 @@ export function saveBestPlayerRacingLineCandidate(
     && previous.lapSeconds <= candidate.lapSeconds
     && (previousHasDynamics || !candidateHasDynamics)
     && (previousHasAcceleration || !candidateHasAcceleration)
+    && (previousHasGripTrace || !candidateHasGripTrace)
   ) {
     return previous;
   }
@@ -225,6 +235,7 @@ function interpolateSample(
       b.longitudinalAcceleration,
       t,
     ),
+    tireGrip: interpolateOptional(a.tireGrip, b.tireGrip, t),
   };
 }
 

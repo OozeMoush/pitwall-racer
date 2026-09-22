@@ -204,7 +204,7 @@ export function racingLineThrottleIntent(
     tireGrip,
   ).targetSpeed;
   const selected = sampleRacingLineAsset(asset, progress);
-  const sourceGrip = asset.referenceGrip ?? tireGrip;
+  const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
   const useDemonstratedAcceleration =
     selected.longitudinalAcceleration !== undefined
     && Math.abs(tireGrip - sourceGrip) < 0.015;
@@ -271,7 +271,7 @@ export function racingLineLocalBrakeIntent(
   // artificially early-braking line while still preventing a 10-15 km/h
   // transient overspeed from carrying the chassis beyond the recorded apex.
   const selected = sampleRacingLineAsset(asset, progress);
-  const sourceGrip = asset.referenceGrip ?? tireGrip;
+  const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
   const useDemonstratedAcceleration =
     selected.longitudinalAcceleration !== undefined
     && Math.abs(tireGrip - sourceGrip) < 0.015;
@@ -353,7 +353,7 @@ export function activeReferenceTarget(
   if (!asset || asset.points.length === 0) return fallback;
 
   const selected = sampleRacingLineAsset(asset, progress);
-  const sourceGrip = asset.referenceGrip ?? tireGrip;
+  const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
   const sourceReference = referenceTarget(trackId, progress, sourceGrip);
   const gripTransfer = sourceReference.targetSpeed > 1
     ? fallback.targetSpeed / sourceReference.targetSpeed
