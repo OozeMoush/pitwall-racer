@@ -405,6 +405,8 @@ export class CoreRaceGame {
         afterTrack.progress,
         afterTrack.laneOffset,
         normalizedSpeed,
+        wrapAngle(this.vehicle.heading - afterTrack.heading),
+        this.vehicle.yawRate,
       );
     }
     this.updateSectorTiming();
@@ -1291,6 +1293,13 @@ export class CoreRaceGame {
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER · F3 AI DEBUG · F4 NEXT AI</div>`;
   }
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
 }
 
 function formatShortTime(seconds?: number): string {
