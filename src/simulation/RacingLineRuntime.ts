@@ -172,6 +172,86 @@ export function racingLineBrakeIntent(
   return intent;
 }
 
+
+/**
+ * Derive feed-forward throttle from the demonstrated speed trace.
+ *
+ * PLAYER/EDITOR execution must not inherit AUTO's machine-reference throttle.
+ * The speed samples already describe the longitudinal plan, so estimate the
+ * acceleration needed over the next short path segment and solve the shared
+ * chassis for the throttle that produces it. Feedback in DynamicAiController
+ * still corrects any residual speed error.
+ */
+export function racingLineThrottleIntent(
+  trackId: TrackId,
+  progress: number,
+  tireGrip: number,
+  currentSpeed: number,
+  steer: number,
+): number {
+  const asset = active.get(trackId);
+  if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR')) return 0;
+
+  const distance = 12;
+  const currentTarget = activeReferenceTarget(
+    trackId,
+    progress,
+    tireGrip,
+  ).targetSpeed;
+  const futureTarget = activeReferenceTarget(
+    trackId,
+    progress + distance / TRACK_LENGTH,
+    tireGrip,
+  ).targetSpeed;
+  const desiredAcceleration =
+    (futureTarget * futureTarget - currentTarget * currentTarget)
+    / (2 * distance);
+
+  const coast = runtimeLongitudinalAcceleration(
+    currentSpeed,
+    tireGrip,
+    0,
+    steer,
+  );
+  const fullThrottle = runtimeLongitudinalAcceleration(
+    currentSpeed,
+    tireGrip,
+    1,
+    steer,
+  );
+  if (desiredAcceleration <= coast) return 0;
+
+  return clamp(
+    (desiredAcceleration - coast)
+      / Math.max(0.001, fullThrottle - coast),
+    0,
+    1,
+  );
+}
+
+function runtimeLongitudinalAcceleration(
+  speed: number,
+  tireGrip: number,
+  throttle: number,
+  steer: number,
+): number {
+  const dt = 1 / 120;
+  const result = controlArcadeCar(
+    { vx: speed, vy: 0, heading: 0, angularVelocity: 0 },
+    {
+      throttle,
+      brake: 0,
+      steer,
+      tireGrip,
+      powerBoost: REFERENCE_POWER_BOOST,
+    },
+    dt,
+  );
+  const controlledSpeed = Math.hypot(result.vx, result.vy);
+  const dampedSpeed = controlledSpeed / (1 + 0.018 * dt);
+  return (dampedSpeed - speed) / dt;
+}
+
 /**
  * Merge an explicit RacingLineAsset with the existing physics-derived reference.
  *
