@@ -333,6 +333,7 @@ export class CoreRaceGame {
     this.ai = stepAiField(this.ai, dt, this.totalLaps, playerTraffic, false);
     this.ai = resolveAiOccupancy(this.ai, dt);
     this.physics.syncAiKinematics(this.ai, dt, this.lap);
+    this.stepAiDebugGhost(dt);
 
     if (this.stepPhysicalPit(dt)) {
       this.physics.step(dt);
@@ -371,7 +372,6 @@ export class CoreRaceGame {
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
-    this.stepAiDebugGhost(dt);
     this.updateAiLapTiming();
 
     const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
@@ -720,6 +720,176 @@ export class CoreRaceGame {
       this.camera.position.copy(playerPos).add(CAMERA_OFFSET);
       this.camera.lookAt(this.cameraTarget);
     }
+  }
+
+  private setupAiDebugVisuals(): void {
+    this.debugReferenceLine = new THREE.LineLoop(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0x48ff74,
+        transparent: true,
+        opacity: 0.92,
+        depthTest: false,
+      }),
+    );
+    this.debugReferenceLine.renderOrder = 40;
+    this.debugReferenceLine.visible = false;
+    this.scene.add(this.debugReferenceLine);
+
+    this.debugActualTrail = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0xff4d5f,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false,
+      }),
+    );
+    this.debugActualTrail.renderOrder = 41;
+    this.debugActualTrail.visible = false;
+    this.scene.add(this.debugActualTrail);
+
+    this.debugGhostTrail = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0x39dfff,
+        transparent: true,
+        opacity: 0.86,
+        depthTest: false,
+      }),
+    );
+    this.debugGhostTrail.renderOrder = 41;
+    this.debugGhostTrail.visible = false;
+    this.scene.add(this.debugGhostTrail);
+
+    this.debugTargetMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.72, 12, 8),
+      new THREE.MeshBasicMaterial({
+        color: 0xffe55c,
+        transparent: true,
+        opacity: 0.95,
+        depthTest: false,
+      }),
+    );
+    this.debugTargetMarker.renderOrder = 42;
+    this.debugTargetMarker.visible = false;
+    this.scene.add(this.debugTargetMarker);
+
+    this.debugGhostCar = createFormulaCar(0x35dff4, 'SOFT');
+    this.debugGhostCar.root.visible = false;
+    this.debugGhostCar.root.renderOrder = 43;
+    this.debugGhostCar.root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        material.transparent = true;
+        material.opacity = 0.42;
+        material.depthWrite = false;
+      }
+      object.castShadow = false;
+      object.receiveShadow = false;
+    });
+    this.scene.add(this.debugGhostCar.root);
+  }
+
+  private toggleAiDebug(): void {
+    this.debugEnabled = !this.debugEnabled;
+    if (!this.debugEnabled) {
+      this.setAiDebugVisualsVisible(false);
+      this.debugGhost = undefined;
+      return;
+    }
+
+    this.debugAiIndex = Math.min(this.debugAiIndex, Math.max(0, this.ai.length - 1));
+    this.clearAiDebugTrails();
+    this.resetAiDebugGhost();
+    this.refreshAiDebugReferenceLine();
+    this.setAiDebugVisualsVisible(true);
+  }
+
+  private cycleDebugAi(): void {
+    if (this.ai.length === 0) return;
+    this.debugAiIndex = (this.debugAiIndex + 1) % this.ai.length;
+    this.clearAiDebugTrails();
+    this.resetAiDebugGhost();
+    this.refreshAiDebugReferenceLine();
+  }
+
+  private setAiDebugVisualsVisible(visible: boolean): void {
+    if (this.debugReferenceLine) this.debugReferenceLine.visible = visible;
+    if (this.debugActualTrail) this.debugActualTrail.visible = visible;
+    if (this.debugGhostTrail) this.debugGhostTrail.visible = visible;
+    if (this.debugTargetMarker) this.debugTargetMarker.visible = visible;
+    if (this.debugGhostCar) this.debugGhostCar.root.visible = visible;
+  }
+
+  private clearAiDebugTrails(): void {
+    this.debugActualTrailPoints = [];
+    this.debugGhostTrailPoints = [];
+    this.debugActualTrail?.geometry.setFromPoints([]);
+    this.debugGhostTrail?.geometry.setFromPoints([]);
+  }
+
+  private resetAiDebugGhost(): void {
+    const selected = this.ai[this.debugAiIndex];
+    const startProgress = selected?.progress ?? this.trackProgress;
+    this.debugGhost = new AiReferenceGhost(startProgress, this.setup.trackId);
+    this.debugLineRefreshRemaining = 0;
+  }
+
+  private refreshAiDebugReferenceLine(): void {
+    if (!this.debugReferenceLine) return;
+    const grip = this.ai[this.debugAiIndex]?.tire.grip ?? this.tire.grip;
+    const points = Array.from({ length: 240 }, (_, index) => {
+      const progress = index / 240;
+      const reference = activeReferenceTarget(this.setup.trackId, progress, grip);
+      const track = sampleTrack(progress, reference.laneOffset);
+      return toWorld(track.x, track.y, 0.17);
+    });
+    this.debugReferenceLine.geometry.setFromPoints(points);
+    this.debugLineRefreshRemaining = 0.5;
+  }
+
+  private stepAiDebugGhost(dt: number): void {
+    if (!this.debugEnabled || !this.debugGhost) return;
+    this.debugGhost.step(dt);
+  }
+
+  private syncAiDebugVisuals(dt: number): void {
+    if (!this.debugEnabled) return;
+
+    this.debugLineRefreshRemaining -= dt;
+    if (this.debugLineRefreshRemaining <= 0) this.refreshAiDebugReferenceLine();
+
+    const state = this.physics.aiStates()[this.debugAiIndex];
+    const control = this.physics.aiControls()[this.debugAiIndex];
+    if (state) this.appendAiDebugTrail(this.debugActualTrailPoints, this.debugActualTrail, state);
+
+    if (control && this.debugTargetMarker) {
+      const target = sampleTrack(control.debug.steeringProgress, control.targetLane);
+      this.debugTargetMarker.position.copy(toWorld(target.x, target.y, 0.28));
+    }
+
+    const ghostState = this.debugGhost?.state();
+    if (ghostState && this.debugGhostCar) {
+      this.debugGhostCar.root.position.copy(toWorld(ghostState.x, ghostState.y, 0.11));
+      this.debugGhostCar.root.rotation.y = headingToYaw(ghostState.heading);
+      this.appendAiDebugTrail(this.debugGhostTrailPoints, this.debugGhostTrail, ghostState);
+    }
+  }
+
+  private appendAiDebugTrail(
+    points: THREE.Vector3[],
+    line: THREE.Line | undefined,
+    state: VehicleState,
+  ): void {
+    if (!line) return;
+    const next = toWorld(state.x, state.y, 0.20);
+    const previous = points[points.length - 1];
+    if (previous && previous.distanceToSquared(next) < 0.18 * 0.18) return;
+    points.push(next);
+    if (points.length > 420) points.splice(0, points.length - 420);
+    line.geometry.setFromPoints(points);
   }
 
   private updateCamera(dt: number): void {
