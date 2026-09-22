@@ -90,6 +90,7 @@ describe('AiReferenceGhost', () => {
     let replayPreviousProgress = 0.01;
     let replayLapSeconds = 0;
     let maxPathError = 0;
+    let maxReplayErrorSnapshot: unknown;
     let errorSum = 0;
     let samples = 0;
     const replayBins = Array.from({ length: 20 }, () => ({
@@ -120,7 +121,32 @@ describe('AiReferenceGhost', () => {
         state.y,
         projection.progress,
       );
-      maxPathError = Math.max(maxPathError, lineProjection.distance);
+      if (lineProjection.distance > maxPathError) {
+        maxPathError = lineProjection.distance;
+        const control = replay.latestControl();
+        maxReplayErrorSnapshot = {
+          progress: lineProjection.progress,
+          centreProgress: projection.progress,
+          actualLane: projection.laneOffset,
+          speedKmh: state.speed * 3.6,
+          heading: state.heading,
+          yawRate: state.yawRate,
+          control: control
+            ? {
+                steer: control.steer,
+                brake: control.brake,
+                throttle: control.throttle,
+                targetSpeedKmh: control.targetSpeed * 3.6,
+                debug: {
+                  laneError: control.debug.laneError,
+                  pathHeadingError: control.debug.pathHeadingError,
+                  bearingError: control.debug.bearingError,
+                  targetYawRate: control.debug.targetYawRate,
+                },
+              }
+            : undefined,
+        };
+      }
       errorSum += lineProjection.distance;
       samples += 1;
       const control = replay.latestControl();
@@ -152,6 +178,7 @@ describe('AiReferenceGhost', () => {
       replayLapSeconds,
       maxPathError,
       avgPathError: samples > 0 ? errorSum / samples : 0,
+      maxReplayErrorSnapshot,
       bins: replayBins.map((bin, index) => ({
         p: `${index * 5}-${(index + 1) * 5}%`,
         avgError: bin.samples > 0 ? bin.pathError / bin.samples : 0,
