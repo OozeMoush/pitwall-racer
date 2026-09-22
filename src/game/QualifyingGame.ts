@@ -288,7 +288,13 @@ class QualifyingGame {
       after.heading,
       this.vehicle.heading,
     );
-    this.lineCandidate.sample(after.progress, after.laneOffset, this.vehicle.speed);
+    this.lineCandidate.sample(
+      after.progress,
+      after.laneOffset,
+      this.vehicle.speed,
+      wrapAngle(this.vehicle.heading - after.heading),
+      this.vehicle.yawRate,
+    );
     if (validityEvent !== 'NONE') {
       this.lineCandidate.markIneligible();
       const snapshot = this.lapValidity.snapshot();
@@ -480,6 +486,13 @@ class QualifyingGame {
 function qualifyingApproachSpeed(trackId: RaceSetup['trackId'], tireGrip: number): number {
   const reference = referenceTarget(trackId, START_PROGRESS, tireGrip);
   return clamp(reference.targetSpeed * 0.96, 56, 76);
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
 }
 
 function clamp(value: number, min: number, max: number): number {
