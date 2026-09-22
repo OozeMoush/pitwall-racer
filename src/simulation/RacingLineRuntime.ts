@@ -5,7 +5,7 @@ import {
   type ReferenceLapSample,
 } from './ReferenceDriverModel';
 import { sampleRacingLineAsset, type RacingLineAsset } from './RacingLineAsset';
-import { TRACK_LENGTH, type TrackId } from './TrackModel';
+import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 
 const active = new Map<TrackId, RacingLineAsset>();
 const BRAKE_LOOKAHEAD_STEP_METRES = 12;
@@ -25,6 +25,79 @@ export function setRuntimeRacingLine(
 
 export function runtimeRacingLine(trackId: TrackId): RacingLineAsset | undefined {
   return active.get(trackId);
+}
+
+export interface RuntimeRacingLineProjection {
+  progress: number;
+  distance: number;
+}
+
+/**
+ * Project a physical car onto the active explicit path itself, rather than
+ * assuming centreline progress is also the correct phase of a PLAYER/EDITOR
+ * trajectory. That assumption breaks down badly when an edge-hugging line
+ * crosses from one side of a chicane to the other.
+ */
+export function projectRuntimeRacingLineNear(
+  trackId: TrackId,
+  x: number,
+  y: number,
+  referenceProgress: number,
+): RuntimeRacingLineProjection {
+  const asset = active.get(trackId);
+  if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR') || asset.points.length === 0) {
+    return { progress: wrap01(referenceProgress), distance: Number.POSITIVE_INFINITY };
+  }
+
+  const span = clamp(72 / Math.max(1, TRACK_LENGTH), 0.028, 0.075);
+  const coarseSteps = 40;
+  let bestProgress = wrap01(referenceProgress);
+  let bestScore = Number.POSITIVE_INFINITY;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index <= coarseSteps; index++) {
+    const offset = -span + (2 * span * index) / coarseSteps;
+    const progress = wrap01(referenceProgress + offset);
+    const selected = sampleRacingLineAsset(asset, progress);
+    const point = sampleTrack(progress, selected.laneOffset);
+    const distance = Math.hypot(x - point.x, y - point.y);
+    // Keep continuity as a weak tie-breaker only. Geometry should own the
+    // projection, but nearby parallel pieces of the miniature circuit must not
+    // cause a phase jump to another part of the lap.
+    const alongPenalty = Math.abs(offset) * TRACK_LENGTH * 0.035;
+    const score = distance + alongPenalty;
+    if (score < bestScore) {
+      bestScore = score;
+      bestDistance = distance;
+      bestProgress = progress;
+    }
+  }
+
+  let step = (2 * span) / coarseSteps;
+  for (let pass = 0; pass < 4; pass++) {
+    let refinedProgress = bestProgress;
+    let refinedScore = bestScore;
+    let refinedDistance = bestDistance;
+    for (const direction of [-1, 0, 1] as const) {
+      const progress = wrap01(bestProgress + direction * step);
+      const selected = sampleRacingLineAsset(asset, progress);
+      const point = sampleTrack(progress, selected.laneOffset);
+      const distance = Math.hypot(x - point.x, y - point.y);
+      const phaseDelta = circularProgressDistance(progress, referenceProgress);
+      const score = distance + phaseDelta * TRACK_LENGTH * 0.035;
+      if (score < refinedScore) {
+        refinedScore = score;
+        refinedDistance = distance;
+        refinedProgress = progress;
+      }
+    }
+    bestProgress = refinedProgress;
+    bestScore = refinedScore;
+    bestDistance = refinedDistance;
+    step *= 0.5;
+  }
+
+  return { progress: bestProgress, distance: bestDistance };
 }
 
 /**
@@ -129,6 +202,16 @@ export function activeReferenceTarget(
     laneOffset: selected.laneOffset,
     targetSpeed: selected.targetSpeed * clamp(gripTransfer, 0.72, 1.18),
   };
+}
+
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
+}
+
+function circularProgressDistance(a: number, b: number): number {
+  const delta = Math.abs(wrap01(a - b));
+  return Math.min(delta, 1 - delta);
 }
 
 function clamp(value: number, min: number, max: number): number {
