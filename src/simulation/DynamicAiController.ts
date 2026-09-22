@@ -321,7 +321,7 @@ export function dynamicAiControl(
     const lineError = explicitFollower
       ? Math.abs(explicitFollower.laneError)
       : Math.abs(referenceLaneNow - projection.laneOffset);
-    const recoveryScale = 1 - clamp((lineError - 0.9) / 4.8, 0, 1) * 0.48;
+    const recoveryScale = 1 - clamp((lineError - 0.9) / 4.8, 0, 1) * 0.62;
     targetSpeed *= recoveryScale;
   }
 
@@ -369,7 +369,7 @@ export function dynamicAiControl(
 
   if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
-  targetSpeed = clamp(targetSpeed, 26, 136);
+  targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
   const speedError = targetSpeed - speed;
   const overspeed = -speedError;
