@@ -51,6 +51,8 @@ describe('AiReferenceGhost', () => {
 
     const ghost = new AiReferenceGhost(0.05, 'pitwall-gp');
     let maxLaneError = 0;
+    let maxTrackDistance = 0;
+    let lastProgress = ghost.driver.progress;
 
     for (let tick = 0; tick < 45 * 120; tick++) {
       ghost.step(1 / 120);
@@ -70,9 +72,19 @@ describe('AiReferenceGhost', () => {
         maxLaneError,
         Math.abs(reference.laneOffset - projection.laneOffset),
       );
+      maxTrackDistance = Math.max(maxTrackDistance, projection.distance);
+      lastProgress = projection.progress;
       if (ghost.lastLapSeconds() !== undefined) break;
     }
 
+    console.info('EXPLICIT_REPLAY_DIAGNOSTIC', {
+      lastLapSeconds: ghost.lastLapSeconds(),
+      lastProgress,
+      maxLaneError,
+      maxTrackDistance,
+      speedKmh: (ghost.state()?.speed ?? 0) * 3.6,
+      control: ghost.latestControl(),
+    });
     expect(ghost.lastLapSeconds()).toBeDefined();
     expect(maxLaneError).toBeLessThan(5.5);
   });
