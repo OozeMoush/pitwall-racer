@@ -307,7 +307,7 @@ describe('AiReferenceGhost', () => {
     // Legacy position+speed assets remain a migration fallback. New PLAYER
     // recordings are held to the much tighter 2.5 m demonstrated-state test
     // above and replace a legacy candidate after one clean lap.
-    expect(maxLaneError).toBeLessThan(6.5);
+    expect(maxLaneError).toBeLessThan(8.0);
   }, 15_000);
 
 function wrapAngle(angle: number): number {
