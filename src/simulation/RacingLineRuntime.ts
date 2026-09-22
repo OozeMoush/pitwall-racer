@@ -258,22 +258,21 @@ export function racingLineLocalBrakeIntent(
     progress + distance / TRACK_LENGTH,
     tireGrip,
   ).targetSpeed;
-  // If the replay exactly matches the trace this reduces to the recorded
-  // local speed derivative. If it arrives even slightly too fast, solve for
-  // the extra deceleration required to reach the *next demonstrated speed*
-  // over the same physical distance. This is important at tight transitions:
-  // otherwise a transient overspeed survives until the generic feedback loop
-  // notices it, by which point the chassis may already be yaw-limited.
+  // Reproduce the demonstrated local speed derivative exactly when replay
+  // speed matches the trace. Any *extra* overspeed is a replay error, not part
+  // of the demonstrated braking plan, so remove that error over a shorter
+  // correction distance. This avoids turning the whole trace into an
+  // artificially early-braking line while still preventing a 10-15 km/h
+  // transient overspeed from carrying the chassis beyond the recorded apex.
   const traceAcceleration =
     (futureTarget * futureTarget - currentTarget * currentTarget)
     / (2 * distance);
-  const catchUpAcceleration =
-    (futureTarget * futureTarget - currentSpeed * currentSpeed)
-    / (2 * distance);
-  const desiredAcceleration = Math.min(
-    traceAcceleration,
-    catchUpAcceleration,
-  );
+  const overspeedCorrectionDistance = 4;
+  const overspeedCorrection = currentSpeed > currentTarget
+    ? (currentTarget * currentTarget - currentSpeed * currentSpeed)
+      / (2 * overspeedCorrectionDistance)
+    : 0;
+  const desiredAcceleration = traceAcceleration + overspeedCorrection;
 
   const coast = runtimeLongitudinalAcceleration(
     currentSpeed,
