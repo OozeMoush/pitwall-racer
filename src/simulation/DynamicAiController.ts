@@ -287,13 +287,20 @@ export function dynamicAiControl(
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
   const predictionWeight = pitwallPrediction;
-  const steer = explicitFollower
+  const explicitPredictedSteer = explicitFollower
     ? predictiveExplicitLineSteer(
         trackId,
         vehicle,
         driver.tire.grip,
         explicitFollower.pathProgress,
         baselineSteer,
+      )
+    : undefined;
+  const steer = explicitFollower
+    ? constrainedExplicitPrediction(
+        explicitFollower.laneError,
+        baselineSteer,
+        explicitPredictedSteer ?? baselineSteer,
       )
     : predictiveAiSteer(
         vehicle,
@@ -425,6 +432,35 @@ export function dynamicAiControl(
       profileBrake: explicitProfileBrake,
     },
   };
+}
+
+function constrainedExplicitPrediction(
+  laneError: number,
+  baselineSteer: number,
+  predictedSteer: number,
+): number {
+  const magnitude = Math.abs(laneError);
+  if (magnitude < 1.8) return predictedSteer;
+
+  const recoveryDirection = Math.sign(laneError);
+  const predictedOpposesRecovery = predictedSteer * recoveryDirection < -0.015;
+  if (predictedOpposesRecovery) {
+    // Once the car is materially displaced, do not sacrifice the current path
+    // in order to prepare an even later apex. That was the remaining failure
+    // mode in compact S-bends: MPC could choose the next turn while the car was
+    // still several metres on the wrong side of the present line.
+    return baselineSteer;
+  }
+
+  if (magnitude >= 4.5) return baselineSteer;
+
+  const predictionWeight = 1 - clamp((magnitude - 1.8) / 2.7, 0, 1);
+  return clamp(
+    baselineSteer * (1 - predictionWeight)
+      + predictedSteer * predictionWeight,
+    -1,
+    1,
+  );
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {
