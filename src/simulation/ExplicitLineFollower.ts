@@ -17,6 +17,7 @@ export interface ExplicitLineFollowerTarget {
   pathProgress: number;
   referenceLane: number;
   laneError: number;
+  pathError: number;
   pathHeadingError: number;
   bearingError: number;
   demonstratedDynamics: boolean;
@@ -267,6 +268,7 @@ export function explicitLineFollower(
     pathProgress,
     referenceLane: currentReference.laneOffset,
     laneError,
+    pathError: lineProjection.distance,
     pathHeadingError,
     bearingError,
     demonstratedDynamics,
