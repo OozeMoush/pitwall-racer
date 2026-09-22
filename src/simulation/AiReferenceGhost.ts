@@ -1,7 +1,8 @@
 import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
 import { createAiField, type DriverState } from './RaceModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
-import { activeReferenceTarget } from './RacingLineRuntime';
+import { sampleRacingLineAsset } from './RacingLineAsset';
+import { activeReferenceTarget, runtimeRacingLine } from './RacingLineRuntime';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
@@ -35,7 +36,15 @@ export class AiReferenceGhost {
     const aheadProgress = startProgress + 6 / Math.max(1, TRACK_LENGTH);
     const aheadReference = activeReferenceTarget(trackId, aheadProgress, tire.grip);
     const ahead = sampleTrack(aheadProgress, aheadReference.laneOffset);
-    const lineHeading = Math.atan2(ahead.y - pose.y, ahead.x - pose.x);
+    const geometricHeading = Math.atan2(ahead.y - pose.y, ahead.x - pose.x);
+    const lineAsset = runtimeRacingLine(trackId);
+    const demonstrated = lineAsset
+      ? sampleRacingLineAsset(lineAsset, startProgress)
+      : undefined;
+    const lineHeading = demonstrated?.headingOffset !== undefined
+      ? wrapAngle(pose.heading + demonstrated.headingOffset)
+      : geometricHeading;
+    const initialYawRate = demonstrated?.yawRate ?? 0;
 
     this.driver = {
       ...base,
@@ -61,6 +70,7 @@ export class AiReferenceGhost {
     this.physics.setAiState(0, {
       ...createVehicle(pose.x, pose.y, lineHeading),
       speed: reference.targetSpeed,
+      yawRate: initialYawRate,
     });
     this.lastProgress = startProgress;
   }
@@ -121,4 +131,12 @@ export class AiReferenceGhost {
   currentLapSeconds(): number | undefined {
     return this.timedLapStarted ? this.lapElapsed : undefined;
   }
+}
+
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
 }
