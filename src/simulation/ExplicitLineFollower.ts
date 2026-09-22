@@ -228,21 +228,36 @@ export function explicitLineFollower(
     feedForwardCurvature,
     tireGrip,
   );
-  const yawCorrection = targetYawRate !== undefined
-    ? (targetYawRate - vehicle.yawRate) * 0.46
-    : -vehicle.yawRate * 0.30;
-  const stateGuidanceScale = demonstratedDynamics ? 0.72 : 1;
-  const steer = clamp(
-    feedForwardSteer * (demonstratedDynamics ? 0.98 : 0.92)
-      + pathHeadingError * (demonstratedDynamics ? 2.15 : 1.72 + errorSeverity * 0.38)
-      + bearingError * (demonstratedDynamics ? 0.82 : 0.94 + errorSeverity * 0.24)
-      + crossTrackAngle * 3.35
-      + headingLead * (0.70 + leadWeight * 0.52) * stateGuidanceScale
-      + laneTransitionAngle * (1.55 + leadWeight * 0.70) * stateGuidanceScale
-      + yawCorrection,
-    -1,
-    1,
-  );
+  const yawError = targetYawRate !== undefined
+    ? targetYawRate - vehicle.yawRate
+    : -vehicle.yawRate;
+
+  // Once a PLAYER lap carries demonstrated body rotation, that state is more
+  // authoritative than geometric guesses about a future apex. The previous
+  // blend let bearing/preview terms cancel a large heading+yaw correction in
+  // the middle of an S-bend. Follow the recorded heading/yaw directly and keep
+  // only a moderate cross-track term to converge spatial drift.
+  const steer = demonstratedDynamics
+    ? clamp(
+        feedForwardSteer * 1.02
+          + pathHeadingError * 3.05
+          + yawError * 0.92
+          + crossTrackAngle * 1.85
+          + bearingError * 0.30,
+        -1,
+        1,
+      )
+    : clamp(
+        feedForwardSteer * 0.92
+          + pathHeadingError * (1.72 + errorSeverity * 0.38)
+          + bearingError * (0.94 + errorSeverity * 0.24)
+          + crossTrackAngle * 3.35
+          + headingLead * (0.70 + leadWeight * 0.52)
+          + laneTransitionAngle * (1.55 + leadWeight * 0.70)
+          - vehicle.yawRate * 0.30,
+        -1,
+        1,
+      );
 
   return {
     steer,
