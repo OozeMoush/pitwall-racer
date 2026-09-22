@@ -138,8 +138,13 @@ export function explicitLineFollower(
       )
     : undefined;
   const yawPreviewSeconds = yawPreviewMetres / Math.max(12, vehicle.speed);
-  const yawAnticipationWeight = clamp(0.12 / yawPreviewSeconds, 0.18, 0.62);
-  const targetYawRate = currentYawRate !== undefined && previewYawRate !== undefined
+  const yawAnticipationWeight = clamp(0.08 / yawPreviewSeconds, 0.10, 0.45);
+  const yawIsUnwinding = currentYawRate !== undefined && previewYawRate !== undefined
+    && (
+      currentYawRate * previewYawRate <= 0
+      || Math.abs(previewYawRate) < Math.abs(currentYawRate) * 0.82
+    );
+  const targetYawRate = currentYawRate !== undefined && previewYawRate !== undefined && yawIsUnwinding
     ? currentYawRate + (previewYawRate - currentYawRate) * yawAnticipationWeight
     : currentYawRate;
 
