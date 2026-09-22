@@ -93,7 +93,17 @@ describe('AiReferenceGhost', () => {
           pathDistance: lineProjection.distance,
           trackDistance: projection.distance,
           speedKmh: state.speed * 3.6,
-          control: ghost.latestControl(),
+          heading: state.heading,
+          yawRate: state.yawRate,
+          control: ghost.latestControl()
+            ? {
+                steer: ghost.latestControl()!.steer,
+                brake: ghost.latestControl()!.brake,
+                throttle: ghost.latestControl()!.throttle,
+                targetSpeed: ghost.latestControl()!.targetSpeed,
+                debug: ghost.latestControl()!.debug,
+              }
+            : undefined,
         };
       }
       maxTrackDistance = Math.max(maxTrackDistance, projection.distance);
