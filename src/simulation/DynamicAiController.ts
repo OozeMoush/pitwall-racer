@@ -206,12 +206,19 @@ export function dynamicAiControl(
 
   const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
   if (offRoad) {
-    targetLane = 0;
+    // AUTO recovers toward the centreline, but an explicit line should not
+    // suddenly be replaced by a completely different path the moment one tyre
+    // runs wide. Keep PLAYER/EDITOR recovery locked to the demonstrated path;
+    // the speed caps below provide the safety margin while the same follower
+    // brings the car back.
+    targetLane = highFidelityLine
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      : 0;
     battleState = 'CLEAR';
   }
 
   const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
-  const explicitFollower = highFidelityLine && !offRoad && !battleActive
+  const explicitFollower = highFidelityLine && !battleActive
     ? explicitLineFollower(
         trackId,
         vehicle,
