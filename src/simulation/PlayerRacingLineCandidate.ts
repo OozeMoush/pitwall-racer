@@ -173,31 +173,32 @@ function interpolateSample(
   let high = 0;
   while (high < samples.length && samples[high].progress < progress) high += 1;
 
+  let a: RawSample;
+  let b: RawSample;
+  let sampleProgress = progress;
+
   if (high <= 0) {
-    const first = samples[0];
-    return {
-      progress,
-      laneOffset: first.laneOffset,
-      targetSpeed: first.speed,
-      headingOffset: first.headingOffset,
-      yawRate: first.yawRate,
-    };
-  }
-  if (high >= samples.length) {
+    // A lap is circular. Interpolate across the start/finish seam instead of
+    // extending the first observed sample backwards to progress 0. That old
+    // edge hold introduced a small but sharp path/rotation discontinuity at
+    // the line, which became visible as a multi-metre replay spike.
     const last = samples[samples.length - 1];
-    return {
-      progress,
-      laneOffset: last.laneOffset,
-      targetSpeed: last.speed,
-      headingOffset: last.headingOffset,
-      yawRate: last.yawRate,
-    };
+    const first = samples[0];
+    a = { ...last, progress: last.progress - 1 };
+    b = first;
+  } else if (high >= samples.length) {
+    const last = samples[samples.length - 1];
+    const first = samples[0];
+    a = last;
+    b = { ...first, progress: first.progress + 1 };
+    if (sampleProgress < a.progress) sampleProgress += 1;
+  } else {
+    a = samples[high - 1];
+    b = samples[high];
   }
 
-  const a = samples[high - 1];
-  const b = samples[high];
   const span = Math.max(0.000001, b.progress - a.progress);
-  const t = (progress - a.progress) / span;
+  const t = (sampleProgress - a.progress) / span;
   return {
     progress,
     laneOffset: lerp(a.laneOffset, b.laneOffset, t),
