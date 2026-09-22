@@ -1,4 +1,5 @@
 import { referenceSteerForCurvature } from './ReferenceDriverModel';
+import { controlArcadeCar } from './ArcadeCarController';
 import type { TrackId } from './TrackModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import {
