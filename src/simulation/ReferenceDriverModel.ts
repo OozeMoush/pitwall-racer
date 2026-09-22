@@ -133,17 +133,40 @@ export function referenceRacingLineAsset(
   tireGrip: number,
 ): RacingLineAsset {
   const lap = referenceLap(trackId, tireGrip);
+  const geometry = buildGeometry(getTrackDefinition(trackId).controls);
+  const points = lap.samples.map((sample, index) => {
+    const previous = lap.samples[(index - 1 + lap.samples.length) % lap.samples.length];
+    const next = lap.samples[(index + 1) % lap.samples.length];
+    const previousPoint = sampleGeometry(geometry, previous.progress, previous.laneOffset);
+    const currentPoint = sampleGeometry(geometry, sample.progress, sample.laneOffset);
+    const nextPoint = sampleGeometry(geometry, next.progress, next.laneOffset);
+    const pathHeading = Math.atan2(
+      nextPoint.y - previousPoint.y,
+      nextPoint.x - previousPoint.x,
+    );
+    const centreHeading = sampleGeometry(geometry, sample.progress, 0).heading;
+    const signedCurvature = signedPathCurvature(
+      previousPoint,
+      currentPoint,
+      nextPoint,
+    );
+
+    return {
+      progress: sample.progress,
+      laneOffset: sample.laneOffset,
+      targetSpeed: sample.targetSpeed,
+      headingOffset: wrapAngle(pathHeading - centreHeading),
+      yawRate: sample.targetSpeed * signedCurvature,
+    };
+  });
+
   return {
     version: 1,
     trackId,
     source: 'OPTIMIZER',
     referenceGrip: lap.tireGrip,
     lapSeconds: lap.lapSeconds,
-    points: lap.samples.map((sample) => ({
-      progress: sample.progress,
-      laneOffset: sample.laneOffset,
-      targetSpeed: sample.targetSpeed,
-    })),
+    points,
   };
 }
 
@@ -415,6 +438,22 @@ function sampleGeometry(geometry: Geometry, progress: number, laneOffset = 0): T
   };
 }
 
+function signedPathCurvature(
+  previous: TrackPoint,
+  current: TrackPoint,
+  next: TrackPoint,
+): number {
+  const ab = Math.hypot(current.x - previous.x, current.y - previous.y);
+  const bc = Math.hypot(next.x - current.x, next.y - current.y);
+  const ac = Math.hypot(next.x - previous.x, next.y - previous.y);
+  const denominator = ab * bc * ac;
+  if (denominator < 0.0001) return 0;
+  const cross =
+    (current.x - previous.x) * (next.y - previous.y)
+    - (current.y - previous.y) * (next.x - previous.x);
+  return (2 * cross) / denominator;
+}
+
 function pathCurvature(points: readonly TrackPoint[], index: number): number {
   const previous = points[(index - 1 + points.length) % points.length];
   const current = points[index];
@@ -449,6 +488,13 @@ function buildClosedCatmullRom(points: readonly TrackPoint[], samplesPerControl:
       });
     }
   }
+  return result;
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
   return result;
 }
 
