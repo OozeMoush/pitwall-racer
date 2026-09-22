@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
+import { PlayerRacingLineCandidateRecorder } from './PlayerRacingLineCandidate';
 import { referenceRacingLineAsset } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
@@ -45,6 +46,92 @@ describe('AiReferenceGhost', () => {
     expect(Number.isFinite(state?.speed)).toBe(true);
     expect(Math.abs(ghost.driver.progress - initial)).toBeGreaterThan(0.01);
   });
+  it('replays a physically demonstrated lap close to the path that produced it', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('pitwall-gp', undefined);
+
+    const source = new AiReferenceGhost(0.01, 'pitwall-gp');
+    const recorder = new PlayerRacingLineCandidateRecorder();
+    recorder.begin('pitwall-gp', source.driver.tire.grip);
+    let elapsed = 0;
+    let previousProgress = 0.01;
+    let recordedLapSeconds = 0;
+
+    for (let tick = 0; tick < 45 * 120; tick++) {
+      source.step(1 / 120);
+      elapsed += 1 / 120;
+      const state = source.state();
+      if (!state) continue;
+      const projection = projectTrackNear(
+        state.x,
+        state.y,
+        source.driver.progress,
+      );
+      recorder.sample(
+        projection.progress,
+        projection.laneOffset,
+        state.speed,
+        wrapAngle(state.heading - projection.heading),
+        state.yawRate,
+      );
+      if (previousProgress > 0.90 && projection.progress < 0.10) {
+        recordedLapSeconds = elapsed;
+        break;
+      }
+      previousProgress = projection.progress;
+    }
+
+    const candidate = recorder.finish(recordedLapSeconds);
+    expect(candidate).toBeDefined();
+    setRuntimeRacingLine('pitwall-gp', candidate);
+
+    const replay = new AiReferenceGhost(0.01, 'pitwall-gp');
+    let replayElapsed = 0;
+    let replayPreviousProgress = 0.01;
+    let replayLapSeconds = 0;
+    let maxPathError = 0;
+    let errorSum = 0;
+    let samples = 0;
+
+    for (let tick = 0; tick < 45 * 120; tick++) {
+      replay.step(1 / 120);
+      replayElapsed += 1 / 120;
+      const state = replay.state();
+      if (!state) continue;
+      const projection = projectTrackNear(
+        state.x,
+        state.y,
+        replay.driver.progress,
+      );
+      const lineProjection = projectRuntimeRacingLineNear(
+        'pitwall-gp',
+        state.x,
+        state.y,
+        projection.progress,
+      );
+      maxPathError = Math.max(maxPathError, lineProjection.distance);
+      errorSum += lineProjection.distance;
+      samples += 1;
+
+      if (replayPreviousProgress > 0.90 && projection.progress < 0.10) {
+        replayLapSeconds = replayElapsed;
+        break;
+      }
+      replayPreviousProgress = projection.progress;
+    }
+
+    console.info('DEMONSTRATED_REPLAY_DIAGNOSTIC', {
+      recordedLapSeconds,
+      replayLapSeconds,
+      maxPathError,
+      avgPathError: samples > 0 ? errorSum / samples : 0,
+    });
+
+    expect(replayLapSeconds).toBeGreaterThan(0);
+    expect(replayLapSeconds).toBeLessThan(recordedLapSeconds * 1.18);
+    expect(maxPathError).toBeLessThan(3.2);
+  });
+
   it('can physically replay a near-limit reference when exposed as PLAYER data', () => {
     setActiveTrack('pitwall-gp');
     const machine = referenceRacingLineAsset('pitwall-gp', 1.1);
@@ -171,5 +258,12 @@ describe('AiReferenceGhost', () => {
     expect(ghost.lastLapSeconds()).toBeDefined();
     expect(maxLaneError).toBeLessThan(5.5);
   });
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
+}
 
 });
