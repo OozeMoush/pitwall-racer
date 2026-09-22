@@ -476,6 +476,8 @@ export function dynamicAiControl(
       laneError: explicitFollower
         ? -explicitFollower.laneError
         : projection.laneOffset - referenceLaneNow,
+      pathError: explicitFollower?.pathError
+        ?? Math.abs(projection.laneOffset - referenceLaneNow),
       lookAheadMetres: steeringLookAheadMetres,
       steeringProgress: wrap01(steeringProgress),
       predictionWeight,
