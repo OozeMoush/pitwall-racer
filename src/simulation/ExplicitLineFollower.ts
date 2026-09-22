@@ -190,7 +190,7 @@ export function explicitLineFollower(
     signedCurvature,
     tireGrip,
   );
-  const steer = clamp(
+  const unconstrainedSteer = clamp(
     feedForwardSteer * 0.92
       + pathHeadingError * (1.72 + errorSeverity * 0.38)
       + bearingError * (0.94 + errorSeverity * 0.24)
@@ -201,6 +201,12 @@ export function explicitLineFollower(
     -1,
     1,
   );
+  const recoveryDirection = Math.sign(laneError);
+  const recoveryFloor = clamp((Math.abs(laneError) - 2.0) / 5.5, 0, 0.78);
+  const steer = recoveryFloor > 0
+    && unconstrainedSteer * recoveryDirection < recoveryFloor
+      ? recoveryDirection * recoveryFloor
+      : unconstrainedSteer;
 
   return {
     steer,
