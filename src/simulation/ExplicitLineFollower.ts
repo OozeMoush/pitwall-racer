@@ -242,7 +242,7 @@ export function explicitLineFollower(
         feedForwardSteer * 1.02
           + pathHeadingError * (3.10 + errorSeverity * 3.00)
           + yawError * (0.95 + errorSeverity * 1.50)
-          + crossTrackAngle * (1.90 + errorSeverity * 2.20)
+          + crossTrackAngle * (3.20 + errorSeverity * 3.80)
           + bearingError * (0.30 + errorSeverity * 0.50),
         -1,
         1,
