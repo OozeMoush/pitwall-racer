@@ -296,6 +296,7 @@ class QualifyingGame {
       this.vehicle.yawRate,
       dt,
       this.tire.grip,
+      this.physics.playerLongitudinalAcceleration(),
     );
     if (validityEvent !== 'NONE') {
       this.lineCandidate.markIneligible();

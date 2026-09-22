@@ -15,6 +15,7 @@ interface RawSample {
   yawRate?: number;
   longitudinalAcceleration?: number;
   tireGrip?: number;
+  forwardAcceleration?: number;
 }
 
 interface CandidateStore {
@@ -57,6 +58,7 @@ export class PlayerRacingLineCandidateRecorder {
     yawRate?: number,
     dt?: number,
     tireGrip?: number,
+    forwardAcceleration?: number,
   ): void {
     if (!this.trackId || this.wrapped) return;
     const p = wrap01(progress);
@@ -83,6 +85,9 @@ export class PlayerRacingLineCandidateRecorder {
       yawRate: Number.isFinite(yawRate) ? yawRate : undefined,
       longitudinalAcceleration,
       tireGrip: Number.isFinite(tireGrip) ? tireGrip : undefined,
+      forwardAcceleration: Number.isFinite(forwardAcceleration)
+        ? forwardAcceleration
+        : undefined,
     });
     this.lastProgress = p;
   }
@@ -141,6 +146,12 @@ export function saveBestPlayerRacingLineCandidate(
   const candidateHasGripTrace = candidate.points.some(
     (point) => point.tireGrip !== undefined,
   );
+  const previousHasForwardAcceleration = previous?.points.some(
+    (point) => point.forwardAcceleration !== undefined,
+  ) ?? false;
+  const candidateHasForwardAcceleration = candidate.points.some(
+    (point) => point.forwardAcceleration !== undefined,
+  );
 
   // Legacy PLAYER lines only stored position + speed. A single clean modern
   // lap is allowed to replace that legacy candidate even when it is slower,
@@ -154,6 +165,7 @@ export function saveBestPlayerRacingLineCandidate(
     && (previousHasDynamics || !candidateHasDynamics)
     && (previousHasAcceleration || !candidateHasAcceleration)
     && (previousHasGripTrace || !candidateHasGripTrace)
+    && (previousHasForwardAcceleration || !candidateHasForwardAcceleration)
   ) {
     return previous;
   }
@@ -236,6 +248,11 @@ function interpolateSample(
       t,
     ),
     tireGrip: interpolateOptional(a.tireGrip, b.tireGrip, t),
+    forwardAcceleration: interpolateOptional(
+      a.forwardAcceleration,
+      b.forwardAcceleration,
+      t,
+    ),
   };
 }
 

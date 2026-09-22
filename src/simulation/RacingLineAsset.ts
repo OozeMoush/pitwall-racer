@@ -29,6 +29,12 @@ export interface RacingLinePoint {
    * to reproduce the same physical capability point by point.
    */
   tireGrip?: number;
+  /**
+   * Forward-axis longitudinal acceleration from the shared chassis physics.
+   * Unlike d(speed)/dt this excludes lateral energy scrub, which lets replay
+   * solve throttle/brake without double-counting cornering losses.
+   */
+  forwardAcceleration?: number;
 }
 
 export interface RacingLineAsset {
@@ -68,6 +74,11 @@ export function sampleRacingLineAsset(
       t,
     ),
     tireGrip: interpolateOptional(a.tireGrip, b.tireGrip, t),
+    forwardAcceleration: interpolateOptional(
+      a.forwardAcceleration,
+      b.forwardAcceleration,
+      t,
+    ),
   };
 }
 

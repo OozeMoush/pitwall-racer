@@ -32,6 +32,7 @@ export interface DynamicAiDebug {
   demonstratedDynamics: boolean;
   demonstratedAcceleration: boolean;
   demonstratedGripTrace: boolean;
+  demonstratedForwardAcceleration: boolean;
   sourceGrip?: number;
   targetYawRate?: number;
   pathHeadingError: number;
@@ -511,6 +512,9 @@ export function dynamicAiControl(
       ) ?? false,
       demonstratedGripTrace: lineAsset?.points.some(
         (point) => point.tireGrip !== undefined,
+      ) ?? false,
+      demonstratedForwardAcceleration: lineAsset?.points.some(
+        (point) => point.forwardAcceleration !== undefined,
       ) ?? false,
       sourceGrip: lineAsset
         ? sampleRacingLineAsset(

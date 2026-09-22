@@ -205,13 +205,14 @@ export function racingLineThrottleIntent(
   ).targetSpeed;
   const selected = sampleRacingLineAsset(asset, progress);
   const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
-  const useDemonstratedAcceleration =
-    selected.longitudinalAcceleration !== undefined
-    && Math.abs(tireGrip - sourceGrip) < 0.015;
-  const desiredAcceleration = useDemonstratedAcceleration
-    ? selected.longitudinalAcceleration!
-    : (futureTarget * futureTarget - currentTarget * currentTarget)
-      / (2 * distance);
+  const demonstratedAcceleration =
+    selected.forwardAcceleration ?? selected.longitudinalAcceleration;
+  const desiredAcceleration =
+    demonstratedAcceleration !== undefined
+      && Math.abs(tireGrip - sourceGrip) < 0.015
+      ? demonstratedAcceleration
+      : (futureTarget * futureTarget - currentTarget * currentTarget)
+        / (2 * distance);
 
   const coast = runtimeLongitudinalAcceleration(
     currentSpeed,
@@ -275,10 +276,14 @@ export function racingLineLocalBrakeIntent(
   const useDemonstratedAcceleration =
     selected.longitudinalAcceleration !== undefined
     && Math.abs(tireGrip - sourceGrip) < 0.015;
-  const traceAcceleration = useDemonstratedAcceleration
-    ? selected.longitudinalAcceleration!
-    : (futureTarget * futureTarget - currentTarget * currentTarget)
-      / (2 * distance);
+  const demonstratedAcceleration =
+    selected.forwardAcceleration ?? selected.longitudinalAcceleration;
+  const traceAcceleration =
+    demonstratedAcceleration !== undefined
+      && Math.abs(tireGrip - sourceGrip) < 0.015
+      ? demonstratedAcceleration
+      : (futureTarget * futureTarget - currentTarget * currentTarget)
+        / (2 * distance);
   const overspeedCorrectionDistance = 4;
   const overspeedCorrection = currentSpeed > currentTarget
     ? (currentTarget * currentTarget - currentSpeed * currentSpeed)

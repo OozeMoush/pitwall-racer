@@ -66,6 +66,7 @@ export class RapierRacePhysics {
   private readonly aiPitStops: PitStopState[];
   private playerSlideState = createTyreSlideState(0.37);
   private playerSlideSeverityValue = 0;
+  private playerLongitudinalAccelerationValue = 0;
   private aiSlideStates: TyreSlideState[];
   private latestAi: DriverState[] = [];
   private latestAiControls: Array<DynamicAiControl | undefined> = [];
@@ -98,10 +99,15 @@ export class RapierRacePhysics {
     const step = this.driveBody(this.playerBody, input, dt, 1, this.playerSlideState);
     this.playerSlideState = step.state;
     this.playerSlideSeverityValue = step.severity;
+    this.playerLongitudinalAccelerationValue = step.longitudinalAcceleration;
   }
 
   playerSlideSeverity(): number {
     return this.playerSlideSeverityValue;
+  }
+
+  playerLongitudinalAcceleration(): number {
+    return this.playerLongitudinalAccelerationValue;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -190,6 +196,7 @@ export class RapierRacePhysics {
     this.setBodyState(this.playerBody, state);
     this.playerSlideState = createTyreSlideState(0.37);
     this.playerSlideSeverityValue = 0;
+    this.playerLongitudinalAccelerationValue = 0;
   }
 
   setAiState(index: number, state: VehicleState): void {
@@ -341,7 +348,7 @@ export class RapierRacePhysics {
     dt: number,
     response: number,
     slideState: TyreSlideState,
-  ): { state: TyreSlideState; severity: number } {
+  ): { state: TyreSlideState; severity: number; longitudinalAcceleration: number } {
     const velocity = body.linvel();
     const speed = Math.hypot(velocity.x, velocity.y);
     const slide = stepTyreSlide(slideState, {
@@ -370,7 +377,11 @@ export class RapierRacePhysics {
       y: velocity.y + (controlled.vy - velocity.y) * response,
     }, true);
     body.setAngvel(body.angvel() + (controlled.angularVelocity - body.angvel()) * response, true);
-    return { state: slide.state, severity: slide.severity };
+    return {
+      state: slide.state,
+      severity: slide.severity,
+      longitudinalAcceleration: controlled.acceleration,
+    };
   }
 
   private createSafetyBarriers(): void {
