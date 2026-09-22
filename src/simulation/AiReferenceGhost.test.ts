@@ -129,7 +129,14 @@ describe('AiReferenceGhost', () => {
                 brake: ghost.latestControl()!.brake,
                 throttle: ghost.latestControl()!.throttle,
                 targetSpeed: ghost.latestControl()!.targetSpeed,
-                debug: ghost.latestControl()!.debug,
+                debug: {
+                  lineSource: ghost.latestControl()!.debug.lineSource,
+                  laneError: ghost.latestControl()!.debug.laneError,
+                  pathHeadingError: ghost.latestControl()!.debug.pathHeadingError,
+                  bearingError: ghost.latestControl()!.debug.bearingError,
+                  targetYawRate: ghost.latestControl()!.debug.targetYawRate,
+                  demonstratedDynamics: ghost.latestControl()!.debug.demonstratedDynamics,
+                },
               }
             : undefined,
         };
