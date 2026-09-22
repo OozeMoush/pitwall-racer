@@ -172,12 +172,20 @@ describe('AiReferenceGhost', () => {
     expect(maxPathError).toBeLessThan(3.2);
   });
 
-  it('can physically replay a near-limit reference when exposed as PLAYER data', () => {
+  it('keeps a legacy position+speed PLAYER line physically recoverable', () => {
     setActiveTrack('pitwall-gp');
     const machine = referenceRacingLineAsset('pitwall-gp', 1.1);
     setRuntimeRacingLine('pitwall-gp', {
       ...machine,
       source: 'PLAYER',
+      // Old saved candidates have no demonstrated heading/yaw state. Keep a
+      // regression for that fallback path while new recordings use the richer
+      // physically demonstrated controller tested above.
+      points: machine.points.map((point) => ({
+        progress: point.progress,
+        laneOffset: point.laneOffset,
+        targetSpeed: point.targetSpeed,
+      })),
     });
 
     // Start just before the line so the ghost arms its timed lap almost
