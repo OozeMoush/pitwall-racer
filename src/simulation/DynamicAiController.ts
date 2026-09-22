@@ -20,6 +20,7 @@ export interface DynamicAiDebug {
   progress: number;
   referenceLane: number;
   laneError: number;
+  pathError: number;
   lookAheadMetres: number;
   steeringProgress: number;
   predictionWeight: number;
