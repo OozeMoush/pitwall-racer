@@ -18,7 +18,11 @@ import {
 } from '../simulation/PlayerRacingLineCandidate';
 import { RaceRacingLineCandidateFilter } from '../simulation/RaceRacingLineCandidatePolicy';
 import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
-import { activeReferenceTarget, runtimeRacingLine } from '../simulation/RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  racingLineTraceLapSeconds,
+  runtimeRacingLine,
+} from '../simulation/RacingLineRuntime';
 import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
 import {
@@ -1202,6 +1206,11 @@ export class CoreRaceGame {
         ? '—'
         : `${(value * 180 / Math.PI).toFixed(1)}°`;
     const lap = line?.lapSeconds === undefined ? '—' : `${line.lapSeconds.toFixed(3)}s`;
+    const traceLapSeconds = racingLineTraceLapSeconds(line);
+    const traceLap = traceLapSeconds === undefined ? '—' : `${traceLapSeconds.toFixed(3)}s`;
+    const traceDelta = line?.lapSeconds !== undefined && traceLapSeconds !== undefined
+      ? traceLapSeconds - line.lapSeconds
+      : undefined;
     const ghostLap = this.debugGhost?.lastLapSeconds();
     const ghostCurrent = this.debugGhost?.currentLapSeconds();
     const ghostTime = ghostLap !== undefined
@@ -1216,6 +1225,7 @@ export class CoreRaceGame {
         <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
+        <span>TRACE LAP</span><b style="color:${Math.abs(traceDelta ?? 0) > 0.5 ? '#ff6978' : '#48ff74'}">${traceLap}${traceDelta === undefined ? '' : ` (${traceDelta >= 0 ? '+' : ''}${traceDelta.toFixed(3)})`}</b>
         <span>LAST CANDIDATE</span><b style="color:${this.lineCandidateStatus.startsWith('REJECT') ? '#ff6978' : this.lineCandidateStatus.startsWith('SAVED') ? '#48ff74' : '#dce9e4'}">${this.lineCandidateStatus}</b>
         <span>LINE-SHAPING TRAFFIC</span><b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)} s</b>
         <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP · RECORD CLEAN LAP' : 'HEADING + YAW + AX · RECORD CLEAN LAP') : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>

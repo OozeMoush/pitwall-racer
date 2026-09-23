@@ -29,6 +29,34 @@ export function runtimeRacingLine(trackId: TrackId): RacingLineAsset | undefined
   return active.get(trackId);
 }
 
+/**
+ * Kinematic consistency check for a stored explicit line. This integrates the
+ * actual polyline distance implied by progress + laneOffset against the stored
+ * target-speed trace. It does not simulate controls; it answers whether the
+ * asset itself is internally capable of representing its advertised lap time.
+ */
+export function racingLineTraceLapSeconds(
+  asset: RacingLineAsset | undefined,
+): number | undefined {
+  if (!asset || asset.points.length < 2) return undefined;
+
+  let seconds = 0;
+  for (let index = 0; index < asset.points.length; index++) {
+    const a = asset.points[index];
+    const b = asset.points[(index + 1) % asset.points.length];
+    const pa = sampleTrack(a.progress, a.laneOffset);
+    const pb = sampleTrack(b.progress, b.laneOffset);
+    const distance = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+    const averageSpeed = (Math.max(0, a.targetSpeed) + Math.max(0, b.targetSpeed)) * 0.5;
+    if (!Number.isFinite(distance) || !Number.isFinite(averageSpeed) || averageSpeed < 1) {
+      return undefined;
+    }
+    seconds += distance / averageSpeed;
+  }
+
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 export interface RuntimeRacingLineProjection {
   progress: number;
   distance: number;

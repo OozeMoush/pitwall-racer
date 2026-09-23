@@ -5,6 +5,7 @@ import {
   racingLineBrakeIntent,
   racingLineLocalBrakeIntent,
   racingLineThrottleIntent,
+  racingLineTraceLapSeconds,
   setRuntimeRacingLine,
 } from './RacingLineRuntime';
 
@@ -13,6 +14,24 @@ afterEach(() => {
 });
 
 describe('RacingLineRuntime', () => {
+  it('computes a finite kinematic lap time from an explicit line asset', () => {
+    const asset = {
+      version: 1 as const,
+      trackId: 'pitwall-gp' as const,
+      source: 'PLAYER' as const,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 70,
+      })),
+    };
+
+    const seconds = racingLineTraceLapSeconds(asset);
+    expect(seconds).toBeDefined();
+    expect(seconds!).toBeGreaterThan(5);
+    expect(seconds!).toBeLessThan(100);
+  });
+
   it('uses the normal machine reference when no override is active', () => {
     const expected = referenceTarget('pitwall-gp', 0.37, 1.1);
     const actual = activeReferenceTarget('pitwall-gp', 0.37, 1.1);
