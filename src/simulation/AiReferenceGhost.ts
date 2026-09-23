@@ -143,6 +143,10 @@ export class AiReferenceGhost {
     return this.physics.aiLongitudinalAcceleration(0);
   }
 
+  latestNetSpeedAcceleration(): number | undefined {
+    return this.physics.aiNetSpeedAcceleration(0);
+  }
+
   lastLapSeconds(): number | undefined {
     return this.completedLap;
   }

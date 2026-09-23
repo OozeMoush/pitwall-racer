@@ -198,12 +198,14 @@ describe('dynamicAiControl', () => {
         headingOffset: 0,
         yawRate: 0,
         tireGrip: grip,
+        longitudinalAcceleration: 3.25,
         forwardAcceleration: 7.5,
       })),
     });
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.sourceForwardAcceleration).toBeCloseTo(7.5, 5);
+    expect(control.debug.sourceNetSpeedAcceleration).toBeCloseTo(3.25, 5);
     expect(control.debug.feedbackBrake).toBe(0);
     expect(control.brake).toBe(0);
     expect(control.throttle).toBeGreaterThan(0);

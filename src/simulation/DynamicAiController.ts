@@ -35,6 +35,7 @@ export interface DynamicAiDebug {
   demonstratedForwardAcceleration: boolean;
   sourceGrip?: number;
   sourceForwardAcceleration?: number;
+  sourceNetSpeedAcceleration?: number;
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
@@ -546,6 +547,7 @@ export function dynamicAiControl(
         ? longitudinalSourceGrip
         : undefined,
       sourceForwardAcceleration: longitudinalSample?.forwardAcceleration,
+      sourceNetSpeedAcceleration: longitudinalSample?.longitudinalAcceleration,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,
