@@ -278,7 +278,7 @@ describe('RacingLineRuntime', () => {
     expect(brake).toBe(0);
   });
 
-  it('releases demonstrated AXF braking when replay is already well below target speed', () => {
+  it('preserves demonstrated AXF braking even when replay arrives underspeed', () => {
     const grip = 1.18;
     setRuntimeRacingLine('pitwall-gp', {
       version: 1,
@@ -301,7 +301,7 @@ describe('RacingLineRuntime', () => {
       66,
       0.05,
     );
-    expect(brake).toBe(0);
+    expect(brake).toBeGreaterThan(0.01);
   });
 
   it('still reproduces demonstrated negative AXF at matching speed', () => {

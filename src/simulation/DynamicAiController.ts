@@ -460,7 +460,9 @@ export function dynamicAiControl(
         1,
       )
     : 0;
-  const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
+  const plannedBrakeWeight = hasForwardAccelerationTrace
+    ? 1
+    : clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
   const explicitProfileBrake = highFidelityLine
     ? explicitFollower?.demonstratedDynamics

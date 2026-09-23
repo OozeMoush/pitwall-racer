@@ -403,18 +403,11 @@ export function racingLineLocalBrakeIntent(
       ? demonstratedAcceleration
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
-  // If replay has already fallen materially below the demonstrated speed,
-  // reproducing a negative AXF would deepen the deficit. In that state speed
-  // becomes the guardrail: release the demonstrated brake and let the chassis
-  // recover before resuming the recorded deceleration profile.
-  if (
-    useForwardAcceleration
-    && currentSpeed < currentTarget - AXF_SPEED_GUARD_DEADBAND
-    && traceAcceleration < 0
-  ) {
-    return 0;
-  }
-
+  // A demonstrated negative AXF marks a real braking phase. Do not suppress
+  // it just because replay arrived slightly or even materially underspeed: that
+  // "catch up first" policy skips the brake point and converts a recoverable
+  // deficit into a huge overspeed at corner entry. Speed recovery belongs in
+  // positive/coasting phases; braking phase is anchored to path position.
   const overspeedCorrection = useForwardAcceleration
     ? currentSpeed > currentTarget + AXF_SPEED_GUARD_DEADBAND
       ? (

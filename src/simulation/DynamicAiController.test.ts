@@ -211,7 +211,7 @@ describe('dynamicAiControl', () => {
     expect(control.throttle).toBeGreaterThan(0);
   });
 
-  it('recovers instead of replaying negative AXF when materially underspeed', () => {
+  it('keeps the demonstrated AXF brake phase when materially underspeed', () => {
     const driver = createAiField()[0];
     driver.skill = 1.14;
     driver.progress = 0.20;
@@ -230,15 +230,16 @@ describe('dynamicAiControl', () => {
         headingOffset: 0,
         yawRate: 0,
         tireGrip: grip,
+        longitudinalAcceleration: -5,
         forwardAcceleration: -7.5,
       })),
     });
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.sourceForwardAcceleration).toBeCloseTo(-7.5, 5);
-    expect(control.debug.profileBrake).toBe(0);
-    expect(control.brake).toBe(0);
-    expect(control.throttle).toBe(1);
+    expect(control.debug.profileBrake).toBeGreaterThan(0.01);
+    expect(control.brake).toBeGreaterThan(0.01);
+    expect(control.throttle).toBe(0);
   });
 
   it('uses explicit-path phase for Q5 absolute-pose speed control', () => {
