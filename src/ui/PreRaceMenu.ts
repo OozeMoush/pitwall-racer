@@ -21,7 +21,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
     <div class="pre-race-panel">
       <header class="pre-race-header">
         <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
-        <p>One-shot qualifying sets the grid. Then manage the start, tyres and race pace over the full distance.</p>
+        <p>Run one-shot qualifying for the grid, or skip straight to a P8 race when you are testing race pace and CPU lines.</p>
       </header>
 
       <section class="setup-section">
@@ -63,8 +63,11 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       </section>
 
       <footer class="pre-race-footer">
-        <div><b>QUALIFYING → RACE</b><span>1 FLYING LAP · GRID START · TWO-COMPOUND RACE</span></div>
-        <button class="start-race-button" data-start-race>START WEEKEND</button>
+        <div><b>QUALIFYING → RACE</b><span>1 FLYING LAP · OR SKIP TO P8 · TWO-COMPOUND RACE</span></div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button class="start-race-button" data-skip-qualifying>SKIP QUALIFYING · P8</button>
+          <button class="start-race-button" data-start-race>START WEEKEND</button>
+        </div>
       </footer>
     </div>
   </div>`;
@@ -126,10 +129,26 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
     });
     refreshSelected();
 
-    root.querySelector<HTMLButtonElement>('[data-start-race]')?.addEventListener('click', () => {
+    const finishSetup = (skipQualifying: boolean): void => {
       root.innerHTML = '';
-      resolve({ trackId: selectedTrack, startCompound: selectedCompound, totalLaps: selectedLaps });
-    }, { once: true });
+      resolve({
+        trackId: selectedTrack,
+        startCompound: selectedCompound,
+        totalLaps: selectedLaps,
+        skipQualifying,
+      });
+    };
+
+    root.querySelector<HTMLButtonElement>('[data-start-race]')?.addEventListener(
+      'click',
+      () => finishSetup(false),
+      { once: true },
+    );
+    root.querySelector<HTMLButtonElement>('[data-skip-qualifying]')?.addEventListener(
+      'click',
+      () => finishSetup(true),
+      { once: true },
+    );
   });
 }
 

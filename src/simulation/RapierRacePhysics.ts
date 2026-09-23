@@ -60,6 +60,10 @@ type CarRole = 'PLAYER' | 'AI';
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
   private readonly playerBody: RAPIER.RigidBody;
+  private playerCollider?: RAPIER.Collider;
+  private readonly aiColliderHandles = new Set<number>();
+  private readonly barrierColliderHandles = new Set<number>();
+  private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
@@ -108,6 +112,10 @@ export class RapierRacePhysics {
 
   playerLongitudinalAcceleration(): number {
     return this.playerLongitudinalAccelerationValue;
+  }
+
+  playerContactKind(): 'NONE' | 'CAR' | 'BARRIER' {
+    return this.playerContactKindValue;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -170,6 +178,7 @@ export class RapierRacePhysics {
   step(dt: number): void {
     this.world.timestep = dt;
     this.world.step();
+    this.updatePlayerContactKind();
 
     this.limitSpin(this.playerBody, 1.45);
     for (const body of this.aiBodies) this.limitSpin(body, 1.45);
@@ -197,6 +206,7 @@ export class RapierRacePhysics {
     this.playerSlideState = createTyreSlideState(0.37);
     this.playerSlideSeverityValue = 0;
     this.playerLongitudinalAccelerationValue = 0;
+    this.playerContactKindValue = 'NONE';
   }
 
   setAiState(index: number, state: VehicleState): void {
@@ -391,7 +401,7 @@ export class RapierRacePhysics {
           .setTranslation(segment.x, segment.y)
           .setRotation(segment.heading),
       );
-      this.world.createCollider(
+      const collider = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(segment.length * 0.495, TRACK_BARRIER_HALF_THICKNESS)
           // Wall contact should scrub speed but let the car slide along it. A
           // high-friction corner at a hairpin is what made a harmless brush feel
@@ -401,6 +411,7 @@ export class RapierRacePhysics {
           .setCollisionGroups(BARRIER_COLLISION_GROUPS),
         body,
       );
+      this.barrierColliderHandles.add(collider.handle);
     }
   }
 
@@ -419,8 +430,29 @@ export class RapierRacePhysics {
       .setFriction(0.018)
       .setRestitution(0)
       .setCollisionGroups(role === 'PLAYER' ? PLAYER_COLLISION_GROUPS : AI_COLLISION_GROUPS);
-    this.world.createCollider(collider, body);
+    const createdCollider = this.world.createCollider(collider, body);
+    if (role === 'PLAYER') this.playerCollider = createdCollider;
+    else this.aiColliderHandles.add(createdCollider.handle);
     return body;
+  }
+
+  private updatePlayerContactKind(): void {
+    this.playerContactKindValue = 'NONE';
+    const playerCollider = this.playerCollider;
+    if (!playerCollider) return;
+
+    this.world.contactPairsWith(playerCollider, (otherCollider) => {
+      if (this.aiColliderHandles.has(otherCollider.handle)) {
+        this.playerContactKindValue = 'CAR';
+        return;
+      }
+      if (
+        this.playerContactKindValue !== 'CAR'
+        && this.barrierColliderHandles.has(otherCollider.handle)
+      ) {
+        this.playerContactKindValue = 'BARRIER';
+      }
+    });
   }
 
   private bodyState(body: RAPIER.RigidBody): VehicleState {

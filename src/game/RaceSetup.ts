@@ -8,6 +8,8 @@ export interface RaceSetup {
   /** P1..P8 driver ids produced by the one-shot qualifying session. */
   gridOrder?: readonly string[];
   qualifyingTime?: number;
+  /** Skip the one-shot qualifying session and start the race from P8. */
+  skipQualifying?: boolean;
 }
 
 export const DEFAULT_RACE_SETUP: RaceSetup = {

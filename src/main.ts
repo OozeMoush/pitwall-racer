@@ -31,15 +31,23 @@ async function bootstrap(): Promise<void> {
   setActiveTrack(setup.trackId);
   activateStoredRacingLine(window.localStorage, setup.trackId);
 
-  const qualifying = await runQualifyingSession(game, hud, setup);
-  // A clean qualifying lap can become the PLAYER racing-line source for the
-  // race immediately in the same weekend. Re-read storage after qualifying.
-  activateStoredRacingLine(window.localStorage, setup.trackId);
-  const raceSetup = {
-    ...setup,
-    qualifyingTime: qualifying.playerTime,
-    gridOrder: qualifying.gridOrder,
-  };
+  const raceSetup = setup.skipQualifying
+    ? {
+        ...setup,
+        qualifyingTime: undefined,
+        gridOrder: undefined,
+      }
+    : await (async () => {
+        const qualifying = await runQualifyingSession(game, hud, setup);
+        // A clean qualifying lap can become the PLAYER racing-line source for
+        // the race immediately in the same weekend. Re-read storage after it.
+        activateStoredRacingLine(window.localStorage, setup.trackId);
+        return {
+          ...setup,
+          qualifyingTime: qualifying.playerTime,
+          gridOrder: qualifying.gridOrder,
+        };
+      })();
 
   hud.innerHTML = '';
   installHudEnhancer(hud);

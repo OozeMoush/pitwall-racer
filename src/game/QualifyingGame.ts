@@ -265,6 +265,14 @@ class QualifyingGame {
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
+    const playerContact = this.physics.playerContactKind();
+    if (this.phase === 'FLYING' && playerContact !== 'NONE') {
+      this.lineCandidate.markIneligible();
+      this.lapNotice = playerContact === 'BARRIER'
+        ? 'LINE TRACE INVALID · WALL CONTACT'
+        : 'LINE TRACE INVALID · CAR CONTACT';
+      this.lapNoticeRemaining = 2.2;
+    }
 
     const after = projectTrack(this.vehicle.x, this.vehicle.y);
     this.lastProgress = this.currentProgress;

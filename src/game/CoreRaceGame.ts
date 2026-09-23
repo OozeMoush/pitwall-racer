@@ -149,6 +149,7 @@ export class CoreRaceGame {
   private racingLineNotice = '';
   private racingLineNoticeRemaining = 0;
   private lineCandidateStatus = 'ARMING';
+  private lineCandidateContact?: 'CAR' | 'BARRIER';
   private debugEnabled = false;
   private debugAiIndex = 0;
   private debugGhost?: AiReferenceGhost;
@@ -371,6 +372,11 @@ export class CoreRaceGame {
     }, dt);
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
+    const playerContact = this.physics.playerContactKind();
+    if (this.lap >= 1 && playerContact !== 'NONE') {
+      this.lineCandidate.markIneligible();
+      this.lineCandidateContact = playerContact;
+    }
     this.updateAiLapTiming();
 
     const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
@@ -547,6 +553,7 @@ export class CoreRaceGame {
     this.lineCandidateReferenceGrip = this.tire.grip;
     this.lineCandidate.begin(this.setup.trackId, this.lineCandidateReferenceGrip);
     this.lineCandidateFilter.reset();
+    this.lineCandidateContact = undefined;
   }
 
   private commitRaceLineCandidate(lapTime: number, validLap: boolean): void {
@@ -561,6 +568,8 @@ export class CoreRaceGame {
     if (!validLap) rejectionReasons.push('INVALID LAP');
     if (this.lap < 2) rejectionReasons.push('LAP 1');
     if (this.lapPitted) rejectionReasons.push('PIT');
+    if (this.lineCandidateContact === 'CAR') rejectionReasons.push('CAR CONTACT');
+    if (this.lineCandidateContact === 'BARRIER') rejectionReasons.push('WALL CONTACT');
     if (!eligibility.candidateEligible) {
       rejectionReasons.push(
         eligibility.warnings > 0
@@ -1019,6 +1028,7 @@ export class CoreRaceGame {
     this.racingLineNotice = '';
     this.racingLineNoticeRemaining = 0;
     this.lineCandidateStatus = 'ARMING';
+    this.lineCandidateContact = undefined;
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
@@ -1207,7 +1217,7 @@ export class CoreRaceGame {
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
         <span>LAST CANDIDATE</span><b style="color:${this.lineCandidateStatus.startsWith('REJECT') ? '#ff6978' : this.lineCandidateStatus.startsWith('SAVED') ? '#48ff74' : '#dce9e4'}">${this.lineCandidateStatus}</b>
-        <span>TRAFFIC</span><b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)} s</b>
+        <span>LINE-SHAPING TRAFFIC</span><b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)} s</b>
         <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP · RECORD CLEAN LAP' : 'HEADING + YAW + AX · RECORD CLEAN LAP') : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>PROGRESS center / path</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>
