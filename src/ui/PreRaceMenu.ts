@@ -156,7 +156,15 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
     );
     root.querySelector<HTMLButtonElement>('[data-time-trial]')?.addEventListener(
       'click',
-      () => finishSetup(true, true),
+      () => {
+        selectedCpuLine = 'PLAYER';
+        saveSelectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+          selectedCpuLine,
+        );
+        finishSetup(true, true);
+      },
       { once: true },
     );
   });
