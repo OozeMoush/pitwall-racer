@@ -8,20 +8,23 @@ import {
 import { TRACKS, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
 import type { Compound } from '../simulation/TireModel';
 
-export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
-  let selectedTrack: TrackId = DEFAULT_RACE_SETUP.trackId;
+export function showPreRaceMenu(
+  root: HTMLElement,
+  initial: RaceSetup = DEFAULT_RACE_SETUP,
+): Promise<RaceSetup> {
+  let selectedTrack: TrackId = initial.trackId;
   let selectedCpuLine: SelectableRacingLineSource = selectedRacingLineSource(
     window.localStorage,
     selectedTrack,
   );
-  let selectedCompound: Compound = DEFAULT_RACE_SETUP.startCompound;
-  let selectedLaps = DEFAULT_RACE_SETUP.totalLaps;
+  let selectedCompound: Compound = initial.startCompound;
+  let selectedLaps = initial.totalLaps;
 
   root.innerHTML = `<div class="pre-race-shell">
     <div class="pre-race-panel">
       <header class="pre-race-header">
         <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
-        <p>Qualify for the grid, run an empty-track Time Trial to update PLAYER BEST, or skip straight to a P8 race.</p>
+        <p>Choose a Grand Prix session or enter the independent empty-track Time Trial to update PLAYER BEST.</p>
       </header>
 
       <section class="setup-section">
@@ -63,7 +66,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       </section>
 
       <footer class="pre-race-footer">
-        <div><b>SESSION</b><span>QUALIFY · TIME TRIAL LINE UPDATE · OR DIRECT P8 RACE</span></div>
+        <div><b>SESSION</b><span>TIME TRIAL RETURNS HERE · GRAND PRIX STARTS SEPARATELY</span></div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
           <button class="start-race-button" data-time-trial>TIME TRIAL · UPDATE LINE</button>
           <button class="start-race-button" data-skip-qualifying>SKIP QUALIFYING · P8</button>
@@ -156,15 +159,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
     );
     root.querySelector<HTMLButtonElement>('[data-time-trial]')?.addEventListener(
       'click',
-      () => {
-        selectedCpuLine = 'PLAYER';
-        saveSelectedRacingLineSource(
-          window.localStorage,
-          selectedTrack,
-          selectedCpuLine,
-        );
-        finishSetup(true, true);
-      },
+      () => finishSetup(false, true),
       { once: true },
     );
   });

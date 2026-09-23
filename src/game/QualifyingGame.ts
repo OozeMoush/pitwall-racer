@@ -559,7 +559,7 @@ class QualifyingGame {
       ? `CONTINUOUS HOTLAP · SOFT/PUSH · LINE BEST ${lineBest?.toFixed(3) ?? '—'}s`
       : 'ONE SHOT · SOFT';
     const controls = isTimeTrial
-      ? 'WASD DRIVE · C RECOVER · ENTER START RACE P8'
+      ? 'WASD DRIVE · C RECOVER · ENTER RETURN MENU'
       : 'WASD DRIVE · C RECOVER';
 
     this.hud.innerHTML = `${countdownBanner}${limitBanner}
