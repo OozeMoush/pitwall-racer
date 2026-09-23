@@ -2,7 +2,11 @@ import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
 import { createAiField, type DriverState } from './RaceModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { sampleRacingLineAsset } from './RacingLineAsset';
-import { activeReferenceTarget, runtimeRacingLine } from './RacingLineRuntime';
+import {
+  activeReferenceTarget,
+  runtimeRacingLine,
+  sampleRuntimeRacingLinePose,
+} from './RacingLineRuntime';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
@@ -50,17 +54,11 @@ export class AiReferenceGhost {
       ? { ...freshSoft, grip: lineAsset.referenceGrip }
       : freshSoft;
     const reference = activeReferenceTarget(trackId, startProgress, tire.grip);
-    const pose = sampleTrack(startProgress, reference.laneOffset);
-    const aheadProgress = startProgress + 6 / Math.max(1, TRACK_LENGTH);
-    const aheadReference = activeReferenceTarget(trackId, aheadProgress, tire.grip);
-    const ahead = sampleTrack(aheadProgress, aheadReference.laneOffset);
-    const geometricHeading = Math.atan2(ahead.y - pose.y, ahead.x - pose.x);
+    const pose = sampleRuntimeRacingLinePose(trackId, startProgress);
     const demonstrated = lineAsset
       ? sampleRacingLineAsset(lineAsset, startProgress)
       : undefined;
-    const lineHeading = demonstrated?.headingOffset !== undefined
-      ? wrapAngle(pose.heading + demonstrated.headingOffset)
-      : geometricHeading;
+    const lineHeading = pose.demonstratedHeading ?? pose.heading;
     const initialYawRate = demonstrated?.yawRate ?? 0;
 
     this.driver = {

@@ -6,6 +6,7 @@ import {
   activeReferenceTarget,
   projectRuntimeRacingLineNear,
   runtimeRacingLine,
+  sampleRuntimeRacingLinePose,
 } from './RacingLineRuntime';
 import type { VehicleState } from './VehicleModel';
 
@@ -77,7 +78,7 @@ export function explicitLineFollower(
     steeringProgress,
     tireGrip,
   );
-  const target = sampleTrack(steeringProgress, targetReference.laneOffset);
+  const target = sampleRuntimeRacingLinePose(trackId, steeringProgress);
 
   const headingProbeMetres = clamp(4.5 + vehicle.speed * 0.025, 5, 7);
   const pathAheadProgress = wrap01(
@@ -88,14 +89,8 @@ export function explicitLineFollower(
     pathAheadProgress,
     tireGrip,
   );
-  const pathNow = sampleTrack(
-    pathProgress,
-    currentReference.laneOffset,
-  );
-  const pathAhead = sampleTrack(
-    pathAheadProgress,
-    pathAheadReference.laneOffset,
-  );
+  const pathNow = sampleRuntimeRacingLinePose(trackId, pathProgress);
+  const pathAhead = sampleRuntimeRacingLinePose(trackId, pathAheadProgress);
   const pathHeading = Math.atan2(
     pathAhead.y - pathNow.y,
     pathAhead.x - pathNow.x,
@@ -106,9 +101,7 @@ export function explicitLineFollower(
     : undefined;
   const demonstratedDynamics = demonstrated?.headingOffset !== undefined
     && demonstrated?.yawRate !== undefined;
-  const desiredHeading = demonstrated?.headingOffset !== undefined
-    ? wrapAngle(pathNow.heading + demonstrated.headingOffset)
-    : pathHeading;
+  const desiredHeading = pathNow.demonstratedHeading ?? pathHeading;
   const recordedYawRate = demonstrated?.yawRate;
   const targetYawRate = recordedYawRate !== undefined && demonstrated
     ? recordedYawRate * clamp(
@@ -145,10 +138,7 @@ export function explicitLineFollower(
     previewProgress,
     tireGrip,
   );
-  const previewPoint = sampleTrack(
-    previewProgress,
-    previewReference.laneOffset,
-  );
+  const previewPoint = sampleRuntimeRacingLinePose(trackId, previewProgress);
   const previewAheadProgress = wrap01(
     previewProgress + headingProbeMetres / TRACK_LENGTH,
   );
@@ -157,20 +147,12 @@ export function explicitLineFollower(
     previewAheadProgress,
     tireGrip,
   );
-  const previewAhead = sampleTrack(
-    previewAheadProgress,
-    previewAheadReference.laneOffset,
-  );
+  const previewAhead = sampleRuntimeRacingLinePose(trackId, previewAheadProgress);
   const previewPathHeading = Math.atan2(
     previewAhead.y - previewPoint.y,
     previewAhead.x - previewPoint.x,
   );
-  const previewDemonstrated = lineAsset
-    ? sampleRacingLineAsset(lineAsset, previewProgress)
-    : undefined;
-  const previewHeading = previewDemonstrated?.headingOffset !== undefined
-    ? wrapAngle(previewPoint.heading + previewDemonstrated.headingOffset)
-    : previewPathHeading;
+  const previewHeading = previewPoint.demonstratedHeading ?? previewPathHeading;
   const headingLead = wrapAngle(previewHeading - desiredHeading);
   const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);
 
@@ -213,9 +195,9 @@ export function explicitLineFollower(
   const beforeReference = activeReferenceTarget(trackId, beforeProgress, tireGrip);
   const atReference = activeReferenceTarget(trackId, curvatureProgress, tireGrip);
   const afterReference = activeReferenceTarget(trackId, afterProgress, tireGrip);
-  const beforePoint = sampleTrack(beforeProgress, beforeReference.laneOffset);
-  const atPoint = sampleTrack(curvatureProgress, atReference.laneOffset);
-  const afterPoint = sampleTrack(afterProgress, afterReference.laneOffset);
+  const beforePoint = sampleRuntimeRacingLinePose(trackId, beforeProgress);
+  const atPoint = sampleRuntimeRacingLinePose(trackId, curvatureProgress);
+  const afterPoint = sampleRuntimeRacingLinePose(trackId, afterProgress);
   const signedCurvature = pathCurvature(beforePoint, atPoint, afterPoint);
   const steeringSpeed = Math.max(
     vehicle.speed,

@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { referenceTarget } from './ReferenceDriverModel';
+import { sampleTrack } from './TrackModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
   racingLineLocalBrakeIntent,
   racingLineThrottleIntent,
   racingLineTraceLapSeconds,
+  sampleRuntimeRacingLinePose,
   setRuntimeRacingLine,
 } from './RacingLineRuntime';
 
@@ -30,6 +32,35 @@ describe('RacingLineRuntime', () => {
     expect(seconds).toBeDefined();
     expect(seconds!).toBeGreaterThan(5);
     expect(seconds!).toBeLessThan(100);
+  });
+
+  it('interpolates demonstrated absolute heading continuously across start/finish', () => {
+    const grip = 1.18;
+    const bodyHeading = 0.65;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const centre = sampleTrack(progress);
+        return {
+          progress,
+          laneOffset: 3,
+          targetSpeed: 70,
+          headingOffset: wrapTestAngle(bodyHeading - centre.heading),
+          yawRate: 0,
+        };
+      }),
+    });
+
+    const before = sampleRuntimeRacingLinePose('pitwall-gp', 0.999);
+    const after = sampleRuntimeRacingLinePose('pitwall-gp', 0.001);
+    expect(before.demonstratedHeading).toBeDefined();
+    expect(after.demonstratedHeading).toBeDefined();
+    expect(Math.abs(wrapTestAngle(before.demonstratedHeading! - bodyHeading))).toBeLessThan(0.01);
+    expect(Math.abs(wrapTestAngle(after.demonstratedHeading! - bodyHeading))).toBeLessThan(0.01);
   });
 
   it('uses the normal machine reference when no override is active', () => {
@@ -345,3 +376,10 @@ describe('RacingLineRuntime', () => {
   });
 
 });
+
+function wrapTestAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
+}

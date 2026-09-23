@@ -57,6 +57,76 @@ export function racingLineTraceLapSeconds(
   return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
 }
 
+export interface RuntimeRacingLinePose {
+  x: number;
+  y: number;
+  heading: number;
+  laneOffset: number;
+  targetSpeed: number;
+  demonstratedHeading?: number;
+}
+
+/**
+ * Sample an explicit PLAYER/EDITOR trajectory in world space.
+ *
+ * laneOffset and headingOffset are stored relative to the piecewise centreline.
+ * Interpolating those relative values first and only then applying the current
+ * segment frame creates a discontinuity when the centreline segment changes,
+ * most visibly at the start/finish seam. Reconstruct the two stored endpoints
+ * in world space instead, interpolate their positions directly, and interpolate
+ * demonstrated *absolute* body heading rather than the relative offset.
+ */
+export function sampleRuntimeRacingLinePose(
+  trackId: TrackId,
+  progress: number,
+): RuntimeRacingLinePose {
+  const asset = active.get(trackId);
+  if (!asset || asset.points.length === 0) {
+    const reference = activeReferenceTarget(trackId, progress, 1);
+    const pose = sampleTrack(progress, reference.laneOffset);
+    return {
+      x: pose.x,
+      y: pose.y,
+      heading: pose.heading,
+      laneOffset: reference.laneOffset,
+      targetSpeed: reference.targetSpeed,
+    };
+  }
+
+  const p = wrap01(progress);
+  const scaled = p * asset.points.length;
+  const index = Math.floor(scaled) % asset.points.length;
+  const nextIndex = (index + 1) % asset.points.length;
+  const t = scaled - Math.floor(scaled);
+  const a = asset.points[index];
+  const b = asset.points[nextIndex];
+  const aPose = sampleTrack(a.progress, a.laneOffset);
+  const bPose = sampleTrack(b.progress, b.laneOffset);
+  const aCentre = sampleTrack(a.progress);
+  const bCentre = sampleTrack(b.progress);
+  const aBodyHeading = a.headingOffset === undefined
+    ? undefined
+    : wrapAngle(aCentre.heading + a.headingOffset);
+  const bBodyHeading = b.headingOffset === undefined
+    ? undefined
+    : wrapAngle(bCentre.heading + b.headingOffset);
+  const geometricHeading = Math.atan2(bPose.y - aPose.y, bPose.x - aPose.x);
+  const demonstratedHeading = interpolateOptionalAngle(
+    aBodyHeading,
+    bBodyHeading,
+    t,
+  );
+
+  return {
+    x: lerp(aPose.x, bPose.x, t),
+    y: lerp(aPose.y, bPose.y, t),
+    heading: demonstratedHeading ?? geometricHeading,
+    laneOffset: lerp(a.laneOffset, b.laneOffset, t),
+    targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
+    demonstratedHeading,
+  };
+}
+
 export interface RuntimeRacingLineProjection {
   progress: number;
   distance: number;
@@ -88,8 +158,7 @@ export function projectRuntimeRacingLineNear(
   for (let index = 0; index <= coarseSteps; index++) {
     const offset = -span + (2 * span * index) / coarseSteps;
     const progress = wrap01(referenceProgress + offset);
-    const selected = sampleRacingLineAsset(asset, progress);
-    const point = sampleTrack(progress, selected.laneOffset);
+    const point = sampleRuntimeRacingLinePose(trackId, progress);
     const distance = Math.hypot(x - point.x, y - point.y);
     // Keep continuity as a weak tie-breaker only. Geometry should own the
     // projection, but nearby parallel pieces of the miniature circuit must not
@@ -110,8 +179,7 @@ export function projectRuntimeRacingLineNear(
     let refinedDistance = bestDistance;
     for (const direction of [-1, 0, 1] as const) {
       const progress = wrap01(bestProgress + direction * step);
-      const selected = sampleRacingLineAsset(asset, progress);
-      const point = sampleTrack(progress, selected.laneOffset);
+      const point = sampleRuntimeRacingLinePose(trackId, progress);
       const distance = Math.hypot(x - point.x, y - point.y);
       const phaseDelta = circularProgressDistance(progress, referenceProgress);
       const score = distance + phaseDelta * TRACK_LENGTH * 0.035;
@@ -450,6 +518,28 @@ export function activeReferenceTarget(
   };
 }
 
+
+function interpolateOptionalAngle(
+  a: number | undefined,
+  b: number | undefined,
+  t: number,
+): number | undefined {
+  if (a === undefined && b === undefined) return undefined;
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return wrapAngle(a + wrapAngle(b - a) * t);
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
 
 function wrap01(value: number): number {
   return ((value % 1) + 1) % 1;
