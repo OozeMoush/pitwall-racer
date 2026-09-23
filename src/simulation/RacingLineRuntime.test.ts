@@ -228,6 +228,32 @@ describe('RacingLineRuntime', () => {
     expect(brake).toBe(0);
   });
 
+  it('releases demonstrated AXF braking when replay is already well below target speed', () => {
+    const grip = 1.18;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 72,
+        tireGrip: grip,
+        forwardAcceleration: -7.5,
+      })),
+    });
+
+    const brake = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.40,
+      grip,
+      66,
+      0.05,
+    );
+    expect(brake).toBe(0);
+  });
+
   it('still reproduces demonstrated negative AXF at matching speed', () => {
     const grip = 1.18;
     setRuntimeRacingLine('pitwall-gp', {

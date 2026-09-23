@@ -295,6 +295,18 @@ export function racingLineLocalBrakeIntent(
       ? demonstratedAcceleration
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
+  // If replay has already fallen materially below the demonstrated speed,
+  // reproducing a negative AXF would deepen the deficit. In that state speed
+  // becomes the guardrail: release the demonstrated brake and let the chassis
+  // recover before resuming the recorded deceleration profile.
+  if (
+    useForwardAcceleration
+    && currentSpeed < currentTarget - AXF_SPEED_GUARD_DEADBAND
+    && traceAcceleration < 0
+  ) {
+    return 0;
+  }
+
   const overspeedCorrection = useForwardAcceleration
     ? currentSpeed > currentTarget + AXF_SPEED_GUARD_DEADBAND
       ? (
