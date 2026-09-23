@@ -26,6 +26,10 @@ import type { VehicleState } from './VehicleModel';
 // which made wheel-to-wheel racing register contact through empty space.
 export const CAR_COLLIDER_HALF_LENGTH = 4.65;
 export const CAR_COLLIDER_HALF_WIDTH = 2.15;
+// A tyre/sidepod brushing the wall while the car is travelling almost parallel
+// to it must not invalidate a racing-line trace. Classify only a meaningful
+// lateral impact as WALL CONTACT; track-limit logic remains independent.
+export const WALL_CONTACT_MIN_NORMAL_SPEED = 6;
 const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
@@ -62,7 +66,7 @@ export class RapierRacePhysics {
   private readonly playerBody: RAPIER.RigidBody;
   private playerCollider?: RAPIER.Collider;
   private readonly aiColliderHandles = new Set<number>();
-  private readonly barrierColliderHandles = new Set<number>();
+  private readonly barrierColliderHeadings = new Map<number, number>();
   private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
@@ -177,8 +181,12 @@ export class RapierRacePhysics {
 
   step(dt: number): void {
     this.world.timestep = dt;
+    const playerVelocityBeforeStep = this.playerBody.linvel();
     this.world.step();
-    this.updatePlayerContactKind();
+    this.updatePlayerContactKind(
+      playerVelocityBeforeStep.x,
+      playerVelocityBeforeStep.y,
+    );
 
     this.limitSpin(this.playerBody, 1.45);
     for (const body of this.aiBodies) this.limitSpin(body, 1.45);
@@ -411,7 +419,7 @@ export class RapierRacePhysics {
           .setCollisionGroups(BARRIER_COLLISION_GROUPS),
         body,
       );
-      this.barrierColliderHandles.add(collider.handle);
+      this.barrierColliderHeadings.set(collider.handle, segment.heading);
     }
   }
 
@@ -436,7 +444,10 @@ export class RapierRacePhysics {
     return body;
   }
 
-  private updatePlayerContactKind(): void {
+  private updatePlayerContactKind(
+    preStepVx: number,
+    preStepVy: number,
+  ): void {
     this.playerContactKindValue = 'NONE';
     const playerCollider = this.playerCollider;
     if (!playerCollider) return;
@@ -446,9 +457,19 @@ export class RapierRacePhysics {
         this.playerContactKindValue = 'CAR';
         return;
       }
+
+      if (this.playerContactKindValue === 'CAR') return;
+      const barrierHeading = this.barrierColliderHeadings.get(
+        otherCollider.handle,
+      );
+      if (barrierHeading === undefined) return;
+
       if (
-        this.playerContactKindValue !== 'CAR'
-        && this.barrierColliderHandles.has(otherCollider.handle)
+        isSignificantBarrierImpact(
+          preStepVx,
+          preStepVy,
+          barrierHeading,
+        )
       ) {
         this.playerContactKindValue = 'BARRIER';
       }
@@ -488,3 +509,23 @@ export class RapierRacePhysics {
     if (Math.abs(yaw) > maximum) body.setAngvel(Math.sign(yaw) * maximum, true);
   }
 }
+
+export function barrierNormalSpeed(
+  vx: number,
+  vy: number,
+  barrierHeading: number,
+): number {
+  const nx = -Math.sin(barrierHeading);
+  const ny = Math.cos(barrierHeading);
+  return Math.abs(vx * nx + vy * ny);
+}
+
+export function isSignificantBarrierImpact(
+  vx: number,
+  vy: number,
+  barrierHeading: number,
+): boolean {
+  return barrierNormalSpeed(vx, vy, barrierHeading)
+    >= WALL_CONTACT_MIN_NORMAL_SPEED;
+}
+

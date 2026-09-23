@@ -1,6 +1,12 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { CAR_COLLIDER_HALF_LENGTH, RapierRacePhysics } from './RapierRacePhysics';
+import {
+  barrierNormalSpeed,
+  CAR_COLLIDER_HALF_LENGTH,
+  isSignificantBarrierImpact,
+  RapierRacePhysics,
+  WALL_CONTACT_MIN_NORMAL_SPEED,
+} from './RapierRacePhysics';
 import {
   TRACK_BARRIER_OFFSET,
   hasSafetyBarrier,
@@ -25,6 +31,30 @@ describe('physical safety barriers', () => {
     expect(hasSafetyBarrier(0.95, 1)).toBe(true);
     expect(hasSafetyBarrier(0.02, 1)).toBe(true);
     expect(hasSafetyBarrier(0.91, -1)).toBe(true);
+  });
+
+  it('does not classify a shallow wall/kerb brush as a wall-impact trace failure', () => {
+    const speed = 80;
+    const shallowAngle = 0.04;
+    const vx = Math.cos(shallowAngle) * speed;
+    const vy = Math.sin(shallowAngle) * speed;
+
+    expect(barrierNormalSpeed(vx, vy, 0)).toBeLessThan(
+      WALL_CONTACT_MIN_NORMAL_SPEED,
+    );
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(false);
+  });
+
+  it('classifies a real lateral wall hit as a wall-impact trace failure', () => {
+    const speed = 60;
+    const impactAngle = 0.24;
+    const vx = Math.cos(impactAngle) * speed;
+    const vy = Math.sin(impactAngle) * speed;
+
+    expect(barrierNormalSpeed(vx, vy, 0)).toBeGreaterThan(
+      WALL_CONTACT_MIN_NORMAL_SPEED,
+    );
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(true);
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {
