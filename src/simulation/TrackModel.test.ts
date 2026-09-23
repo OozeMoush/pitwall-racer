@@ -5,6 +5,7 @@ import {
   TRACK_CONTROLS,
   TRACK_LENGTH,
   TRACKS,
+  crossedStartLine,
   nearestTrackProgress,
   projectTrack,
   projectTrackNear,
@@ -47,6 +48,13 @@ describe('TrackModel', () => {
       }
       expect(worst).toBeLessThan(1.05);
     }
+  });
+
+  it('detects a start-line wrap without requiring a narrow progress window', () => {
+    expect(crossedStartLine(0.97, 0.03)).toBe(true);
+    expect(crossedStartLine(0.86, 0.04)).toBe(true);
+    expect(crossedStartLine(0.61, 0.42)).toBe(false);
+    expect(crossedStartLine(0.12, 0.18)).toBe(false);
   });
 
   it('projects sampled points back close to their source progress', () => {

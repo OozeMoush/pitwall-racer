@@ -709,3 +709,8 @@ function wrapAngle(angle: number): number {
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
+
+function formatShortTime(seconds?: number): string {
+  if (seconds === undefined || !Number.isFinite(seconds)) return '—';
+  return seconds.toFixed(3);
+}
