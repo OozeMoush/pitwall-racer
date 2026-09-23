@@ -383,8 +383,14 @@ class QualifyingGame {
     }
 
     if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 20) {
-      if (this.lapValidity.invalid) this.restartInvalidFlyingLap();
-      else this.completeLap();
+      if (this.lapValidity.invalid) {
+        // An invalid Time Trial lap is still a completed lap attempt. Advance
+        // the visible lap counter while withholding PB/sector persistence.
+        if (this.mode === 'TIME_TRIAL') this.completedLaps += 1;
+        this.restartInvalidFlyingLap();
+      } else {
+        this.completeLap();
+      }
     }
   }
 
