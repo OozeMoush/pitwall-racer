@@ -27,9 +27,12 @@ import type { VehicleState } from './VehicleModel';
 export const CAR_COLLIDER_HALF_LENGTH = 4.65;
 export const CAR_COLLIDER_HALF_WIDTH = 2.15;
 // A tyre/sidepod brushing the wall while the car is travelling almost parallel
-// to it must not invalidate a racing-line trace. Classify only a meaningful
-// lateral impact as WALL CONTACT; track-limit logic remains independent.
-export const WALL_CONTACT_MIN_NORMAL_SPEED = 6;
+// to it must not invalidate a racing-line trace. Normal speed alone is too
+// strict at racing speed: at 300 km/h even a ~4° graze exceeds 6 m/s laterally.
+// Require both a meaningful lateral hit and a meaningful incidence angle.
+// Physical wall collision is unchanged; this only controls trace invalidation.
+export const WALL_CONTACT_MIN_NORMAL_SPEED = 8;
+export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
@@ -579,7 +582,11 @@ export function isSignificantBarrierImpact(
   vy: number,
   barrierHeading: number,
 ): boolean {
-  return barrierNormalSpeed(vx, vy, barrierHeading)
-    >= WALL_CONTACT_MIN_NORMAL_SPEED;
+  const speed = Math.hypot(vx, vy);
+  if (speed < 0.001) return false;
+  const normalSpeed = barrierNormalSpeed(vx, vy, barrierHeading);
+  const incidenceSin = normalSpeed / speed;
+  return normalSpeed >= WALL_CONTACT_MIN_NORMAL_SPEED
+    && incidenceSin >= WALL_CONTACT_MIN_INCIDENCE_SIN;
 }
 

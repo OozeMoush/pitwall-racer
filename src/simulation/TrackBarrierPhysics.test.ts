@@ -5,6 +5,7 @@ import {
   CAR_COLLIDER_HALF_LENGTH,
   isSignificantBarrierImpact,
   RapierRacePhysics,
+  WALL_CONTACT_MIN_INCIDENCE_SIN,
   WALL_CONTACT_MIN_NORMAL_SPEED,
 } from './RapierRacePhysics';
 import {
@@ -42,6 +43,18 @@ describe('physical safety barriers', () => {
     expect(barrierNormalSpeed(vx, vy, 0)).toBeLessThan(
       WALL_CONTACT_MIN_NORMAL_SPEED,
     );
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(false);
+  });
+
+  it('allows a high-speed shallow wall brush even when lateral speed is non-trivial', () => {
+    const speed = 100;
+    const shallowAngle = 0.10;
+    const vx = Math.cos(shallowAngle) * speed;
+    const vy = Math.sin(shallowAngle) * speed;
+    const normalSpeed = barrierNormalSpeed(vx, vy, 0);
+
+    expect(normalSpeed).toBeGreaterThan(WALL_CONTACT_MIN_NORMAL_SPEED);
+    expect(normalSpeed / speed).toBeLessThan(WALL_CONTACT_MIN_INCIDENCE_SIN);
     expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(false);
   });
 
