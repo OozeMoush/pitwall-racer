@@ -1,6 +1,12 @@
 export interface TrackPoint { x: number; y: number }
 
-export type TrackId = 'pitwall-gp' | 'velocity-park' | 'switchback-ring';
+export type TrackId =
+  | 'pitwall-gp'
+  | 'velocity-park'
+  | 'switchback-ring'
+  | 'sakura-esses'
+  | 'harbor-chicane'
+  | 'serra-circuit';
 
 export interface TrackDefinition {
   id: TrackId;
@@ -60,6 +66,43 @@ const SWITCHBACK_RING_SOURCE: readonly TrackPoint[] = [
   { x: 285, y: 500 }, { x: 295, y: 650 }, { x: 385, y: 780 }, { x: 470, y: 865 },
 ];
 
+// Rhythm circuit inspired by the idea of Suzuka-style linked esses: repeated
+// commitment corners feed into a hairpin and one long, fast loaded arc.
+const SAKURA_ESSES_SOURCE: readonly TrackPoint[] = [
+  { x: 520, y: 915 }, { x: 930, y: 935 }, { x: 1360, y: 915 }, { x: 1740, y: 850 },
+  { x: 1990, y: 745 }, { x: 2090, y: 620 }, { x: 2020, y: 510 }, { x: 1840, y: 455 },
+  { x: 1640, y: 470 }, { x: 1500, y: 410 }, { x: 1440, y: 315 }, { x: 1330, y: 245 },
+  { x: 1160, y: 255 }, { x: 1060, y: 335 }, { x: 960, y: 405 }, { x: 830, y: 360 },
+  { x: 735, y: 275 }, { x: 575, y: 235 }, { x: 430, y: 285 }, { x: 325, y: 390 },
+  { x: 300, y: 510 }, { x: 400, y: 600 }, { x: 555, y: 625 }, { x: 675, y: 690 },
+  { x: 650, y: 790 }, { x: 560, y: 865 },
+];
+
+// Dense street-style circuit: many braking references, 90-degree direction
+// changes and a real chicane. The final array is reversed so this is the first
+// clockwise-feeling layout in the initial track set.
+const HARBOR_CHICANE_SOURCE: readonly TrackPoint[] = [
+  { x: 510, y: 905 }, { x: 900, y: 930 }, { x: 1320, y: 925 }, { x: 1700, y: 900 },
+  { x: 1980, y: 830 }, { x: 2110, y: 720 }, { x: 2060, y: 620 }, { x: 1870, y: 600 },
+  { x: 1720, y: 540 }, { x: 1770, y: 455 }, { x: 1960, y: 405 }, { x: 2050, y: 310 },
+  { x: 1950, y: 235 }, { x: 1730, y: 220 }, { x: 1510, y: 270 }, { x: 1380, y: 355 },
+  { x: 1200, y: 345 }, { x: 1080, y: 265 }, { x: 900, y: 225 }, { x: 715, y: 255 },
+  { x: 605, y: 345 }, { x: 630, y: 450 }, { x: 760, y: 525 }, { x: 705, y: 615 },
+  { x: 530, y: 650 }, { x: 395, y: 735 }, { x: 350, y: 835 },
+];
+
+// Short-lap attack circuit inspired by Interlagos-style compactness: corner
+// exits matter because nearly every short straight immediately feeds the next
+// braking zone.
+const SERRA_CIRCUIT_SOURCE: readonly TrackPoint[] = [
+  { x: 550, y: 910 }, { x: 950, y: 930 }, { x: 1370, y: 910 }, { x: 1690, y: 845 },
+  { x: 1870, y: 745 }, { x: 1900, y: 640 }, { x: 1810, y: 565 }, { x: 1640, y: 555 },
+  { x: 1480, y: 610 }, { x: 1340, y: 695 }, { x: 1160, y: 720 }, { x: 1000, y: 665 },
+  { x: 960, y: 565 }, { x: 1060, y: 475 }, { x: 1190, y: 395 }, { x: 1160, y: 300 },
+  { x: 1010, y: 235 }, { x: 820, y: 225 }, { x: 640, y: 270 }, { x: 485, y: 355 },
+  { x: 365, y: 470 }, { x: 310, y: 595 }, { x: 350, y: 720 }, { x: 445, y: 825 },
+];
+
 function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
   return points.map((point) => ({
     x: TRACK_CENTRE_X + (point.x - TRACK_CENTRE_X) * MINIATURE_TRACK_SCALE,
@@ -70,11 +113,17 @@ function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
 const PITWALL_GP = miniature(PITWALL_GP_SOURCE);
 const VELOCITY_PARK = miniature(VELOCITY_PARK_SOURCE);
 const SWITCHBACK_RING = miniature(SWITCHBACK_RING_SOURCE);
+const SAKURA_ESSES = miniature(SAKURA_ESSES_SOURCE);
+const HARBOR_CHICANE = miniature([...HARBOR_CHICANE_SOURCE].reverse());
+const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
 
 export const TRACKS: readonly TrackDefinition[] = [
   { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP },
   { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK },
   { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING },
+  { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES },
+  { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE },
+  { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;
