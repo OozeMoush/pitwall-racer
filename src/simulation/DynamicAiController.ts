@@ -329,12 +329,23 @@ export function dynamicAiControl(
         predictionWeight,
       );
 
-  // PLAYER/EDITOR speed samples are recorded against centreline progress.
-  // Steering may project onto the explicit path itself, but longitudinal
-  // control must stay on the recorder's original phase axis; otherwise an
-  // S-bend/large lane transition can make the nearest-path projection jump a
-  // few metres ahead and expose a future exit speed too early.
-  const longitudinalProgress = projection.progress;
+  // Legacy explicit traces were stored only against centreline progress, so
+  // longitudinal control had to stay on that axis. Q5 PLAYER traces carry an
+  // absolute world-space trajectory; their explicit-path projection is now the
+  // physically correct phase for speed/AXF samples as well as steering. Keeping
+  // speed on centreline progress while steering follows path progress can shift
+  // the brake phase by several metres in compact corners and create the large
+  // overspeed/full-brake oscillation seen in replay diagnostics.
+  const absolutePoseTrace = lineAsset?.points.length
+    ? lineAsset.points.every((point) =>
+        point.worldX !== undefined
+        && point.worldY !== undefined
+        && point.bodyHeading !== undefined
+      )
+    : false;
+  const longitudinalProgress = highFidelityLine && absolutePoseTrace && explicitFollower
+    ? explicitFollower.pathProgress
+    : projection.progress;
   const speedReference = highFidelityLine
     ? activeReferenceTarget(trackId, longitudinalProgress, driver.tire.grip)
     : currentLineReference;

@@ -241,6 +241,43 @@ describe('dynamicAiControl', () => {
     expect(control.throttle).toBe(1);
   });
 
+  it('uses explicit-path phase for Q5 absolute-pose speed control', () => {
+    const driver = createAiField()[0];
+    driver.skill = 1.14;
+    driver.progress = 0.25;
+    const grip = driver.tire.grip;
+    const offsetProgress = 0.27;
+    const pathPose = sampleTrack(offsetProgress, 9);
+    const vehicle = { ...createVehicle(pathPose.x, pathPose.y, pathPose.heading), speed: 60 };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const pose = sampleTrack(progress, 9);
+        return {
+          progress,
+          laneOffset: 9,
+          targetSpeed: progress >= 0.26 && progress < 0.30 ? 50 : 80,
+          worldX: pose.x,
+          worldY: pose.y,
+          bodyHeading: pose.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: grip,
+          longitudinalAcceleration: 0,
+          forwardAcceleration: 0,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.progress).toBeGreaterThan(0.255);
+    expect(control.targetSpeed).toBeLessThan(60);
+  });
+
   it('brakes before a future player-line speed drop reaches the car', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
