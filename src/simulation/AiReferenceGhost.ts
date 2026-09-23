@@ -22,6 +22,18 @@ export interface AiReferenceGhostLossEvent {
   yawError: number;
 }
 
+export interface AiReferenceGhostSpeedDriftEvent {
+  progress: number;
+  speedDeltaKph: number;
+  pathError: number;
+  yawError: number;
+  sourceForwardAcceleration?: number;
+  actualForwardAcceleration?: number;
+  feedbackBrake: number;
+  profileBrake: number;
+  throttle: number;
+}
+
 /**
  * Debug-only isolated replay of the currently active racing line.
  *
@@ -41,6 +53,8 @@ export class AiReferenceGhost {
   private control?: DynamicAiControl;
   private currentWorstLoss?: AiReferenceGhostLossEvent;
   private completedWorstLoss?: AiReferenceGhostLossEvent;
+  private currentFirstSpeedDrift?: AiReferenceGhostSpeedDriftEvent;
+  private completedFirstSpeedDrift?: AiReferenceGhostSpeedDriftEvent;
 
   constructor(startProgress: number, trackId: TrackId = getActiveTrack().id) {
     const base = createAiField()[0];
@@ -124,6 +138,20 @@ export class AiReferenceGhost {
       const actualNetAcceleration = this.physics.aiNetSpeedAcceleration(0);
       if (actualNetAcceleration !== undefined) {
         const targetYawRate = this.control.debug.targetYawRate ?? 0;
+        const speedDeltaKph = (state.speed - this.control.targetSpeed) * 3.6;
+        if (!this.currentFirstSpeedDrift && Math.abs(speedDeltaKph) >= 15) {
+          this.currentFirstSpeedDrift = {
+            progress: this.driver.progress,
+            speedDeltaKph,
+            pathError: this.control.debug.pathError,
+            yawError: state.yawRate - targetYawRate,
+            sourceForwardAcceleration: this.control.debug.sourceForwardAcceleration,
+            actualForwardAcceleration: this.physics.aiLongitudinalAcceleration(0),
+            feedbackBrake: this.control.debug.feedbackBrake,
+            profileBrake: this.control.debug.profileBrake,
+            throttle: this.control.throttle,
+          };
+        }
         const event: AiReferenceGhostLossEvent = {
           progress: this.driver.progress,
           netAccelerationDelta: actualNetAcceleration - sourceSample.longitudinalAcceleration,
@@ -150,10 +178,12 @@ export class AiReferenceGhost {
       if (this.timedLapStarted && this.lapElapsed > 5) {
         this.completedLap = this.lapElapsed;
         this.completedWorstLoss = this.currentWorstLoss;
+        this.completedFirstSpeedDrift = this.currentFirstSpeedDrift;
       }
       this.timedLapStarted = true;
       this.lapElapsed = 0;
       this.currentWorstLoss = undefined;
+      this.currentFirstSpeedDrift = undefined;
       this.driver.lap += 1;
     }
 
@@ -189,6 +219,10 @@ export class AiReferenceGhost {
 
   lastWorstLoss(): AiReferenceGhostLossEvent | undefined {
     return this.completedWorstLoss;
+  }
+
+  lastFirstSpeedDrift(): AiReferenceGhostSpeedDriftEvent | undefined {
+    return this.completedFirstSpeedDrift;
   }
 }
 

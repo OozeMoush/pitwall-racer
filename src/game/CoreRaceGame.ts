@@ -1219,6 +1219,7 @@ export class CoreRaceGame {
     const ghostLap = this.debugGhost?.lastLapSeconds();
     const ghostCurrent = this.debugGhost?.currentLapSeconds();
     const ghostWorstLoss = this.debugGhost?.lastWorstLoss();
+    const ghostFirstSpeedDrift = this.debugGhost?.lastFirstSpeedDrift();
     const ghostTime = ghostLap !== undefined
       ? `${ghostLap.toFixed(3)}s LAST`
       : ghostCurrent !== undefined
@@ -1294,6 +1295,9 @@ export class CoreRaceGame {
             <span>AX net actual / source</span><b>${fixed(this.debugGhost?.latestNetSpeedAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceNetSpeedAcceleration, 2)}</b>
             <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
             <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>
+            <span>FIRST |Δv|≥15</span><b style="color:#ffc94d">${fixed(ghostFirstSpeedDrift === undefined ? undefined : ghostFirstSpeedDrift.progress * 100, 1)}% · Δv ${fixed(ghostFirstSpeedDrift?.speedDeltaKph, 0)} km/h</b>
+            <span>DRIFT cause</span><b>AXF ${fixed(ghostFirstSpeedDrift?.actualForwardAcceleration, 1)}/${fixed(ghostFirstSpeedDrift?.sourceForwardAcceleration, 1)} · B ${fixed(ghostFirstSpeedDrift?.feedbackBrake)}/${fixed(ghostFirstSpeedDrift?.profileBrake)} · T ${fixed(ghostFirstSpeedDrift?.throttle)}</b>
+            <span>DRIFT state</span><b>path ${fixed(ghostFirstSpeedDrift?.pathError, 2)}m · yawΔ ${degreesPerSecond(ghostFirstSpeedDrift?.yawError)}</b>
             <span>WORST AX net Δ</span><b style="color:${(ghostWorstLoss?.netAccelerationDelta ?? 0) < -3 ? '#ff6978' : '#dce9e4'}">${fixed(ghostWorstLoss?.netAccelerationDelta, 2)} m/s² @ ${fixed(ghostWorstLoss === undefined ? undefined : ghostWorstLoss.progress * 100, 1)}%</b>
             <span>LOSS context</span><b>Δv ${fixed(ghostWorstLoss?.speedDeficitKph, 0)} km/h · path ${fixed(ghostWorstLoss?.pathError, 2)}m · yawΔ ${degreesPerSecond(ghostWorstLoss?.yawError)}</b>
             ${ghostDetails}
