@@ -51,9 +51,12 @@ describe('machine-limit reference driver', () => {
     expect(Math.abs(soft.straightLimit - hard.straightLimit)).toBeLessThan(0.01);
   });
 
-  it('keeps the professional field in a narrow execution band capped by the shared reference', () => {
-    expect(referenceExecutionForSkill(1.118)).toBeGreaterThanOrEqual(0.985);
-    expect(referenceExecutionForSkill(1.136)).toBeLessThanOrEqual(1.0);
+  it('keeps the professional field very close to the shared reference', () => {
+    expect(referenceExecutionForSkill(1.118)).toBe(0.994);
+    expect(referenceExecutionForSkill(1.120)).toBeCloseTo(0.99455, 5);
+    expect(referenceExecutionForSkill(1.127)).toBe(0.997);
+    expect(referenceExecutionForSkill(1.130)).toBeCloseTo(0.99805, 5);
+    expect(referenceExecutionForSkill(1.136)).toBe(1.0);
     expect(referenceExecutionForSkill(1.136)).toBeGreaterThan(referenceExecutionForSkill(1.118));
     expect(referenceExecutionForSkill(1.155)).toBe(1.0);
   });
