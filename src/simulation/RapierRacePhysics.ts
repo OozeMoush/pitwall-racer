@@ -76,6 +76,7 @@ export class RapierRacePhysics {
   private playerSlideSeverityValue = 0;
   private playerLongitudinalAccelerationValue = 0;
   private aiSlideStates: TyreSlideState[];
+  private aiLongitudinalAccelerationValues: number[];
   private latestAi: DriverState[] = [];
   private latestAiControls: Array<DynamicAiControl | undefined> = [];
   private playerLap = 0;
@@ -101,6 +102,7 @@ export class RapierRacePhysics {
     this.lastAiProgress = ai.map((driver) => driver.progress);
     this.aiPitStops = ai.map(() => createPitStopState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiLongitudinalAccelerationValues = ai.map(() => 0);
   }
 
   drivePlayer(input: PhysicalCarInput, dt: number): void {
@@ -177,6 +179,11 @@ export class RapierRacePhysics {
     const state = this.aiSlideStates[index] ?? createTyreSlideState(index + 1.13);
     const step = this.driveBody(body, input, dt, 1, state);
     this.aiSlideStates[index] = step.state;
+    this.aiLongitudinalAccelerationValues[index] = step.longitudinalAcceleration;
+  }
+
+  aiLongitudinalAcceleration(index: number): number | undefined {
+    return this.aiLongitudinalAccelerationValues[index];
   }
 
   step(dt: number): void {
@@ -222,6 +229,7 @@ export class RapierRacePhysics {
     if (!body) return;
     this.setBodyState(body, state);
     this.aiSlideStates[index] = createTyreSlideState(index + 1.13);
+    this.aiLongitudinalAccelerationValues[index] = 0;
   }
 
   stopPlayer(): void {
@@ -240,6 +248,7 @@ export class RapierRacePhysics {
     this.playerLap = 0;
     this.latestAiControls = [];
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     ai.forEach((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
       this.setAiState(index, {

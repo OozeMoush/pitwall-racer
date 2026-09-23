@@ -139,6 +139,10 @@ export class AiReferenceGhost {
     return this.control;
   }
 
+  latestForwardAcceleration(): number | undefined {
+    return this.physics.aiLongitudinalAcceleration(0);
+  }
+
   lastLapSeconds(): number | undefined {
     return this.completedLap;
   }

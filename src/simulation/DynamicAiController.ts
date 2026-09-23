@@ -34,6 +34,7 @@ export interface DynamicAiDebug {
   demonstratedGripTrace: boolean;
   demonstratedForwardAcceleration: boolean;
   sourceGrip?: number;
+  sourceForwardAcceleration?: number;
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
@@ -521,6 +522,12 @@ export function dynamicAiControl(
             lineAsset,
             longitudinalProgress,
           ).tireGrip ?? lineAsset.referenceGrip
+        : undefined,
+      sourceForwardAcceleration: lineAsset
+        ? sampleRacingLineAsset(
+            lineAsset,
+            longitudinalProgress,
+          ).forwardAcceleration
         : undefined,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
