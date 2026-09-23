@@ -372,11 +372,19 @@ export function dynamicAiControl(
       ? Math.abs(explicitFollower.laneError)
       : Math.abs(referenceLaneNow - projection.laneOffset);
     const pathError = explicitFollower?.pathError ?? laneError;
+    // A demonstrated Q5/AXF trace is already a physically proven path. Small
+    // spatial replay error should be corrected primarily by steering, not by
+    // deleting 10-20% of the demonstrated speed. The old 2.4/3.0 m thresholds
+    // made a ~3.5 m miss at the lap seam trigger immediate feedback braking,
+    // turning a positive source AXF into a large negative acceleration.
+    // Keep strong slowdown for genuine departures, but let ordinary Q5
+    // convergence happen at the demonstrated longitudinal pace.
     const normalRecoveryScale = hasForwardAccelerationTrace
-      ? 1 - clamp((laneError - 2.4) / 3.6, 0, 1) * 0.48
+      ? 1 - clamp((laneError - 5.0) / 5.0, 0, 1) * 0.30
       : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
-    const emergencyPathScale =
-      1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
+    const emergencyPathScale = hasForwardAccelerationTrace
+      ? 1 - clamp((pathError - 8.0) / 6.0, 0, 1) * 0.55
+      : 1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
     targetSpeed *= Math.min(normalRecoveryScale, emergencyPathScale);
   }
 

@@ -242,6 +242,91 @@ describe('dynamicAiControl', () => {
     expect(control.throttle).toBe(0);
   });
 
+  it('does not panic-brake a Q5 trace for a modest path miss', () => {
+    const driver = createAiField()[0];
+    driver.skill = 1.14;
+    driver.progress = 0.20;
+    const grip = driver.tire.grip;
+    const lineLane = 0;
+    const vehicleLane = 3.5;
+    const vehiclePose = sampleTrack(driver.progress, vehicleLane);
+    const vehicle = {
+      ...createVehicle(vehiclePose.x, vehiclePose.y, vehiclePose.heading),
+      speed: 72,
+    };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const pose = sampleTrack(progress, lineLane);
+        return {
+          progress,
+          laneOffset: lineLane,
+          targetSpeed: 72,
+          worldX: pose.x,
+          worldY: pose.y,
+          bodyHeading: pose.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: grip,
+          longitudinalAcceleration: 3,
+          forwardAcceleration: 7.5,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.pathError).toBeGreaterThan(3);
+    expect(control.debug.pathError).toBeLessThan(5);
+    expect(control.targetSpeed).toBeGreaterThan(71);
+    expect(control.debug.feedbackBrake).toBe(0);
+    expect(control.brake).toBe(0);
+  });
+
+  it('still slows a Q5 trace after a genuine large path departure', () => {
+    const driver = createAiField()[0];
+    driver.skill = 1.14;
+    driver.progress = 0.20;
+    const grip = driver.tire.grip;
+    const lineLane = 0;
+    const vehicleLane = 11;
+    const vehiclePose = sampleTrack(driver.progress, vehicleLane);
+    const vehicle = {
+      ...createVehicle(vehiclePose.x, vehiclePose.y, vehiclePose.heading),
+      speed: 72,
+    };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const pose = sampleTrack(progress, lineLane);
+        return {
+          progress,
+          laneOffset: lineLane,
+          targetSpeed: 72,
+          worldX: pose.x,
+          worldY: pose.y,
+          bodyHeading: pose.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: grip,
+          longitudinalAcceleration: 0,
+          forwardAcceleration: 0,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.pathError).toBeGreaterThan(8);
+    expect(control.targetSpeed).toBeLessThan(68);
+  });
+
   it('uses explicit-path phase for Q5 absolute-pose speed control', () => {
     const driver = createAiField()[0];
     driver.skill = 1.14;
