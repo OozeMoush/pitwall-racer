@@ -624,9 +624,15 @@ class QualifyingGame {
       ? 'WASD DRIVE · C RECOVER · ENTER RETURN MENU'
       : 'WASD DRIVE · C RECOVER';
     const currentSectorTimes = [
-      this.sectorTimes[0],
-      this.sectorTimes[1],
-      this.nextSector === 3 ? this.lapTime - this.sectorStartTime : undefined,
+      this.sectorTimes[0] ?? (this.nextSector === 1 && this.phase === 'FLYING'
+        ? this.lapTime - this.sectorStartTime
+        : undefined),
+      this.sectorTimes[1] ?? (this.nextSector === 2 && this.phase === 'FLYING'
+        ? this.lapTime - this.sectorStartTime
+        : undefined),
+      this.nextSector === 3 && this.phase === 'FLYING'
+        ? this.lapTime - this.sectorStartTime
+        : undefined,
     ];
     const historicalSectorHtml = isTimeTrial
       ? historicalSectors.map((best, index) => {

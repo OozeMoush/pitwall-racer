@@ -1355,7 +1355,9 @@ export class CoreRaceGame {
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
     const banner = raceBanner(this.flow);
-    const legal = isTwoCompoundLegal(this.usedCompounds);
+    const compoundLegal = isTwoCompoundLegal(this.usedCompounds);
+    const penaltyLegal = this.trackLimitPenalty.pendingPitSeconds <= 0;
+    const legal = compoundLegal && penaltyLegal;
     const displayLap = Math.max(1, Math.min(this.lap, this.totalLaps));
     const obligation = this.flow.phase === 'RACING'
       ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, displayLap, this.totalLaps, this.pitRequested || isPitActive(this.pitStop))
@@ -1425,8 +1427,13 @@ export class CoreRaceGame {
       : this.launchEffectRemaining > 0 && this.launchFeedback
         ? `<div class="launch-feedback ${this.launchFeedbackTone}">${this.launchFeedback}</div>`
         : '';
+    const finishRuleText = legal
+      ? 'LEGAL'
+      : !penaltyLegal
+        ? `UNSERVED TRACK LIMIT PENALTY · ${this.trackLimitPenalty.pendingPitSeconds}s`
+        : 'TWO COMPOUNDS REQUIRED';
     const finishHtml = this.flow.phase === 'FINISHED'
-      ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
+      ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${finishRuleText} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
     const penaltyHtml = this.racePenaltyNotice
