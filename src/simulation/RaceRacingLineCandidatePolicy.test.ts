@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  RaceRacingLineCandidateFilter,
-  normalizedRaceCandidateSpeed,
-} from './RaceRacingLineCandidatePolicy';
+import { RaceRacingLineCandidateFilter } from './RaceRacingLineCandidatePolicy';
 
 describe('race racing-line candidate policy', () => {
   it('allows brief traffic but rejects a lap shaped by sustained traffic', () => {
@@ -15,17 +12,5 @@ describe('race racing-line candidate policy', () => {
     expect(filter.affectedSeconds).toBeGreaterThan(1.5);
   });
 
-  it('normalizes observed race speed to the lap-start grip context', () => {
-    const raw = 55;
-    const normalized = normalizedRaceCandidateSpeed(
-      'pitwall-gp',
-      0.42,
-      raw,
-      0.9,
-      1.1,
-    );
 
-    expect(normalized).toBeGreaterThan(raw);
-    expect(Number.isFinite(normalized)).toBe(true);
-  });
 });

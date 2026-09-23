@@ -122,52 +122,46 @@ export class PlayerRacingLineCandidateRecorder {
   }
 }
 
+export function racingLineTraceQuality(
+  asset: RacingLineAsset | undefined,
+): number {
+  if (!asset) return -1;
+  const points = asset.points;
+  if (points.some((point) => point.forwardAcceleration !== undefined)) return 4;
+  if (points.some((point) => point.tireGrip !== undefined)) return 3;
+  if (points.some((point) => point.longitudinalAcceleration !== undefined)) return 2;
+  if (points.some(
+    (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
+  )) return 1;
+  return 0;
+}
+
 export function saveBestPlayerRacingLineCandidate(
   storage: RacingLineCandidateStorage,
   candidate: RacingLineAsset,
 ): RacingLineAsset {
   const store = loadStore(storage);
   const previous = store.candidates[candidate.trackId];
-  const previousHasDynamics = previous?.points.some(
-    (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
-  ) ?? false;
-  const candidateHasDynamics = candidate.points.some(
-    (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
-  );
-  const previousHasAcceleration = previous?.points.some(
-    (point) => point.longitudinalAcceleration !== undefined,
-  ) ?? false;
-  const candidateHasAcceleration = candidate.points.some(
-    (point) => point.longitudinalAcceleration !== undefined,
-  );
-  const previousHasGripTrace = previous?.points.some(
-    (point) => point.tireGrip !== undefined,
-  ) ?? false;
-  const candidateHasGripTrace = candidate.points.some(
-    (point) => point.tireGrip !== undefined,
-  );
-  const previousHasForwardAcceleration = previous?.points.some(
-    (point) => point.forwardAcceleration !== undefined,
-  ) ?? false;
-  const candidateHasForwardAcceleration = candidate.points.some(
-    (point) => point.forwardAcceleration !== undefined,
-  );
 
-  // Legacy PLAYER lines only stored position + speed. A single clean modern
-  // lap is allowed to replace that legacy candidate even when it is slower,
-  // because without demonstrated heading/yaw the CPU cannot reproduce the
-  // player's transient rotation reliably. Once upgraded, normal best-lap
-  // selection resumes.
-  if (
-    previous?.lapSeconds !== undefined
-    && candidate.lapSeconds !== undefined
-    && previous.lapSeconds <= candidate.lapSeconds
-    && (previousHasDynamics || !candidateHasDynamics)
-    && (previousHasAcceleration || !candidateHasAcceleration)
-    && (previousHasGripTrace || !candidateHasGripTrace)
-    && (previousHasForwardAcceleration || !candidateHasForwardAcceleration)
-  ) {
-    return previous;
+  if (previous) {
+    const previousQuality = racingLineTraceQuality(previous);
+    const candidateQuality = racingLineTraceQuality(candidate);
+
+    // Never trade replay fidelity for a headline lap time. Once a trace has
+    // richer physical state (heading/yaw, acceleration, grip, AXF), a lower
+    // fidelity race lap must not overwrite it even if that lap was faster.
+    if (candidateQuality < previousQuality) return previous;
+
+    // A richer trace is an upgrade even if slightly slower. At equal quality,
+    // preserve the fastest clean demonstrated lap.
+    if (
+      candidateQuality === previousQuality
+      && previous.lapSeconds !== undefined
+      && candidate.lapSeconds !== undefined
+      && previous.lapSeconds <= candidate.lapSeconds
+    ) {
+      return previous;
+    }
   }
 
   store.candidates[candidate.trackId] = candidate;

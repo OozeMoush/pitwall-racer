@@ -3,6 +3,7 @@ import {
   PlayerRacingLineCandidateRecorder,
   loadPlayerRacingLineCandidate,
   saveBestPlayerRacingLineCandidate,
+  racingLineTraceQuality,
   type RacingLineCandidateStorage,
 } from './PlayerRacingLineCandidate';
 
@@ -134,6 +135,49 @@ describe('player racing-line candidates', () => {
     expect(candidate?.points.some(
       (point) => point.tireGrip !== undefined,
     )).toBe(true);
+  });
+
+  it('never replaces a richer trace with a faster lower-fidelity lap', () => {
+    const storage = new MemoryStorage();
+    const base = recordedLap(24.2, true)!;
+    const rich = {
+      ...base,
+      points: base.points.map((point) => ({
+        ...point,
+        longitudinalAcceleration: 0,
+        tireGrip: 1.2,
+        forwardAcceleration: 2.5,
+      })),
+    };
+    const lowerFidelityFast = recordedLap(23.4, true)!;
+
+    saveBestPlayerRacingLineCandidate(storage, rich);
+    saveBestPlayerRacingLineCandidate(storage, lowerFidelityFast);
+
+    const stored = loadPlayerRacingLineCandidate(storage, 'pitwall-gp');
+    expect(stored?.lapSeconds).toBe(24.2);
+    expect(racingLineTraceQuality(stored)).toBe(4);
+  });
+
+  it('keeps the faster lap when trace quality is equal', () => {
+    const storage = new MemoryStorage();
+    const makeRich = (seconds: number) => {
+      const base = recordedLap(seconds, true)!;
+      return {
+        ...base,
+        points: base.points.map((point) => ({
+          ...point,
+          longitudinalAcceleration: 0,
+          tireGrip: 1.2,
+          forwardAcceleration: 2.5,
+        })),
+      };
+    };
+
+    saveBestPlayerRacingLineCandidate(storage, makeRich(24.2));
+    saveBestPlayerRacingLineCandidate(storage, makeRich(23.6));
+
+    expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')?.lapSeconds).toBe(23.6);
   });
 
 });

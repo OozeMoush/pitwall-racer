@@ -13,12 +13,10 @@ import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
 import {
   loadPlayerRacingLineCandidate,
   PlayerRacingLineCandidateRecorder,
+  racingLineTraceQuality,
   saveBestPlayerRacingLineCandidate,
 } from '../simulation/PlayerRacingLineCandidate';
-import {
-  RaceRacingLineCandidateFilter,
-  normalizedRaceCandidateSpeed,
-} from '../simulation/RaceRacingLineCandidatePolicy';
+import { RaceRacingLineCandidateFilter } from '../simulation/RaceRacingLineCandidatePolicy';
 import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
 import { activeReferenceTarget, runtimeRacingLine } from '../simulation/RacingLineRuntime';
 import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
@@ -150,6 +148,7 @@ export class CoreRaceGame {
   private lineCandidateReferenceGrip = 1;
   private racingLineNotice = '';
   private racingLineNoticeRemaining = 0;
+  private lineCandidateStatus = 'ARMING';
   private debugEnabled = false;
   private debugAiIndex = 0;
   private debugGhost?: AiReferenceGhost;
@@ -394,24 +393,15 @@ export class CoreRaceGame {
       );
       if (!this.lineCandidateFilter.eligible) this.lineCandidate.markIneligible();
 
-      const normalizedSpeed = normalizedRaceCandidateSpeed(
-        this.setup.trackId,
-        afterTrack.progress,
-        this.vehicle.speed,
-        this.tire.grip,
-        this.lineCandidateReferenceGrip,
-      );
-      const normalizedYawRate = this.vehicle.speed > 1
-        ? this.vehicle.yawRate * normalizedSpeed / this.vehicle.speed
-        : this.vehicle.yawRate;
       this.lineCandidate.sample(
         afterTrack.progress,
         afterTrack.laneOffset,
-        normalizedSpeed,
+        this.vehicle.speed,
         wrapAngle(this.vehicle.heading - afterTrack.heading),
-        normalizedYawRate,
+        this.vehicle.yawRate,
         dt,
-        this.lineCandidateReferenceGrip,
+        this.tire.grip,
+        this.physics.playerLongitudinalAcceleration(),
       );
     }
     this.updateSectorTiming();
@@ -557,44 +547,72 @@ export class CoreRaceGame {
     this.lineCandidateReferenceGrip = this.tire.grip;
     this.lineCandidate.begin(this.setup.trackId, this.lineCandidateReferenceGrip);
     this.lineCandidateFilter.reset();
+    this.lineCandidateStatus = 'RECORDING';
   }
 
   private commitRaceLineCandidate(lapTime: number, validLap: boolean): void {
     const eligibility = this.lapValidity.snapshot();
-    if (
-      !validLap
-      || this.lap < 2
-      || this.lapPitted
-      || !eligibility.candidateEligible
-      || !this.lineCandidateFilter.eligible
-    ) {
-      return;
-    }
-
-    const candidate = this.lineCandidate.finish(lapTime);
-    if (!candidate) return;
-
     const previous = loadPlayerRacingLineCandidate(
       window.localStorage,
       this.setup.trackId,
     );
     const previousSeconds = previous?.lapSeconds;
-    const previousHasDynamics = previous?.points.some(
-      (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
-    ) ?? false;
+    const rejectionReasons: string[] = [];
+
+    if (!validLap) rejectionReasons.push('INVALID LAP');
+    if (this.lap < 2) rejectionReasons.push('LAP 1');
+    if (this.lapPitted) rejectionReasons.push('PIT');
+    if (!eligibility.candidateEligible) {
+      rejectionReasons.push(
+        eligibility.warnings > 0
+          ? `TRACK LIMITS ${eligibility.warnings}`
+          : 'RECOVERY',
+      );
+    }
+    if (!this.lineCandidateFilter.eligible) {
+      rejectionReasons.push(
+        `TRAFFIC ${this.lineCandidateFilter.affectedSeconds.toFixed(1)}s`,
+      );
+    }
+
+    if (rejectionReasons.length > 0) {
+      this.lineCandidateStatus = `REJECT · ${rejectionReasons.join(' + ')}`;
+      if (
+        previousSeconds !== undefined
+        && lapTime < previousSeconds - 0.0005
+      ) {
+        this.racingLineNotice = `LINE NOT SAVED · ${rejectionReasons.join(' · ')}`;
+        this.racingLineNoticeRemaining = 3.2;
+      }
+      return;
+    }
+
+    const candidate = this.lineCandidate.finish(lapTime);
+    if (!candidate) {
+      this.lineCandidateStatus = 'REJECT · INCOMPLETE TRACE';
+      return;
+    }
+
+    const previousQuality = racingLineTraceQuality(previous);
+    const candidateQuality = racingLineTraceQuality(candidate);
     const saved = saveBestPlayerRacingLineCandidate(
       window.localStorage,
       candidate,
     );
-    const savedHasDynamics = saved.points.some(
-      (point) => point.headingOffset !== undefined && point.yawRate !== undefined,
-    );
-    const dynamicsUpgrade = previous !== undefined
-      && !previousHasDynamics
-      && savedHasDynamics;
+    const storedNewCandidate = saved === candidate;
+
+    if (!storedNewCandidate) {
+      this.lineCandidateStatus = candidateQuality < previousQuality
+        ? `REJECT · TRACE Q${candidateQuality}<Q${previousQuality}`
+        : `KEPT · ${previousSeconds?.toFixed(3) ?? '—'}s`;
+      return;
+    }
+
+    const qualityUpgrade = previous !== undefined
+      && candidateQuality > previousQuality;
     const improved = previousSeconds === undefined
-      || (saved.lapSeconds !== undefined && saved.lapSeconds < previousSeconds - 0.0005);
-    if (!improved && !dynamicsUpgrade) return;
+      || candidate.lapSeconds === undefined
+      || candidate.lapSeconds < previousSeconds - 0.0005;
 
     const usingPlayerLine = selectedRacingLineSource(
       window.localStorage,
@@ -604,13 +622,16 @@ export class CoreRaceGame {
       activateStoredRacingLine(window.localStorage, this.setup.trackId);
     }
 
-    this.racingLineNotice = dynamicsUpgrade
+    this.lineCandidateStatus = `SAVED · ${lapTime.toFixed(3)}s · Q${candidateQuality}`;
+    this.racingLineNotice = qualityUpgrade
       ? usingPlayerLine
-        ? `CPU LINE UPGRADED · HEADING + YAW`
-        : `PLAYER LINE UPGRADED · HEADING + YAW`
-      : usingPlayerLine
-        ? `CPU LINE UPDATED · ${lapTime.toFixed(3)}s`
-        : `PLAYER LINE SAVED · ${lapTime.toFixed(3)}s`;
+        ? `CPU LINE UPGRADED · Q${candidateQuality}`
+        : `PLAYER LINE UPGRADED · Q${candidateQuality}`
+      : improved
+        ? usingPlayerLine
+          ? `CPU LINE UPDATED · ${lapTime.toFixed(3)}s`
+          : `PLAYER LINE SAVED · ${lapTime.toFixed(3)}s`
+        : `PLAYER LINE STORED · Q${candidateQuality}`;
     this.racingLineNoticeRemaining = 3.2;
 
     console.info('RACING_LINE_CANDIDATE', {
@@ -621,8 +642,8 @@ export class CoreRaceGame {
       raceLap: this.lap,
       trafficAffectedSeconds: this.lineCandidateFilter.affectedSeconds,
       activatedForCpu: usingPlayerLine,
-      dynamicsUpgrade,
-      demonstratedDynamics: savedHasDynamics,
+      qualityUpgrade,
+      traceQuality: candidateQuality,
     });
   }
 
@@ -994,6 +1015,7 @@ export class CoreRaceGame {
     this.lineCandidateReferenceGrip = this.tire.grip;
     this.racingLineNotice = '';
     this.racingLineNoticeRemaining = 0;
+    this.lineCandidateStatus = 'ARMING';
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
@@ -1181,6 +1203,8 @@ export class CoreRaceGame {
         <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
         <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
         <span>LINE LAP</span><b>${lap}</b>
+        <span>LINE CANDIDATE</span><b style="color:${this.lineCandidateStatus.startsWith('REJECT') ? '#ff6978' : '#dce9e4'}">${this.lineCandidateStatus}</b>
+        <span>TRAFFIC</span><b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)} s</b>
         <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP · RECORD CLEAN LAP' : 'HEADING + YAW + AX · RECORD CLEAN LAP') : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
         <span>MODE</span><b>${control?.battleState ?? '—'}</b>
         <span>PROGRESS center / path</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>

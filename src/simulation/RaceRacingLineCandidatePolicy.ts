@@ -1,6 +1,3 @@
-import { referenceTarget } from './ReferenceDriverModel';
-import type { TrackId } from './TrackModel';
-
 const MAX_CANDIDATE_TRAFFIC_SECONDS = 1.5;
 const TOW_THRESHOLD = 0.02;
 const DIRTY_AIR_THRESHOLD = 0.01;
@@ -37,23 +34,4 @@ export class RaceRacingLineCandidateFilter {
   get affectedSeconds(): number {
     return this.trafficSeconds;
   }
-}
-
-/**
- * Store race-lap speed as if it had been driven at the lap-start grip.
- *
- * A Medium/Hard or worn-tyre lap can therefore contribute its line and pace
- * quality without baking that exact tyre state into the reusable PLAYER asset.
- */
-export function normalizedRaceCandidateSpeed(
-  trackId: TrackId,
-  progress: number,
-  actualSpeed: number,
-  currentGrip: number,
-  referenceGrip: number,
-): number {
-  const currentReference = referenceTarget(trackId, progress, currentGrip).targetSpeed;
-  const storedReference = referenceTarget(trackId, progress, referenceGrip).targetSpeed;
-  if (currentReference <= 1 || storedReference <= 1) return Math.max(0, actualSpeed);
-  return Math.max(0, actualSpeed) * storedReference / currentReference;
 }
