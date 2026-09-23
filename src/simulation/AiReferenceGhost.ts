@@ -57,7 +57,11 @@ export class AiReferenceGhost {
   private currentFirstSpeedDrift?: AiReferenceGhostSpeedDriftEvent;
   private completedFirstSpeedDrift?: AiReferenceGhostSpeedDriftEvent;
 
-  constructor(startProgress: number, trackId: TrackId = getActiveTrack().id) {
+  constructor(
+    startProgress: number,
+    trackId: TrackId = getActiveTrack().id,
+    timeFromInitialState = false,
+  ) {
     const base = createAiField()[0];
     const lineAsset = runtimeRacingLine(trackId);
     const freshSoft = createTire('SOFT');
@@ -103,6 +107,14 @@ export class AiReferenceGhost {
       yawRate: initialYawRate,
     });
     this.lastProgress = startProgress;
+    if (timeFromInitialState) {
+      // Diagnostic replay: start from the stored lap state itself, not from a
+      // standing start or a controller-generated periodic orbit. This isolates
+      // whether the recorded state is sufficient to reproduce one lap.
+      this.warmupWraps = 2;
+      this.timedLapStarted = true;
+      this.lapElapsed = 0;
+    }
   }
 
   step(dt: number): void {

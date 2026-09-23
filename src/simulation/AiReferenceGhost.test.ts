@@ -38,6 +38,28 @@ describe('AiReferenceGhost', () => {
     expect(ghost.driver.tire.grip).toBeCloseTo(1.225, 6);
   });
 
+  it('can time one replay directly from the stored lap-start state', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.18,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 70,
+        yawRate: 0,
+      })),
+    });
+
+    const ghost = new AiReferenceGhost(0, 'pitwall-gp', true);
+    expect(ghost.warmupLapsRemaining()).toBe(0);
+    expect(ghost.currentLapSeconds()).toBe(0);
+    ghost.step(1 / 120);
+    expect(ghost.currentLapSeconds()).toBeGreaterThan(0);
+  });
+
   it('requires a full warmup lap before timed replay starts', () => {
     setActiveTrack('pitwall-gp');
     setRuntimeRacingLine('pitwall-gp', {

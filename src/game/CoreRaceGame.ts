@@ -895,9 +895,10 @@ export class CoreRaceGame {
   }
 
   private resetAiDebugGhost(): void {
-    const selected = this.ai[this.debugAiIndex];
-    const startProgress = selected?.progress ?? this.trackProgress;
-    this.debugGhost = new AiReferenceGhost(startProgress, this.setup.trackId);
+    // Reference replay should answer whether the stored PLAYER lap itself can
+    // be reproduced. Start exactly at the lap seam using the stored speed,
+    // heading and yaw rather than inheriting a standing-start/warmup history.
+    this.debugGhost = new AiReferenceGhost(0, this.setup.trackId, true);
     this.debugLineRefreshRemaining = 0;
   }
 
