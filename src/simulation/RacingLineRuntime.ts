@@ -65,6 +65,8 @@ export interface RuntimeRacingLinePose {
   x: number;
   y: number;
   heading: number;
+  /** Tangent of the demonstrated world-space trajectory (velocity direction). */
+  trajectoryHeading: number;
   laneOffset: number;
   targetSpeed: number;
   demonstratedHeading?: number;
@@ -92,6 +94,7 @@ export function sampleRuntimeRacingLinePose(
       x: pose.x,
       y: pose.y,
       heading: pose.heading,
+      trajectoryHeading: pose.heading,
       laneOffset: reference.laneOffset,
       targetSpeed: reference.targetSpeed,
     };
@@ -133,6 +136,7 @@ export function sampleRuntimeRacingLinePose(
     x: lerp(aPose.x, bPose.x, t),
     y: lerp(aPose.y, bPose.y, t),
     heading: demonstratedHeading ?? geometricHeading,
+    trajectoryHeading: geometricHeading,
     laneOffset: lerp(a.laneOffset, b.laneOffset, t),
     targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
     demonstratedHeading,

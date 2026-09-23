@@ -46,6 +46,7 @@ export interface AiReferenceGhostSpeedDriftEvent {
 export class AiReferenceGhost {
   readonly driver: DriverState;
   readonly physics: RapierRacePhysics;
+  private readonly trackId: TrackId;
   private lastProgress: number;
   private warmupWraps = 0;
   private timedLapStarted = false;
@@ -62,6 +63,7 @@ export class AiReferenceGhost {
     trackId: TrackId = getActiveTrack().id,
     timeFromInitialState = false,
   ) {
+    this.trackId = trackId;
     const base = createAiField()[0];
     const lineAsset = runtimeRacingLine(trackId);
     const freshSoft = createTire('SOFT');
@@ -105,7 +107,7 @@ export class AiReferenceGhost {
       ...createVehicle(pose.x, pose.y, lineHeading),
       speed: reference.targetSpeed,
       yawRate: initialYawRate,
-    });
+    }, pose.trajectoryHeading);
     this.lastProgress = startProgress;
     if (timeFromInitialState) {
       // Diagnostic replay: start from the stored lap state itself, not from a
@@ -233,6 +235,19 @@ export class AiReferenceGhost {
 
   latestNetSpeedAcceleration(): number | undefined {
     return this.physics.aiNetSpeedAcceleration(0);
+  }
+
+  latestSlipAngle(): number | undefined {
+    const state = this.state();
+    const velocityHeading = this.physics.aiVelocityHeading(0);
+    if (!state || velocityHeading === undefined) return undefined;
+    return wrapAngle(velocityHeading - state.heading);
+  }
+
+  sourceSlipAngle(): number | undefined {
+    const pose = sampleRuntimeRacingLinePose(this.trackId, this.driver.progress);
+    if (pose.demonstratedHeading === undefined) return undefined;
+    return wrapAngle(pose.trajectoryHeading - pose.demonstratedHeading);
   }
 
   lastLapSeconds(): number | undefined {

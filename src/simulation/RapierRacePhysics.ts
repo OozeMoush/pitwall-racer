@@ -199,6 +199,15 @@ export class RapierRacePhysics {
     return this.aiNetSpeedAccelerationValues[index];
   }
 
+  playerVelocityHeading(): number | undefined {
+    return this.velocityHeading(this.playerBody);
+  }
+
+  aiVelocityHeading(index: number): number | undefined {
+    const body = this.aiBodies[index];
+    return body ? this.velocityHeading(body) : undefined;
+  }
+
   step(dt: number): void {
     this.world.timestep = dt;
     const playerVelocityBeforeStep = this.playerBody.linvel();
@@ -246,10 +255,10 @@ export class RapierRacePhysics {
     this.playerContactKindValue = 'NONE';
   }
 
-  setAiState(index: number, state: VehicleState): void {
+  setAiState(index: number, state: VehicleState, velocityHeading?: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.setBodyState(body, state);
+    this.setBodyState(body, state, velocityHeading);
     this.aiSlideStates[index] = createTyreSlideState(index + 1.13);
     this.aiLongitudinalAccelerationValues[index] = 0;
     this.aiNetSpeedAccelerationValues[index] = 0;
@@ -523,14 +532,24 @@ export class RapierRacePhysics {
     };
   }
 
-  private setBodyState(body: RAPIER.RigidBody, state: VehicleState): void {
+  private setBodyState(
+    body: RAPIER.RigidBody,
+    state: VehicleState,
+    velocityHeading = state.heading,
+  ): void {
     body.setTranslation({ x: state.x, y: state.y }, true);
     body.setRotation(state.heading, true);
     body.setLinvel({
-      x: Math.cos(state.heading) * state.speed,
-      y: Math.sin(state.heading) * state.speed,
+      x: Math.cos(velocityHeading) * state.speed,
+      y: Math.sin(velocityHeading) * state.speed,
     }, true);
     body.setAngvel(state.yawRate, true);
+  }
+
+  private velocityHeading(body: RAPIER.RigidBody): number | undefined {
+    const velocity = body.linvel();
+    if (Math.hypot(velocity.x, velocity.y) < 0.05) return undefined;
+    return Math.atan2(velocity.y, velocity.x);
   }
 
   private stopBody(body: RAPIER.RigidBody | undefined): void {

@@ -1295,6 +1295,7 @@ export class CoreRaceGame {
             <span>AXF actual / source</span><b>${fixed(this.debugGhost?.latestForwardAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceForwardAcceleration, 2)}</b>
             <span>AX net actual / source</span><b>${fixed(this.debugGhost?.latestNetSpeedAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceNetSpeedAcceleration, 2)}</b>
             <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
+            <span>SLIP actual / source</span><b>${degrees(this.debugGhost?.latestSlipAngle())} / ${degrees(this.debugGhost?.sourceSlipAngle())}</b>
             <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>
             <span>FIRST |Δv|≥15</span><b style="color:#ffc94d">${fixed(ghostFirstSpeedDrift === undefined ? undefined : ghostFirstSpeedDrift.progress * 100, 1)}% · Δv ${fixed(ghostFirstSpeedDrift?.speedDeltaKph, 0)} km/h</b>
             <span>DRIFT cause</span><b>AXF ${fixed(ghostFirstSpeedDrift?.actualForwardAcceleration, 1)}/${fixed(ghostFirstSpeedDrift?.sourceForwardAcceleration, 1)} · B ${fixed(ghostFirstSpeedDrift?.feedbackBrake)}/${fixed(ghostFirstSpeedDrift?.profileBrake)} · T ${fixed(ghostFirstSpeedDrift?.throttle)}</b>

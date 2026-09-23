@@ -38,6 +38,39 @@ describe('AiReferenceGhost', () => {
     expect(ghost.driver.tire.grip).toBeCloseTo(1.225, 6);
   });
 
+  it('initializes velocity along the demonstrated world-path tangent', () => {
+    setActiveTrack('pitwall-gp');
+    const points = Array.from({ length: 320 }, (_, index) => {
+      const progress = index / 320;
+      const pose = sampleTrack(progress, 4);
+      const next = sampleTrack((progress + 1 / 320) % 1, 4);
+      const trajectoryHeading = Math.atan2(next.y - pose.y, next.x - pose.x);
+      return {
+        progress,
+        laneOffset: 4,
+        targetSpeed: 70,
+        worldX: pose.x,
+        worldY: pose.y,
+        bodyHeading: trajectoryHeading + 0.16,
+        headingOffset: 0.16,
+        yawRate: 0,
+      };
+    });
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.18,
+      points,
+    });
+
+    const ghost = new AiReferenceGhost(0, 'pitwall-gp', true);
+    const slip = ghost.latestSlipAngle();
+    expect(slip).toBeDefined();
+    expect(Math.abs(slip!)).toBeGreaterThan(0.08);
+    expect(Math.abs(slip! - (ghost.sourceSlipAngle() ?? 0))).toBeLessThan(0.08);
+  });
+
   it('can time one replay directly from the stored lap-start state', () => {
     setActiveTrack('pitwall-gp');
     setRuntimeRacingLine('pitwall-gp', {
