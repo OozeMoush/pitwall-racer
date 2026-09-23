@@ -61,7 +61,7 @@ import {
   type RaceTrafficCar,
 } from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
-import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import { crossedStartLine, getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
@@ -488,7 +488,7 @@ export class CoreRaceGame {
 
   private updateLapAndCheckpoints(distanceFromLine: number): void {
     if (distanceFromLine > 82) return;
-    const crossedStart = this.lastTrackProgress > 0.88 && this.trackProgress < 0.12;
+    const crossedStart = crossedStartLine(this.lastTrackProgress, this.trackProgress);
 
     if (this.lap === 0) {
       if (crossedStart) {

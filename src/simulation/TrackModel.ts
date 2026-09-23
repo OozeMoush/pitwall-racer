@@ -152,6 +152,18 @@ export function nearestTrackProgress(x: number, y: number): { progress: number; 
   return { progress: projection.progress, distance: projection.distance };
 }
 
+/**
+ * Detect a real forward lap wrap without relying on a narrow hard-coded
+ * 0.88→0.12 window. A normal 120 Hz step is tiny; crossing the start line is
+ * the only legitimate large negative progress jump once the ordered lap
+ * checkpoints have been visited.
+ */
+export function crossedStartLine(previousProgress: number, currentProgress: number): boolean {
+  const previous = ((previousProgress % 1) + 1) % 1;
+  const current = ((currentProgress % 1) + 1) % 1;
+  return previous - current > 0.5;
+}
+
 function projectTrackInternal(
   x: number,
   y: number,

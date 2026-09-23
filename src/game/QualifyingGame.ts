@@ -26,7 +26,18 @@ import { createAiField } from '../simulation/RaceModel';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type TireState } from '../simulation/TireModel';
 import { formatLapTime } from '../simulation/TimingModel';
-import { getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import {
+  loadTimeTrialRecord,
+  saveTimeTrialLap,
+  type TimeTrialRecord,
+} from '../simulation/TimeTrialRecordStore';
+import {
+  crossedStartLine,
+  getActiveTrack,
+  projectTrack,
+  sampleTrack,
+  TRACK_LENGTH,
+} from '../simulation/TrackModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
 import type { RaceSetup } from './RaceSetup';
 
@@ -36,6 +47,7 @@ const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const START_PROGRESS = 0.72;
 const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
+const SOLO_SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
 
 type QualifyingPhase = 'COUNTDOWN' | 'APPROACH' | 'FLYING' | 'RESULTS';
 type SoloSessionMode = 'QUALIFYING' | 'TIME_TRIAL';
@@ -105,6 +117,10 @@ class QualifyingGame {
   private resolved = false;
   private completedLaps = 0;
   private lineTraceInvalidReason?: string;
+  private nextSector = 1;
+  private sectorStartTime = 0;
+  private sectorTimes: number[] = [];
+  private timeTrialRecord: TimeTrialRecord;
 
   constructor(
     container: HTMLElement,
@@ -120,6 +136,7 @@ class QualifyingGame {
     this.mode = mode;
     this.resolveQualifying = resolveQualifying;
     this.resolveTimeTrial = resolveTimeTrial;
+    this.timeTrialRecord = loadTimeTrialRecord(window.localStorage, setup.trackId);
 
     const start = sampleTrack(START_PROGRESS);
     const approachSpeed = qualifyingApproachSpeed(
@@ -304,13 +321,16 @@ class QualifyingGame {
     const after = projectTrack(this.vehicle.x, this.vehicle.y);
     this.lastProgress = this.currentProgress;
     this.currentProgress = after.progress;
-    const crossedStart = this.lastProgress > 0.88 && this.currentProgress < 0.12;
+    const crossedStart = crossedStartLine(this.lastProgress, this.currentProgress);
 
     if (this.phase === 'APPROACH') {
       if (crossedStart) {
         this.phase = 'FLYING';
         this.lapTime = 0;
         this.nextCheckpoint = 1;
+        this.nextSector = 1;
+        this.sectorStartTime = 0;
+        this.sectorTimes = [];
         this.paceEvidence.begin(this.tire.compound, this.tire.wear);
         this.lapValidity.reset();
         this.lineTraceInvalidReason = undefined;
@@ -345,6 +365,18 @@ class QualifyingGame {
     }
 
     this.lapTime += dt;
+    while (this.nextSector <= 2) {
+      const threshold = SOLO_SECTOR_BOUNDARIES[this.nextSector - 1];
+      if (this.lastProgress < threshold && this.currentProgress >= threshold) {
+        const sectorTime = this.lapTime - this.sectorStartTime;
+        this.sectorTimes.push(sectorTime);
+        this.sectorStartTime = this.lapTime;
+        this.nextSector += 1;
+      } else {
+        break;
+      }
+    }
+
     const thresholds = [0, 0.24, 0.49, 0.74];
     if (this.nextCheckpoint <= 3 && this.currentProgress >= thresholds[this.nextCheckpoint]) {
       this.nextCheckpoint += 1;
@@ -359,6 +391,9 @@ class QualifyingGame {
   private restartInvalidFlyingLap(): void {
     this.lapTime = 0;
     this.nextCheckpoint = 1;
+    this.nextSector = 1;
+    this.sectorStartTime = 0;
+    this.sectorTimes = [];
     this.paceEvidence.begin(this.tire.compound, this.tire.wear);
     this.lapValidity.reset();
     this.lineTraceInvalidReason = undefined;
@@ -394,13 +429,32 @@ class QualifyingGame {
 
     if (this.mode === 'TIME_TRIAL') {
       this.completedLaps += 1;
+      const s1 = this.sectorTimes[0];
+      const s2 = this.sectorTimes[1];
+      const s3 = s1 !== undefined && s2 !== undefined
+        ? Math.max(0, completedLapTime - s1 - s2)
+        : undefined;
+      if (
+        validity.candidateEligible
+        && s1 !== undefined
+        && s2 !== undefined
+        && s3 !== undefined
+      ) {
+        this.timeTrialRecord = saveTimeTrialLap(
+          window.localStorage,
+          this.setup.trackId,
+          completedLapTime,
+          [s1, s2, s3],
+        );
+      }
       const savedThisLap = candidate !== undefined && storedCandidate === candidate;
       const bestSeconds = storedCandidate?.lapSeconds;
+      const pb = this.timeTrialRecord.bestLap;
       this.lapNotice = savedThisLap
         ? `PLAYER LINE UPDATED · ${completedLapTime.toFixed(3)}s`
         : candidate
-          ? `CLEAN LAP · LINE BEST ${bestSeconds?.toFixed(3) ?? '—'}s`
-          : `LINE NOT SAVED · ${this.lineTraceInvalidReason ?? 'INVALID TRACE'}`;
+          ? `CLEAN LAP · PB ${pb?.toFixed(3) ?? '—'}s · LINE BEST ${bestSeconds?.toFixed(3) ?? '—'}s`
+          : `LAP NOT RECORDED · ${this.lineTraceInvalidReason ?? 'INVALID TRACE'}`;
       this.lapNoticeRemaining = 3.0;
 
       // Stay on track and start the next hot lap immediately. Keeping the tyre
@@ -408,6 +462,9 @@ class QualifyingGame {
       // line while still recording the exact pointwise grip trace each lap.
       this.lapTime = 0;
       this.nextCheckpoint = 1;
+      this.nextSector = 1;
+      this.sectorStartTime = 0;
+      this.sectorTimes = [];
       this.paceEvidence.begin(this.tire.compound, this.tire.wear);
       this.lapValidity.reset();
       this.lineTraceInvalidReason = undefined;
@@ -533,6 +590,11 @@ class QualifyingGame {
       ? loadPlayerRacingLineCandidate(window.localStorage, this.setup.trackId)
       : undefined;
     const lineBest = storedLine?.lapSeconds;
+    const ttRecord = isTimeTrial ? this.timeTrialRecord : undefined;
+    const historicalSectors = ttRecord?.bestSectors ?? [undefined, undefined, undefined];
+    const idealLap = historicalSectors.every((value) => value !== undefined)
+      ? historicalSectors.reduce((sum, value) => sum + (value ?? 0), 0)
+      : undefined;
     const countdownBanner = this.phase === 'COUNTDOWN'
       ? `<div class="race-banner">${Math.max(1, Math.ceil(this.countdown))}</div>`
       : this.phase === 'APPROACH'
@@ -561,12 +623,39 @@ class QualifyingGame {
     const controls = isTimeTrial
       ? 'WASD DRIVE · C RECOVER · ENTER RETURN MENU'
       : 'WASD DRIVE · C RECOVER';
+    const currentSectorTimes = [
+      this.sectorTimes[0],
+      this.sectorTimes[1],
+      this.nextSector === 3 ? this.lapTime - this.sectorStartTime : undefined,
+    ];
+    const historicalSectorHtml = isTimeTrial
+      ? historicalSectors.map((best, index) => {
+          const current = currentSectorTimes[index];
+          const delta = current !== undefined && best !== undefined
+            ? current - best
+            : undefined;
+          const deltaText = delta === undefined
+            ? '—'
+            : `${delta >= 0 ? '+' : ''}${delta.toFixed(3)}`;
+          return `<div><small>S${index + 1} ALL-TIME</small><b>${formatShortTime(best)}</b><span>${current === undefined ? 'TARGET' : `LIVE ${formatShortTime(current)} · ${deltaText}`}</span></div>`;
+        }).join('')
+      : '';
+    const historyHtml = isTimeTrial
+      ? ttRecord?.laps.slice(0, 5).map((lap, index) =>
+          `<span><i>#${index + 1}</i><b>${formatLapTime(lap.lapTime)}</b><small>${lap.sectors.map((s) => s.toFixed(3)).join(' · ')}</small></span>`,
+        ).join('') ?? ''
+      : '';
 
     this.hud.innerHTML = `${countdownBanner}${limitBanner}
       <div class="qualifying-hud-top">
         <div><small>${sessionLabel}</small><b>${getActiveTrack().name}</b></div>
         <strong>${timer}</strong>
       </div>
+      ${isTimeTrial ? `<div style="position:absolute;right:24px;top:96px;width:min(520px,calc(100vw - 48px));padding:12px 14px;background:rgba(4,10,12,.92);border:1px solid rgba(255,255,255,.16);color:#e7f0ed;font:12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace">
+        <div style="display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:8px;margin-bottom:8px"><b>ALL-TIME PB · ${formatLapTime(ttRecord?.bestLap)}</b><span>IDEAL · ${formatLapTime(idealLap)}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${historicalSectorHtml}</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12)">${historyHtml || '<span><b>NO VALID LAPS YET</b></span>'}</div>
+      </div>` : ''}
       <div class="qualifying-hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div><small>${state}</small><b>${runLabel}</b><span>${controls}</span></div>
