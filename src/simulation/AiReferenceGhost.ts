@@ -10,6 +10,14 @@ import { createVehicle, type VehicleState } from './VehicleModel';
 
 const CORE_POWER_BOOST = 0.22;
 
+export interface AiReferenceGhostLossEvent {
+  progress: number;
+  netAccelerationDelta: number;
+  speedDeficitKph: number;
+  pathError: number;
+  yawError: number;
+}
+
 /**
  * Debug-only isolated replay of the currently active racing line.
  *
@@ -27,6 +35,8 @@ export class AiReferenceGhost {
   private lapElapsed = 0;
   private completedLap?: number;
   private control?: DynamicAiControl;
+  private currentWorstLoss?: AiReferenceGhostLossEvent;
+  private completedWorstLoss?: AiReferenceGhostLossEvent;
 
   constructor(startProgress: number, trackId: TrackId = getActiveTrack().id) {
     const base = createAiField()[0];
@@ -112,6 +122,26 @@ export class AiReferenceGhost {
     }, dt);
     this.physics.step(dt);
 
+    if (this.timedLapStarted && sourceSample?.longitudinalAcceleration !== undefined) {
+      const actualNetAcceleration = this.physics.aiNetSpeedAcceleration(0);
+      if (actualNetAcceleration !== undefined) {
+        const targetYawRate = this.control.debug.targetYawRate ?? 0;
+        const event: AiReferenceGhostLossEvent = {
+          progress: this.driver.progress,
+          netAccelerationDelta: actualNetAcceleration - sourceSample.longitudinalAcceleration,
+          speedDeficitKph: (this.control.targetSpeed - state.speed) * 3.6,
+          pathError: this.control.debug.pathError,
+          yawError: state.yawRate - targetYawRate,
+        };
+        if (
+          !this.currentWorstLoss
+          || event.netAccelerationDelta < this.currentWorstLoss.netAccelerationDelta
+        ) {
+          this.currentWorstLoss = event;
+        }
+      }
+    }
+
     const next = this.physics.aiStates()[0];
     if (!next) return;
     const nextProjection = projectTrackNear(next.x, next.y, this.driver.progress);
@@ -119,9 +149,13 @@ export class AiReferenceGhost {
 
     if (this.timedLapStarted) this.lapElapsed += dt;
     if (wrapped) {
-      if (this.timedLapStarted && this.lapElapsed > 5) this.completedLap = this.lapElapsed;
+      if (this.timedLapStarted && this.lapElapsed > 5) {
+        this.completedLap = this.lapElapsed;
+        this.completedWorstLoss = this.currentWorstLoss;
+      }
       this.timedLapStarted = true;
       this.lapElapsed = 0;
+      this.currentWorstLoss = undefined;
       this.driver.lap += 1;
     }
 
@@ -153,6 +187,10 @@ export class AiReferenceGhost {
 
   currentLapSeconds(): number | undefined {
     return this.timedLapStarted ? this.lapElapsed : undefined;
+  }
+
+  lastWorstLoss(): AiReferenceGhostLossEvent | undefined {
+    return this.completedWorstLoss;
   }
 }
 
