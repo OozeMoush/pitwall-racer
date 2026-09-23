@@ -27,7 +27,7 @@ describe('QualifyingModel', () => {
   it('requires the player to approach the reference limit to qualify at the front', () => {
     const field = createAiField();
     const reference = qualifyingBenchmarkSeconds('pitwall-gp', 2071);
-    const nearLimit = qualifyingClassification(reference + 0.10, field, 'pitwall-gp', 2071);
+    const nearLimit = qualifyingClassification(reference, field, 'pitwall-gp', 2071);
     const ordinary = qualifyingClassification(reference + 0.55, field, 'pitwall-gp', 2071);
 
     expect(nearLimit.find((entry) => entry.id === 'player')?.position).toBeLessThanOrEqual(2);

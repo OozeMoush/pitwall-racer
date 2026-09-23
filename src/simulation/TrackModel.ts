@@ -69,13 +69,11 @@ const SWITCHBACK_RING_SOURCE: readonly TrackPoint[] = [
 // Rhythm circuit inspired by the idea of Suzuka-style linked esses: repeated
 // commitment corners feed into a hairpin and one long, fast loaded arc.
 const SAKURA_ESSES_SOURCE: readonly TrackPoint[] = [
-  { x: 520, y: 915 }, { x: 930, y: 935 }, { x: 1360, y: 915 }, { x: 1740, y: 850 },
-  { x: 1990, y: 745 }, { x: 2090, y: 620 }, { x: 2020, y: 510 }, { x: 1840, y: 455 },
-  { x: 1640, y: 470 }, { x: 1500, y: 410 }, { x: 1440, y: 315 }, { x: 1330, y: 245 },
-  { x: 1160, y: 255 }, { x: 1060, y: 335 }, { x: 960, y: 405 }, { x: 830, y: 360 },
-  { x: 735, y: 275 }, { x: 575, y: 235 }, { x: 430, y: 285 }, { x: 325, y: 390 },
-  { x: 300, y: 510 }, { x: 400, y: 600 }, { x: 555, y: 625 }, { x: 675, y: 690 },
-  { x: 650, y: 790 }, { x: 560, y: 865 },
+  { x: 520, y: 915 }, { x: 900, y: 930 }, { x: 1300, y: 910 }, { x: 1650, y: 850 },
+  { x: 1900, y: 740 }, { x: 2000, y: 610 }, { x: 1950, y: 500 }, { x: 1800, y: 430 },
+  { x: 1620, y: 470 }, { x: 1470, y: 390 }, { x: 1320, y: 475 }, { x: 1170, y: 395 },
+  { x: 1020, y: 480 }, { x: 870, y: 405 }, { x: 720, y: 350 }, { x: 560, y: 370 },
+  { x: 430, y: 450 }, { x: 350, y: 570 }, { x: 350, y: 700 }, { x: 430, y: 815 },
 ];
 
 // Dense street-style circuit: many braking references, 90-degree direction
