@@ -47,6 +47,7 @@ export class AiReferenceGhost {
   readonly driver: DriverState;
   readonly physics: RapierRacePhysics;
   private lastProgress: number;
+  private warmupWraps = 0;
   private timedLapStarted = false;
   private lapElapsed = 0;
   private completedLap?: number;
@@ -175,15 +176,28 @@ export class AiReferenceGhost {
 
     if (this.timedLapStarted) this.lapElapsed += dt;
     if (wrapped) {
-      if (this.timedLapStarted && this.lapElapsed > 5) {
-        this.completedLap = this.lapElapsed;
-        this.completedWorstLoss = this.currentWorstLoss;
-        this.completedFirstSpeedDrift = this.currentFirstSpeedDrift;
+      if (this.timedLapStarted) {
+        if (this.lapElapsed > 5) {
+          this.completedLap = this.lapElapsed;
+          this.completedWorstLoss = this.currentWorstLoss;
+          this.completedFirstSpeedDrift = this.currentFirstSpeedDrift;
+        }
+        this.lapElapsed = 0;
+        this.currentWorstLoss = undefined;
+        this.currentFirstSpeedDrift = undefined;
+      } else {
+        // The ghost is spawned at the currently selected CPU's arbitrary
+        // progress. The first crossing therefore ends only a partial warmup.
+        // Require one complete additional untimed lap before measuring replay,
+        // otherwise the timed lap inherits a large start-line state error.
+        this.warmupWraps += 1;
+        if (this.warmupWraps >= 2) {
+          this.timedLapStarted = true;
+          this.lapElapsed = 0;
+          this.currentWorstLoss = undefined;
+          this.currentFirstSpeedDrift = undefined;
+        }
       }
-      this.timedLapStarted = true;
-      this.lapElapsed = 0;
-      this.currentWorstLoss = undefined;
-      this.currentFirstSpeedDrift = undefined;
       this.driver.lap += 1;
     }
 
@@ -215,6 +229,10 @@ export class AiReferenceGhost {
 
   currentLapSeconds(): number | undefined {
     return this.timedLapStarted ? this.lapElapsed : undefined;
+  }
+
+  warmupLapsRemaining(): number {
+    return Math.max(0, 2 - this.warmupWraps);
   }
 
   lastWorstLoss(): AiReferenceGhostLossEvent | undefined {

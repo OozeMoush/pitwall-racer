@@ -38,6 +38,41 @@ describe('AiReferenceGhost', () => {
     expect(ghost.driver.tire.grip).toBeCloseTo(1.225, 6);
   });
 
+  it('requires a full warmup lap before timed replay starts', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: 1.18,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 70,
+      })),
+    });
+
+    const ghost = new AiReferenceGhost(0.75, 'pitwall-gp');
+    expect(ghost.warmupLapsRemaining()).toBe(2);
+    expect(ghost.currentLapSeconds()).toBeUndefined();
+
+    let lastProgress = ghost.driver.progress;
+    let wraps = 0;
+    for (let tick = 0; tick < 40 * 120 && wraps < 2; tick++) {
+      ghost.step(1 / 120);
+      const progress = ghost.driver.progress;
+      if (lastProgress > 0.88 && progress < 0.12) wraps += 1;
+      lastProgress = progress;
+      if (wraps === 1) {
+        expect(ghost.currentLapSeconds()).toBeUndefined();
+      }
+    }
+
+    expect(wraps).toBe(2);
+    expect(ghost.warmupLapsRemaining()).toBe(0);
+    expect(ghost.currentLapSeconds()).toBeDefined();
+  }, 15_000);
+
   it('runs the active PLAYER line with racecraft traffic removed', () => {
     setActiveTrack('pitwall-gp');
     setRuntimeRacingLine('pitwall-gp', {
