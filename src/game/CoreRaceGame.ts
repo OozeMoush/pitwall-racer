@@ -155,6 +155,7 @@ export class CoreRaceGame {
   private lineCandidateStatus = 'ARMING';
   private lineCandidateContact?: 'CAR' | 'BARRIER';
   private debugEnabled = false;
+  private debugDetailEnabled = false;
   private debugAiIndex = 0;
   private debugGhost?: AiReferenceGhost;
   private debugGhostCar?: FormulaCar3D;
@@ -252,6 +253,10 @@ export class CoreRaceGame {
       if (event.code === 'F4' && this.debugEnabled) {
         event.preventDefault();
         this.cycleDebugAi();
+      }
+      if (event.code === 'F5' && this.debugEnabled) {
+        event.preventDefault();
+        this.debugDetailEnabled = !this.debugDetailEnabled;
       }
     });
     this.container.addEventListener('pointerdown', () => this.audio.unlock(), { passive: true });
@@ -1219,52 +1224,79 @@ export class CoreRaceGame {
         ? `${ghostCurrent.toFixed(3)}s LIVE`
         : 'ARMING';
 
-    return `<div style="position:absolute;right:14px;top:88px;width:310px;padding:12px 14px;background:rgba(3,10,12,.92);border:1px solid rgba(72,255,116,.5);box-shadow:0 8px 28px rgba(0,0,0,.35);font:12px/1.42 ui-monospace,SFMono-Regular,Consolas,monospace;color:#dce9e4;z-index:30">
-      <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:8px"><b style="color:#48ff74;letter-spacing:.08em">AI LINE DEBUG</b><span>F3 OFF · F4 NEXT</span></div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:3px 12px">
-        <span>AI</span><b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b>
-        <span>LINE SOURCE</span><b style="color:#48ff74">${source}</b>
-        <span>LINE LAP</span><b>${lap}</b>
-        <span>TRACE LAP</span><b style="color:${Math.abs(traceDelta ?? 0) > 0.5 ? '#ff6978' : '#48ff74'}">${traceLap}${traceDelta === undefined ? '' : ` (${traceDelta >= 0 ? '+' : ''}${traceDelta.toFixed(3)})`}</b>
-        <span>LAST CANDIDATE</span><b style="color:${this.lineCandidateStatus.startsWith('REJECT') ? '#ff6978' : this.lineCandidateStatus.startsWith('SAVED') ? '#48ff74' : '#dce9e4'}">${this.lineCandidateStatus}</b>
-        <span>LINE-SHAPING TRAFFIC</span><b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)} s</b>
-        <span>STATE TRACE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP · RECORD CLEAN LAP' : 'HEADING + YAW + AX · RECORD CLEAN LAP') : control?.debug.demonstratedDynamics ? 'HEADING + YAW · RECORD CLEAN LAP' : 'LEGACY · RECORD CLEAN LAP'}</b>
-        <span>MODE</span><b>${control?.battleState ?? '—'}</b>
-        <span>PROGRESS center / path</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>
+    const cpuDetails = this.debugDetailEnabled
+      ? `
         <span>LANE actual / ref</span><b>${fixed(driver?.laneOffset)} / ${fixed(control?.debug.referenceLane)}</b>
         <span>LANE ERROR</span><b style="color:${Math.abs(control?.debug.laneError ?? 0) > 2 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.laneError)} m</b>
-        <span>PATH ERROR</span><b style="color:${(control?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.pathError)} m</b>
-        <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
-        <span>GRIP actual / source</span><b>${fixed(driver?.tire.grip, 3)} / ${fixed(control?.debug.sourceGrip, 3)}</b>
-        <span>AXF actual / source</span><b>${fixed(this.physics.aiLongitudinalAcceleration(this.debugAiIndex), 2)} / ${fixed(control?.debug.sourceForwardAcceleration, 2)} m/s²</b>
-        <span>AX net actual / source</span><b>${fixed(this.physics.aiNetSpeedAcceleration(this.debugAiIndex), 2)} / ${fixed(control?.debug.sourceNetSpeedAcceleration, 2)} m/s²</b>
-        <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
-        <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
-        <span>HEADING / BEARING err</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
-        <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
-        <span>BRAKE feedback / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
+        <span>HEADING / BEARING</span><b>${degrees(control?.debug.pathHeadingError)} / ${degrees(control?.debug.bearingError)}</b>
+        <span>BRAKE fb / profile</span><b>${fixed(control?.debug.feedbackBrake)} / ${fixed(control?.debug.profileBrake)}</b>
         <span>THROTTLE profile</span><b>${fixed(control?.debug.profileThrottle)}</b>
-        <span>LOOKAHEAD</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m</b>
-        <span>PREDICT</span><b>${percent(control?.debug.predictionWeight)}</b>
-      </div>
-      <div style="height:1px;background:rgba(255,255,255,.12);margin:9px 0"></div>
-      <div style="display:flex;justify-content:space-between"><b style="color:#39dfff">REFERENCE GHOST</b><span>TRAFFIC OFF · 100%</span></div>
-      <div style="display:grid;grid-template-columns:1fr auto;gap:3px 12px;margin-top:5px">
-        <span>LAP</span><b>${ghostTime}</b>
-        <span>PROGRESS center / path</span><b>${fixed((ghostControl?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((ghostControl?.debug.progress ?? 0) * 100, 1)}%</b>
+        <span>LOOKAHEAD / PREDICT</span><b>${fixed(control?.debug.lookAheadMetres, 1)} m / ${percent(control?.debug.predictionWeight)}</b>
+      `
+      : '';
+
+    const ghostDetails = this.debugDetailEnabled
+      ? `
         <span>LANE ERROR</span><b>${fixed(ghostControl?.debug.laneError)} m</b>
-        <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
-        <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
-        <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(ghostControl?.debug.sourceGrip, 3)}</b>
-        <span>AXF actual / source</span><b>${fixed(this.debugGhost?.latestForwardAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceForwardAcceleration, 2)} m/s²</b>
-        <span>AX net actual / source</span><b>${fixed(this.debugGhost?.latestNetSpeedAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceNetSpeedAcceleration, 2)} m/s²</b>
-        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedAcceleration ? (ghostControl?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : ghostControl?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP · UPGRADE NEEDED' : 'HEADING + YAW + AX · UPGRADE NEEDED') : ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW · UPGRADE NEEDED' : 'LEGACY · UPGRADE NEEDED'}</b>
-        <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
+        <span>STATE TRACE</span><b>${ghostControl?.debug.demonstratedAcceleration ? (ghostControl?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : ghostControl?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP' : 'HEADING + YAW + AX') : ghostControl?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY'}</b>
         <span>HEADING err</span><b>${degrees(ghostControl?.debug.pathHeadingError)}</b>
-        <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>
         <span>THROTTLE profile</span><b>${fixed(ghostControl?.debug.profileThrottle)}</b>
+      `
+      : '';
+
+    return `<div style="position:absolute;right:14px;top:88px;width:min(620px,calc(100vw - 28px));max-height:calc(100vh - 104px);overflow:auto;box-sizing:border-box;padding:10px 12px;background:rgba(3,10,12,.94);border:1px solid rgba(72,255,116,.5);box-shadow:0 8px 28px rgba(0,0,0,.35);font:11px/1.28 ui-monospace,SFMono-Regular,Consolas,monospace;color:#dce9e4;z-index:30">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:7px;position:sticky;top:-10px;background:rgba(3,10,12,.97);padding:5px 0;z-index:1">
+        <b style="color:#48ff74;letter-spacing:.08em">AI LINE DEBUG</b>
+        <span>F3 OFF · F4 NEXT · F5 ${this.debugDetailEnabled ? 'COMPACT' : 'DETAIL'}</span>
       </div>
-      <div style="margin-top:9px;color:#96a8a1">GREEN line = effective reference · RED = selected CPU · CYAN = isolated ghost · YELLOW = CPU steering target</div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:4px 14px;padding-bottom:7px;border-bottom:1px solid rgba(255,255,255,.12)">
+        <span>AI <b>${driver?.name ?? '—'} [${this.debugAiIndex + 1}/${this.ai.length}]</b></span>
+        <span>LINE <b style="color:#48ff74">${source}</b></span>
+        <span>LAP <b>${lap}</b></span>
+        <span>TRACE <b style="color:${Math.abs(traceDelta ?? 0) > 0.5 ? '#ff6978' : '#48ff74'}">${traceLap}${traceDelta === undefined ? '' : ` (${traceDelta >= 0 ? '+' : ''}${traceDelta.toFixed(3)})`}</b></span>
+        <span>MODE <b>${control?.battleState ?? '—'}</b></span>
+        <span>TRAFFIC <b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)}s</b></span>
+      </div>
+
+      <div style="margin:6px 0 7px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px">
+        <span>STATE</span><b style="color:${control?.debug.demonstratedDynamics ? '#48ff74' : '#ffc94d'}">${control?.debug.demonstratedAcceleration ? (control?.debug.demonstratedForwardAcceleration ? 'HEADING + YAW + AXF + GRIP' : control?.debug.demonstratedGripTrace ? 'HEADING + YAW + AX + GRIP' : 'HEADING + YAW + AX') : control?.debug.demonstratedDynamics ? 'HEADING + YAW' : 'LEGACY'}</b>
+        <span>LAST</span><b style="color:${this.lineCandidateStatus.startsWith('REJECT') ? '#ff6978' : this.lineCandidateStatus.startsWith('SAVED') ? '#48ff74' : '#dce9e4'}">${this.lineCandidateStatus}</b>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px">
+        <section style="min-width:0;padding-top:6px;border-top:1px solid rgba(72,255,116,.28)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><b style="color:#48ff74">SELECTED CPU</b><span>${driver?.name ?? '—'}</span></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px">
+            <span>PROGRESS c / p</span><b>${fixed((control?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((control?.debug.progress ?? 0) * 100, 1)}%</b>
+            <span>PATH ERROR</span><b style="color:${(control?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(control?.debug.pathError)} m</b>
+            <span>SPEED actual / target</span><b>${fixed(state ? state.speed * 3.6 : undefined, 0)} / ${fixed(control ? control.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+            <span>GRIP actual / source</span><b>${fixed(driver?.tire.grip, 3)} / ${fixed(control?.debug.sourceGrip, 3)}</b>
+            <span>AXF actual / source</span><b>${fixed(this.physics.aiLongitudinalAcceleration(this.debugAiIndex), 2)} / ${fixed(control?.debug.sourceForwardAcceleration, 2)}</b>
+            <span>AX net actual / source</span><b>${fixed(this.physics.aiNetSpeedAcceleration(this.debugAiIndex), 2)} / ${fixed(control?.debug.sourceNetSpeedAcceleration, 2)}</b>
+            <span>STEER / THROTTLE</span><b>${fixed(control?.steer)} / ${fixed(control?.throttle)}</b>
+            <span>YAW actual / target</span><b>${degreesPerSecond(state?.yawRate)} / ${degreesPerSecond(control?.debug.targetYawRate)}</b>
+            <span>BRAKE final</span><b>${fixed(control?.brake)}</b>
+            ${cpuDetails}
+          </div>
+        </section>
+
+        <section style="min-width:0;padding-top:6px;border-top:1px solid rgba(57,223,255,.28)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px"><b style="color:#39dfff">REFERENCE GHOST</b><span>TRAFFIC OFF · 100%</span></div>
+          <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 10px">
+            <span>LAP</span><b>${ghostTime}</b>
+            <span>PROGRESS c / p</span><b>${fixed((ghostControl?.debug.centerProgress ?? 0) * 100, 1)} / ${fixed((ghostControl?.debug.progress ?? 0) * 100, 1)}%</b>
+            <span>PATH ERROR</span><b style="color:${(ghostControl?.debug.pathError ?? 0) > 1.8 ? '#ff6978' : '#dce9e4'}">${fixed(ghostControl?.debug.pathError)} m</b>
+            <span>SPEED actual / target</span><b>${fixed(ghostState ? ghostState.speed * 3.6 : undefined, 0)} / ${fixed(ghostControl ? ghostControl.targetSpeed * 3.6 : undefined, 0)} km/h</b>
+            <span>GRIP actual / source</span><b>${fixed(this.debugGhost?.driver.tire.grip, 3)} / ${fixed(ghostControl?.debug.sourceGrip, 3)}</b>
+            <span>AXF actual / source</span><b>${fixed(this.debugGhost?.latestForwardAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceForwardAcceleration, 2)}</b>
+            <span>AX net actual / source</span><b>${fixed(this.debugGhost?.latestNetSpeedAcceleration(), 2)} / ${fixed(ghostControl?.debug.sourceNetSpeedAcceleration, 2)}</b>
+            <span>YAW actual / target</span><b>${degreesPerSecond(ghostState?.yawRate)} / ${degreesPerSecond(ghostControl?.debug.targetYawRate)}</b>
+            <span>CONTROL S / B / T</span><b>${fixed(ghostControl?.steer)} / ${fixed(ghostControl?.brake)} / ${fixed(ghostControl?.throttle)}</b>
+            ${ghostDetails}
+          </div>
+        </section>
+      </div>
     </div>`;
   }
 
