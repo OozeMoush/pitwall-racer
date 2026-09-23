@@ -598,9 +598,12 @@ class QualifyingGame {
     const lineBest = storedLine?.lapSeconds;
     const ttRecord = isTimeTrial ? this.timeTrialRecord : undefined;
     const historicalSectors = ttRecord?.bestSectors ?? [undefined, undefined, undefined];
-    const idealLap = historicalSectors.every((value) => value !== undefined)
-      ? historicalSectors.reduce((sum, value) => sum + (value ?? 0), 0)
-      : undefined;
+    const idealLap =
+      historicalSectors[0] !== undefined
+      && historicalSectors[1] !== undefined
+      && historicalSectors[2] !== undefined
+        ? historicalSectors[0] + historicalSectors[1] + historicalSectors[2]
+        : undefined;
     const countdownBanner = this.phase === 'COUNTDOWN'
       ? `<div class="race-banner">${Math.max(1, Math.ceil(this.countdown))}</div>`
       : this.phase === 'APPROACH'
