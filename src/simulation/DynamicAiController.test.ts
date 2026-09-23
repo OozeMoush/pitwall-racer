@@ -179,6 +179,36 @@ describe('dynamicAiControl', () => {
     expect(enriched.brake).toBeGreaterThan(legacy.brake);
   });
 
+  it('keeps positive AXF authoritative through a small speed-phase error', () => {
+    const driver = createAiField()[0];
+    driver.skill = 1.14;
+    driver.progress = 0.20;
+    const grip = driver.tire.grip;
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 73.5 };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 72,
+        headingOffset: 0,
+        yawRate: 0,
+        tireGrip: grip,
+        forwardAcceleration: 7.5,
+      })),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.sourceForwardAcceleration).toBeCloseTo(7.5, 5);
+    expect(control.debug.feedbackBrake).toBe(0);
+    expect(control.brake).toBe(0);
+    expect(control.throttle).toBeGreaterThan(0);
+  });
+
   it('brakes before a future player-line speed drop reaches the car', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);

@@ -202,6 +202,58 @@ describe('RacingLineRuntime', () => {
     expect(throttle).toBeGreaterThan(0.2);
   });
 
+  it('does not reverse positive AXF into braking for a small replay overspeed', () => {
+    const grip = 1.18;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 72,
+        tireGrip: grip,
+        forwardAcceleration: 7.5,
+      })),
+    });
+
+    const brake = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.40,
+      grip,
+      73.5,
+      0.05,
+    );
+    expect(brake).toBe(0);
+  });
+
+  it('still reproduces demonstrated negative AXF at matching speed', () => {
+    const grip = 1.18;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => ({
+        progress: index / 320,
+        laneOffset: 0,
+        targetSpeed: 72,
+        tireGrip: grip,
+        forwardAcceleration: -7.5,
+      })),
+    });
+
+    const brake = racingLineLocalBrakeIntent(
+      'pitwall-gp',
+      0.40,
+      grip,
+      72,
+      0.05,
+    );
+    expect(brake).toBeGreaterThan(0.05);
+  });
+
   it('uses demonstrated acceleration for source-grip throttle feed-forward', () => {
     const grip = 1.2;
     setRuntimeRacingLine('pitwall-gp', {

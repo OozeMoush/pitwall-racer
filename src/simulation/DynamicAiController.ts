@@ -337,7 +337,17 @@ export function dynamicAiControl(
   const speedReference = highFidelityLine
     ? activeReferenceTarget(trackId, longitudinalProgress, driver.tire.grip)
     : currentLineReference;
-  let targetSpeed = speedReference.targetSpeed * execution;
+  const longitudinalSample = highFidelityLine && lineAsset
+    ? sampleRacingLineAsset(lineAsset, longitudinalProgress)
+    : undefined;
+  const longitudinalSourceGrip = longitudinalSample?.tireGrip
+    ?? lineAsset?.referenceGrip
+    ?? driver.tire.grip;
+  const sourceGripMatched = Math.abs(driver.tire.grip - longitudinalSourceGrip) < 0.015;
+  const hasForwardAccelerationTrace =
+    longitudinalSample?.forwardAcceleration !== undefined && sourceGripMatched;
+  const nominalTargetSpeed = speedReference.targetSpeed * execution;
+  let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 
   if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
@@ -350,8 +360,9 @@ export function dynamicAiControl(
       ? Math.abs(explicitFollower.laneError)
       : Math.abs(referenceLaneNow - projection.laneOffset);
     const pathError = explicitFollower?.pathError ?? laneError;
-    const normalRecoveryScale =
-      1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
+    const normalRecoveryScale = hasForwardAccelerationTrace
+      ? 1 - clamp((laneError - 2.4) / 3.6, 0, 1) * 0.48
+      : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
     const emergencyPathScale =
       1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
     targetSpeed *= Math.min(normalRecoveryScale, emergencyPathScale);
@@ -404,17 +415,31 @@ export function dynamicAiControl(
   targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
   const speedError = targetSpeed - speed;
-  const overspeed = -speedError;
+  const recoverySpeedLimited = targetSpeed < nominalTargetSpeed - 0.1;
+  const feedbackSpeedTarget = hasForwardAccelerationTrace && !recoverySpeedLimited
+    ? nominalTargetSpeed
+    : targetSpeed;
+  const overspeed = speed - feedbackSpeedTarget;
   // When the predictive follower is securely on the line, do not immediately
   // erase a few km/h of legitimate chicane carry with the generic speed-loop
   // deadband. This only changes braking decisions; grip and propulsion remain
   // the shared physical car. Any growing lane error collapses the allowance.
   const demonstratedSpeedTrace = explicitFollower?.demonstratedDynamics ?? false;
-  const feedbackBrakeThreshold = demonstratedSpeedTrace
-    ? 0.22
-    : 0.65 + cornerAttackConfidence * 1.5;
-  const feedbackBrakeDivisor = demonstratedSpeedTrace ? 5.1 : 9.4;
-  const feedbackBrakeBias = demonstratedSpeedTrace ? 0.22 : 0.45;
+  const feedbackBrakeThreshold = hasForwardAccelerationTrace
+    ? 4.0
+    : demonstratedSpeedTrace
+      ? 0.22
+      : 0.65 + cornerAttackConfidence * 1.5;
+  const feedbackBrakeDivisor = hasForwardAccelerationTrace
+    ? 9.5
+    : demonstratedSpeedTrace
+      ? 5.1
+      : 9.4;
+  const feedbackBrakeBias = hasForwardAccelerationTrace
+    ? 0
+    : demonstratedSpeedTrace
+      ? 0.22
+      : 0.45;
   const feedbackBrake = overspeed > feedbackBrakeThreshold
     ? clamp(
         (overspeed - feedbackBrakeThreshold + feedbackBrakeBias)
@@ -518,17 +543,9 @@ export function dynamicAiControl(
         (point) => point.forwardAcceleration !== undefined,
       ) ?? false,
       sourceGrip: lineAsset
-        ? sampleRacingLineAsset(
-            lineAsset,
-            longitudinalProgress,
-          ).tireGrip ?? lineAsset.referenceGrip
+        ? longitudinalSourceGrip
         : undefined,
-      sourceForwardAcceleration: lineAsset
-        ? sampleRacingLineAsset(
-            lineAsset,
-            longitudinalProgress,
-          ).forwardAcceleration
-        : undefined,
+      sourceForwardAcceleration: longitudinalSample?.forwardAcceleration,
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,

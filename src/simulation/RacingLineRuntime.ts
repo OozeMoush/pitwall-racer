@@ -11,6 +11,8 @@ const active = new Map<TrackId, RacingLineAsset>();
 const BRAKE_LOOKAHEAD_STEP_METRES = 12;
 const MIN_BRAKE_LOOKAHEAD_METRES = 96;
 const MAX_BRAKE_LOOKAHEAD_METRES = 240;
+const AXF_SPEED_GUARD_DEADBAND = 4.0;
+const AXF_SPEED_GUARD_CORRECTION_DISTANCE = 36;
 
 export function setRuntimeRacingLine(
   trackId: TrackId,
@@ -274,12 +276,13 @@ export function racingLineLocalBrakeIntent(
     progress + distance / TRACK_LENGTH,
     tireGrip,
   ).targetSpeed;
-  // Reproduce the demonstrated local speed derivative exactly when replay
-  // speed matches the trace. Any *extra* overspeed is a replay error, not part
-  // of the demonstrated braking plan, so remove that error over a shorter
-  // correction distance. This avoids turning the whole trace into an
-  // artificially early-braking line while still preventing a 10-15 km/h
-  // transient overspeed from carrying the chassis beyond the recorded apex.
+  // Reproduce the demonstrated local acceleration first. For a modern AXF
+  // trace, targetSpeed is a phase guardrail rather than a second longitudinal
+  // controller: a few km/h of phase error must not turn a demonstrated positive
+  // acceleration into braking. Only a material overspeed beyond the guard band
+  // is corrected, and that correction is spread over a long distance. Legacy
+  // traces keep the older tight speed correction because they do not carry the
+  // stronger forward-axis state signal.
   const selected = sampleRacingLineAsset(asset, progress);
   const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
   const sourceGripMatched = Math.abs(tireGrip - sourceGrip) < 0.015;
@@ -292,11 +295,16 @@ export function racingLineLocalBrakeIntent(
       ? demonstratedAcceleration
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
-  const overspeedCorrectionDistance = 4;
-  const overspeedCorrection = currentSpeed > currentTarget
-    ? (currentTarget * currentTarget - currentSpeed * currentSpeed)
-      / (2 * overspeedCorrectionDistance)
-    : 0;
+  const overspeedCorrection = useForwardAcceleration
+    ? currentSpeed > currentTarget + AXF_SPEED_GUARD_DEADBAND
+      ? (
+          (currentTarget + AXF_SPEED_GUARD_DEADBAND) ** 2
+          - currentSpeed * currentSpeed
+        ) / (2 * AXF_SPEED_GUARD_CORRECTION_DISTANCE)
+      : 0
+    : currentSpeed > currentTarget
+      ? (currentTarget * currentTarget - currentSpeed * currentSpeed) / (2 * 4)
+      : 0;
   const desiredAcceleration = traceAcceleration + overspeedCorrection;
 
   const accelerationModel = useForwardAcceleration
