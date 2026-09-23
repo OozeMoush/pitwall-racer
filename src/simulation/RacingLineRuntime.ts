@@ -44,8 +44,12 @@ export function racingLineTraceLapSeconds(
   for (let index = 0; index < asset.points.length; index++) {
     const a = asset.points[index];
     const b = asset.points[(index + 1) % asset.points.length];
-    const pa = sampleTrack(a.progress, a.laneOffset);
-    const pb = sampleTrack(b.progress, b.laneOffset);
+    const pa = a.worldX !== undefined && a.worldY !== undefined
+      ? { x: a.worldX, y: a.worldY }
+      : sampleTrack(a.progress, a.laneOffset);
+    const pb = b.worldX !== undefined && b.worldY !== undefined
+      ? { x: b.worldX, y: b.worldY }
+      : sampleTrack(b.progress, b.laneOffset);
     const distance = Math.hypot(pb.x - pa.x, pb.y - pa.y);
     const averageSpeed = (Math.max(0, a.targetSpeed) + Math.max(0, b.targetSpeed)) * 0.5;
     if (!Number.isFinite(distance) || !Number.isFinite(averageSpeed) || averageSpeed < 1) {
@@ -100,16 +104,24 @@ export function sampleRuntimeRacingLinePose(
   const t = scaled - Math.floor(scaled);
   const a = asset.points[index];
   const b = asset.points[nextIndex];
-  const aPose = sampleTrack(a.progress, a.laneOffset);
-  const bPose = sampleTrack(b.progress, b.laneOffset);
+  const aFallback = sampleTrack(a.progress, a.laneOffset);
+  const bFallback = sampleTrack(b.progress, b.laneOffset);
+  const aPose = {
+    x: a.worldX ?? aFallback.x,
+    y: a.worldY ?? aFallback.y,
+  };
+  const bPose = {
+    x: b.worldX ?? bFallback.x,
+    y: b.worldY ?? bFallback.y,
+  };
   const aCentre = sampleTrack(a.progress);
   const bCentre = sampleTrack(b.progress);
-  const aBodyHeading = a.headingOffset === undefined
+  const aBodyHeading = a.bodyHeading ?? (a.headingOffset === undefined
     ? undefined
-    : wrapAngle(aCentre.heading + a.headingOffset);
-  const bBodyHeading = b.headingOffset === undefined
+    : wrapAngle(aCentre.heading + a.headingOffset));
+  const bBodyHeading = b.bodyHeading ?? (b.headingOffset === undefined
     ? undefined
-    : wrapAngle(bCentre.heading + b.headingOffset);
+    : wrapAngle(bCentre.heading + b.headingOffset));
   const geometricHeading = Math.atan2(bPose.y - aPose.y, bPose.x - aPose.x);
   const demonstratedHeading = interpolateOptionalAngle(
     aBodyHeading,

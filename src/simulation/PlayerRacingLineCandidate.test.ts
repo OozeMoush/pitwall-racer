@@ -110,6 +110,38 @@ describe('player racing-line candidates', () => {
       (point) => point.forwardAcceleration !== undefined,
     )).toBe(true);
     expect(candidate?.points[120]?.forwardAcceleration).toBeCloseTo(3.25, 2);
+    expect(candidate?.points.every(
+      (point) => point.worldX !== undefined && point.worldY !== undefined,
+    )).toBe(true);
+    expect(candidate?.points.every((point) => point.bodyHeading !== undefined)).toBe(true);
+    expect(racingLineTraceQuality(candidate)).toBe(5);
+  });
+
+  it('resamples absolute pose continuously across the start/finish seam', () => {
+    const recorder = new PlayerRacingLineCandidateRecorder();
+    recorder.begin('pitwall-gp', 1.2);
+    for (let index = 0; index < 480; index++) {
+      const progress = index / 480;
+      recorder.sample(
+        progress,
+        5 + Math.sin(progress * Math.PI * 2) * 0.5,
+        70,
+        0.12,
+        0.4,
+        1 / 120,
+        1.2,
+        4,
+      );
+    }
+    const candidate = recorder.finish(23);
+    expect(candidate).toBeDefined();
+    const first = candidate!.points[0];
+    const last = candidate!.points[candidate!.points.length - 1];
+    expect(first.worldX).toBeDefined();
+    expect(last.worldX).toBeDefined();
+    expect(Math.hypot(first.worldX! - last.worldX!, first.worldY! - last.worldY!)).toBeLessThan(8);
+    expect(first.bodyHeading).toBeDefined();
+    expect(last.bodyHeading).toBeDefined();
   });
 
   it('stores demonstrated longitudinal acceleration when samples include dt', () => {
@@ -156,7 +188,7 @@ describe('player racing-line candidates', () => {
 
     const stored = loadPlayerRacingLineCandidate(storage, 'pitwall-gp');
     expect(stored?.lapSeconds).toBe(24.2);
-    expect(racingLineTraceQuality(stored)).toBe(4);
+    expect(racingLineTraceQuality(stored)).toBe(5);
   });
 
   it('keeps the faster lap when trace quality is equal', () => {

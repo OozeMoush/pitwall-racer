@@ -7,6 +7,14 @@ export interface RacingLinePoint {
   laneOffset: number;
   targetSpeed: number;
   /**
+   * Demonstrated world-space path point. New PLAYER traces store this so
+   * replay is independent of centreline segment normal changes at lap seams.
+   */
+  worldX?: number;
+  worldY?: number;
+  /** Absolute demonstrated body heading in world space. */
+  bodyHeading?: number;
+  /**
    * Demonstrated body heading relative to the circuit centreline tangent.
    * Optional for backward compatibility with legacy PLAYER assets.
    */
@@ -66,6 +74,9 @@ export function sampleRacingLineAsset(
     progress: p,
     laneOffset: lerp(a.laneOffset, b.laneOffset, t),
     targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
+    worldX: interpolateOptional(a.worldX, b.worldX, t),
+    worldY: interpolateOptional(a.worldY, b.worldY, t),
+    bodyHeading: interpolateOptionalAngle(a.bodyHeading, b.bodyHeading, t),
     headingOffset: interpolateOptionalAngle(a.headingOffset, b.headingOffset, t),
     yawRate: interpolateOptional(a.yawRate, b.yawRate, t),
     longitudinalAcceleration: interpolateOptional(

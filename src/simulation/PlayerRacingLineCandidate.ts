@@ -2,7 +2,7 @@ import type {
   RacingLineAsset,
   RacingLinePoint,
 } from './RacingLineAsset';
-import type { TrackId } from './TrackModel';
+import { sampleTrack, type TrackId } from './TrackModel';
 
 const SAMPLE_COUNT = 320;
 const STORAGE_KEY = 'pitwall-racer:racing-line-candidates:v1';
@@ -11,6 +11,9 @@ interface RawSample {
   progress: number;
   laneOffset: number;
   speed: number;
+  worldX: number;
+  worldY: number;
+  bodyHeading?: number;
   headingOffset?: number;
   yawRate?: number;
   longitudinalAcceleration?: number;
@@ -73,6 +76,11 @@ export class PlayerRacingLineCandidateRecorder {
     }
 
     const safeSpeed = Math.max(0, speed);
+    const pathPose = sampleTrack(p, laneOffset);
+    const centrePose = sampleTrack(p);
+    const bodyHeading = Number.isFinite(headingOffset)
+      ? wrapAngle(centrePose.heading + (headingOffset ?? 0))
+      : undefined;
     const previous = this.samples[this.samples.length - 1];
     const longitudinalAcceleration = previous && dt !== undefined && dt > 0
       ? clamp((safeSpeed - previous.speed) / dt, -45, 22)
@@ -81,6 +89,9 @@ export class PlayerRacingLineCandidateRecorder {
       progress: p,
       laneOffset,
       speed: safeSpeed,
+      worldX: pathPose.x,
+      worldY: pathPose.y,
+      bodyHeading,
       headingOffset: Number.isFinite(headingOffset) ? headingOffset : undefined,
       yawRate: Number.isFinite(yawRate) ? yawRate : undefined,
       longitudinalAcceleration,
@@ -127,6 +138,12 @@ export function racingLineTraceQuality(
 ): number {
   if (!asset) return -1;
   const points = asset.points;
+  if (points.some((point) =>
+    point.forwardAcceleration !== undefined
+    && point.worldX !== undefined
+    && point.worldY !== undefined
+    && point.bodyHeading !== undefined
+  )) return 5;
   if (points.some((point) => point.forwardAcceleration !== undefined)) return 4;
   if (points.some((point) => point.tireGrip !== undefined)) return 3;
   if (points.some((point) => point.longitudinalAcceleration !== undefined)) return 2;
@@ -230,11 +247,24 @@ function interpolateSample(
 
   const span = Math.max(0.000001, b.progress - a.progress);
   const t = (sampleProgress - a.progress) / span;
+  const worldX = lerp(a.worldX, b.worldX, t);
+  const worldY = lerp(a.worldY, b.worldY, t);
+  const bodyHeading = interpolateOptionalAngle(a.bodyHeading, b.bodyHeading, t);
+  const centre = sampleTrack(progress);
+  const nx = -Math.sin(centre.heading);
+  const ny = Math.cos(centre.heading);
+  const laneOffset = (worldX - centre.x) * nx + (worldY - centre.y) * ny;
+  const headingOffset = bodyHeading === undefined
+    ? interpolateOptionalAngle(a.headingOffset, b.headingOffset, t)
+    : wrapAngle(bodyHeading - centre.heading);
   return {
     progress,
-    laneOffset: lerp(a.laneOffset, b.laneOffset, t),
+    laneOffset,
     targetSpeed: lerp(a.speed, b.speed, t),
-    headingOffset: interpolateOptionalAngle(a.headingOffset, b.headingOffset, t),
+    worldX,
+    worldY,
+    bodyHeading,
+    headingOffset,
     yawRate: interpolateOptional(a.yawRate, b.yawRate, t),
     longitudinalAcceleration: interpolateOptional(
       a.longitudinalAcceleration,
