@@ -9,7 +9,9 @@ import {
   WALL_CONTACT_MIN_NORMAL_SPEED,
 } from './RapierRacePhysics';
 import {
+  TRACK_BARRIER_HALF_THICKNESS,
   TRACK_BARRIER_OFFSET,
+  TRACK_KERB_OUTER_OFFSET,
   hasSafetyBarrier,
   shouldPlaceSafetyBarrier,
 } from './TrackLimitsModel';
@@ -68,6 +70,12 @@ describe('physical safety barriers', () => {
       WALL_CONTACT_MIN_NORMAL_SPEED,
     );
     expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(true);
+  });
+
+  it('leaves clear physical room outside the usable kerb', () => {
+    expect(
+      TRACK_BARRIER_OFFSET - TRACK_BARRIER_HALF_THICKNESS - TRACK_KERB_OUTER_OFFSET,
+    ).toBeGreaterThan(4);
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {

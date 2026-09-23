@@ -46,6 +46,12 @@ import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
+import {
+  createTrackLimitPenaltyState,
+  registerTrackLimitWarning,
+  serveTrackLimitPitPenalty,
+  type TrackLimitPenaltyState,
+} from '../simulation/TrackLimitPenaltyModel';
 import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
 import { formatTyreRaceStatus, tyreRaceStatus } from '../simulation/TyreRaceStatus';
 import { minimumPositive, timingTone, type TimingTone } from '../simulation/TimingToneModel';
@@ -154,6 +160,9 @@ export class CoreRaceGame {
   private racingLineNoticeRemaining = 0;
   private lineCandidateStatus = 'ARMING';
   private lineCandidateContact?: 'CAR' | 'BARRIER';
+  private trackLimitPenalty: TrackLimitPenaltyState = createTrackLimitPenaltyState();
+  private racePenaltyNotice = '';
+  private racePenaltyNoticeRemaining = 0;
   private debugEnabled = false;
   private debugDetailEnabled = false;
   private debugAiIndex = 0;
@@ -281,6 +290,8 @@ export class CoreRaceGame {
     this.lastFrame = now;
     this.racingLineNoticeRemaining = Math.max(0, this.racingLineNoticeRemaining - dt);
     if (this.racingLineNoticeRemaining === 0) this.racingLineNotice = '';
+    this.racePenaltyNoticeRemaining = Math.max(0, this.racePenaltyNoticeRemaining - dt);
+    if (this.racePenaltyNoticeRemaining === 0) this.racePenaltyNotice = '';
 
     if (this.flow.phase !== 'FINISHED') {
       this.fixedAccumulator += dt;
@@ -398,7 +409,15 @@ export class CoreRaceGame {
         afterTrack.heading,
         this.vehicle.heading,
       );
-      if (validityEvent !== 'NONE') this.lineCandidate.markIneligible();
+      if (validityEvent !== 'NONE') {
+        this.lineCandidate.markIneligible();
+        const result = registerTrackLimitWarning(this.trackLimitPenalty);
+        this.trackLimitPenalty = result.state;
+        this.racePenaltyNotice = result.penaltyAwarded
+          ? `TRACK LIMITS · +${result.penaltyAwarded}s PIT PENALTY · BOX TO SERVE`
+          : `TRACK LIMIT WARNING · ${this.trackLimitPenalty.warnings}/3`;
+        this.racePenaltyNoticeRemaining = result.penaltyAwarded ? 5.0 : 2.8;
+      }
 
       this.lineCandidateFilter.sampleTraffic(
         dt,
@@ -439,6 +458,18 @@ export class CoreRaceGame {
     this.lineCandidate.markIneligible();
     const previous = this.pitStop;
     this.pitStop = stepPitStop(this.pitStop, dt);
+    if (previous.phase !== 'SERVICE' && this.pitStop.phase === 'SERVICE') {
+      const served = serveTrackLimitPitPenalty(this.trackLimitPenalty);
+      this.trackLimitPenalty = served.state;
+      if (served.seconds > 0) {
+        this.pitStop = {
+          ...this.pitStop,
+          serviceRemaining: this.pitStop.serviceRemaining + served.seconds,
+        };
+        this.racePenaltyNotice = `SERVING ${served.seconds}s TRACK LIMIT PENALTY`;
+        this.racePenaltyNoticeRemaining = served.seconds + 1.5;
+      }
+    }
     if (!previous.tyreChanged && this.pitStop.tyreChanged) {
       this.lapPitted = true;
       this.tire = createTire(this.selectedCompound);
@@ -548,11 +579,17 @@ export class CoreRaceGame {
     this.beginRaceLineCandidate();
 
     if (this.lap > this.totalLaps) {
-      const legal = isTwoCompoundLegal(this.usedCompounds);
+      const compoundsLegal = isTwoCompoundLegal(this.usedCompounds);
+      const penaltyLegal = this.trackLimitPenalty.pendingPitSeconds <= 0;
+      const legal = compoundsLegal && penaltyLegal;
       const standings = this.standings();
       const position = standings.findIndex((driver) => driver.id === 'player') + 1;
       this.flow = finishRaceFlow(this.flow);
-      this.finishMessage = legal ? `P${position} · FINISH` : `P${position} · DISQUALIFIED`;
+      this.finishMessage = legal
+        ? `P${position} · FINISH`
+        : !penaltyLegal
+          ? `P${position} · DISQUALIFIED · UNSERVED PENALTY`
+          : `P${position} · DISQUALIFIED`;
       this.physics.stopPlayer();
       this.vehicle = this.physics.playerState();
     }
@@ -1340,7 +1377,9 @@ export class CoreRaceGame {
           ? `PIT LANE · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
           : this.pitRequested
             ? `BOX THIS LAP → ${this.selectedCompound}`
-            : `NEXT ${this.selectedCompound} · F TO BOX`;
+            : this.trackLimitPenalty.pendingPitSeconds > 0
+              ? `PENALTY ${this.trackLimitPenalty.pendingPitSeconds}s · F TO BOX`
+              : `NEXT ${this.selectedCompound} · F TO BOX`;
     const slideSeverity = this.physics.playerSlideSeverity();
     const validity = this.lapValidity.snapshot();
     const raceState = validity.invalid
@@ -1390,6 +1429,9 @@ export class CoreRaceGame {
       ? `<div class="finish-card"><strong>${this.finishMessage}</strong><span>${legal ? 'LEGAL' : 'TWO COMPOUNDS REQUIRED'} · ${compoundHistory}</span><small>BEST ${formatLapTime(this.timing.bestLapTime)} · PRESS C TO RACE AGAIN</small></div>`
       : '';
     const warningHtml = obligation ? `<div class="race-warning">${obligation}</div>` : '';
+    const penaltyHtml = this.racePenaltyNotice
+      ? `<div class="race-warning" style="top:118px">${this.racePenaltyNotice}</div>`
+      : '';
     const racingLineHtml = this.racingLineNotice
       ? `<div class="racing-line-notice">${this.racingLineNotice}</div>`
       : '';
@@ -1407,7 +1449,7 @@ export class CoreRaceGame {
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>

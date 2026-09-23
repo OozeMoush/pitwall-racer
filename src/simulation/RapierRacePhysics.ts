@@ -492,8 +492,8 @@ export class RapierRacePhysics {
   }
 
   private updatePlayerContactKind(
-    preStepVx: number,
-    preStepVy: number,
+    _preStepVx: number,
+    _preStepVy: number,
   ): void {
     this.playerContactKindValue = 'NONE';
     const playerCollider = this.playerCollider;
@@ -506,20 +506,12 @@ export class RapierRacePhysics {
       }
 
       if (this.playerContactKindValue === 'CAR') return;
-      const barrierHeading = this.barrierColliderHeadings.get(
-        otherCollider.handle,
-      );
-      if (barrierHeading === undefined) return;
+      if (!this.barrierColliderHeadings.has(otherCollider.handle)) return;
 
-      if (
-        isSignificantBarrierImpact(
-          preStepVx,
-          preStepVy,
-          barrierHeading,
-        )
-      ) {
-        this.playerContactKindValue = 'BARRIER';
-      }
+      // Rapier reports an actual collider contact here. Kerbs and track-limit
+      // excursions are not barrier colliders, so only physically touching a
+      // safety wall becomes WALL CONTACT.
+      this.playerContactKindValue = 'BARRIER';
     });
   }
 
