@@ -10,6 +10,8 @@ export interface RaceSetup {
   qualifyingTime?: number;
   /** Skip the one-shot qualifying session and start the race from P8. */
   skipQualifying?: boolean;
+  /** Run an empty-track continuous hotlap session before starting from P8. */
+  timeTrial?: boolean;
 }
 
 export const DEFAULT_RACE_SETUP: RaceSetup = {

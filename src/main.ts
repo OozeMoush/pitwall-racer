@@ -1,6 +1,9 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
-import { runQualifyingSession } from './game/QualifyingGame';
+import {
+  runQualifyingSession,
+  runTimeTrialSession,
+} from './game/QualifyingGame';
 import { installReferenceLineCalibration } from './simulation/ReferenceLineCalibration';
 import { activateStoredRacingLine } from './simulation/RacingLineActivation';
 import { setActiveTrack } from './simulation/TrackModel';
@@ -31,23 +34,35 @@ async function bootstrap(): Promise<void> {
   setActiveTrack(setup.trackId);
   activateStoredRacingLine(window.localStorage, setup.trackId);
 
-  const raceSetup = setup.skipQualifying
-    ? {
-        ...setup,
-        qualifyingTime: undefined,
-        gridOrder: undefined,
-      }
-    : await (async () => {
-        const qualifying = await runQualifyingSession(game, hud, setup);
-        // A clean qualifying lap can become the PLAYER racing-line source for
-        // the race immediately in the same weekend. Re-read storage after it.
+  const raceSetup = setup.timeTrial
+    ? await (async () => {
+        await runTimeTrialSession(game, hud, setup);
+        // Time Trial exists specifically to update the PLAYER trace; activate
+        // the latest stored asset before launching the P8 test race.
         activateStoredRacingLine(window.localStorage, setup.trackId);
         return {
           ...setup,
-          qualifyingTime: qualifying.playerTime,
-          gridOrder: qualifying.gridOrder,
+          qualifyingTime: undefined,
+          gridOrder: undefined,
         };
-      })();
+      })()
+    : setup.skipQualifying
+      ? {
+          ...setup,
+          qualifyingTime: undefined,
+          gridOrder: undefined,
+        }
+      : await (async () => {
+          const qualifying = await runQualifyingSession(game, hud, setup);
+          // A clean qualifying lap can become the PLAYER racing-line source for
+          // the race immediately in the same weekend. Re-read storage after it.
+          activateStoredRacingLine(window.localStorage, setup.trackId);
+          return {
+            ...setup,
+            qualifyingTime: qualifying.playerTime,
+            gridOrder: qualifying.gridOrder,
+          };
+        })();
 
   hud.innerHTML = '';
   installHudEnhancer(hud);

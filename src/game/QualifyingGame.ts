@@ -10,6 +10,7 @@ import { assessEmpiricalLap, calibratedPaceBenchmark } from '../simulation/PaceB
 import { PaceEvidenceAccumulator } from '../simulation/PaceEvidenceAccumulator';
 import { loadPaceEvidence, savePaceEvidence } from '../simulation/PaceBenchmarkStore';
 import {
+  loadPlayerRacingLineCandidate,
   PlayerRacingLineCandidateRecorder,
   saveBestPlayerRacingLineCandidate,
 } from '../simulation/PlayerRacingLineCandidate';
@@ -37,6 +38,7 @@ const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
 
 type QualifyingPhase = 'COUNTDOWN' | 'APPROACH' | 'FLYING' | 'RESULTS';
+type SoloSessionMode = 'QUALIFYING' | 'TIME_TRIAL';
 
 export interface QualifyingSessionResult {
   playerTime: number;
@@ -51,7 +53,17 @@ export function runQualifyingSession(
   setup: RaceSetup,
 ): Promise<QualifyingSessionResult> {
   return new Promise((resolve) => {
-    new QualifyingGame(container, hud, setup, resolve);
+    new QualifyingGame(container, hud, setup, 'QUALIFYING', resolve);
+  });
+}
+
+export function runTimeTrialSession(
+  container: HTMLElement,
+  hud: HTMLElement,
+  setup: RaceSetup,
+): Promise<void> {
+  return new Promise((resolve) => {
+    new QualifyingGame(container, hud, setup, 'TIME_TRIAL', undefined, resolve);
   });
 }
 
@@ -59,7 +71,9 @@ class QualifyingGame {
   private readonly container: HTMLElement;
   private readonly hud: HTMLElement;
   private readonly setup: RaceSetup;
-  private readonly resolve: (result: QualifyingSessionResult) => void;
+  private readonly mode: SoloSessionMode;
+  private readonly resolveQualifying?: (result: QualifyingSessionResult) => void;
+  private readonly resolveTimeTrial?: () => void;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-40, 40, CAMERA_HALF_HEIGHT, -CAMERA_HALF_HEIGHT, 0.1, 460);
@@ -89,17 +103,23 @@ class QualifyingGame {
   private lapNoticeRemaining = 0;
   private result?: QualifyingSessionResult;
   private resolved = false;
+  private completedLaps = 0;
+  private lineTraceInvalidReason?: string;
 
   constructor(
     container: HTMLElement,
     hud: HTMLElement,
     setup: RaceSetup,
-    resolve: (result: QualifyingSessionResult) => void,
+    mode: SoloSessionMode,
+    resolveQualifying?: (result: QualifyingSessionResult) => void,
+    resolveTimeTrial?: () => void,
   ) {
     this.container = container;
     this.hud = hud;
     this.setup = setup;
-    this.resolve = resolve;
+    this.mode = mode;
+    this.resolveQualifying = resolveQualifying;
+    this.resolveTimeTrial = resolveTimeTrial;
 
     const start = sampleTrack(START_PROGRESS);
     const approachSpeed = qualifyingApproachSpeed(
@@ -162,6 +182,10 @@ class QualifyingGame {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     this.audio.unlock();
     this.keys.add(event.code);
+    if (this.mode === 'TIME_TRIAL' && event.code === 'Enter') {
+      this.finishTimeTrial();
+      return;
+    }
     if (this.phase === 'RESULTS' && event.code === 'Enter') this.finish();
     if (event.code === 'KeyC' && (this.phase === 'APPROACH' || this.phase === 'FLYING')) this.recover();
   };
@@ -268,6 +292,9 @@ class QualifyingGame {
     const playerContact = this.physics.playerContactKind();
     if (this.phase === 'FLYING' && playerContact !== 'NONE') {
       this.lineCandidate.markIneligible();
+      this.lineTraceInvalidReason = playerContact === 'BARRIER'
+        ? 'WALL CONTACT'
+        : 'CAR CONTACT';
       this.lapNotice = playerContact === 'BARRIER'
         ? 'LINE TRACE INVALID · WALL CONTACT'
         : 'LINE TRACE INVALID · CAR CONTACT';
@@ -286,6 +313,7 @@ class QualifyingGame {
         this.nextCheckpoint = 1;
         this.paceEvidence.begin(this.tire.compound, this.tire.wear);
         this.lapValidity.reset();
+        this.lineTraceInvalidReason = undefined;
         this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
       }
       return;
@@ -308,6 +336,7 @@ class QualifyingGame {
     );
     if (validityEvent !== 'NONE') {
       this.lineCandidate.markIneligible();
+      this.lineTraceInvalidReason = 'TRACK LIMITS';
       const snapshot = this.lapValidity.snapshot();
       this.lapNotice = snapshot.invalid
         ? 'LAP INVALID · TRACK LIMITS'
@@ -332,32 +361,25 @@ class QualifyingGame {
     this.nextCheckpoint = 1;
     this.paceEvidence.begin(this.tire.compound, this.tire.wear);
     this.lapValidity.reset();
+    this.lineTraceInvalidReason = undefined;
     this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
     this.lapNotice = 'LAP INVALID · NEXT LAP STARTED';
     this.lapNoticeRemaining = 2.8;
   }
 
   private completeLap(): void {
-    this.physics.stopPlayer();
-    this.vehicle = this.physics.playerState();
-
-    const evidence = this.paceEvidence.finish(this.setup.trackId, this.lapTime, this.tire.wear);
-    const storedEvidence = savePaceEvidence(window.localStorage, evidence);
-    const physicsBenchmark = qualifyingBenchmarkSeconds(this.setup.trackId, TRACK_LENGTH);
-    const calibratedBenchmark = calibratedPaceBenchmark(this.setup.trackId, physicsBenchmark, storedEvidence);
-    const assessment = assessEmpiricalLap(evidence);
-    console.info('PACE_BENCHMARK_EVIDENCE', {
-      lap: evidence,
-      eligible: assessment.eligibleForMachineLimit,
-      rejectionReasons: assessment.reasons,
-      benchmark: calibratedBenchmark,
-    });
-
-    const candidate = this.lapValidity.snapshot().candidateEligible
-      ? this.lineCandidate.finish(this.lapTime)
+    const completedLapTime = this.lapTime;
+    const validity = this.lapValidity.snapshot();
+    const candidate = validity.candidateEligible
+      ? this.lineCandidate.finish(completedLapTime)
       : undefined;
+
+    let storedCandidate = loadPlayerRacingLineCandidate(
+      window.localStorage,
+      this.setup.trackId,
+    );
     if (candidate) {
-      const storedCandidate = saveBestPlayerRacingLineCandidate(
+      storedCandidate = saveBestPlayerRacingLineCandidate(
         window.localStorage,
         candidate,
       );
@@ -366,19 +388,71 @@ class QualifyingGame {
         source: storedCandidate.source,
         lapSeconds: storedCandidate.lapSeconds,
         points: storedCandidate.points.length,
+        session: this.mode,
       });
     }
 
+    if (this.mode === 'TIME_TRIAL') {
+      this.completedLaps += 1;
+      const savedThisLap = candidate !== undefined && storedCandidate === candidate;
+      const bestSeconds = storedCandidate?.lapSeconds;
+      this.lapNotice = savedThisLap
+        ? `PLAYER LINE UPDATED · ${completedLapTime.toFixed(3)}s`
+        : candidate
+          ? `CLEAN LAP · LINE BEST ${bestSeconds?.toFixed(3) ?? '—'}s`
+          : `LINE NOT SAVED · ${this.lineTraceInvalidReason ?? 'INVALID TRACE'}`;
+      this.lapNoticeRemaining = 3.0;
+
+      // Stay on track and start the next hot lap immediately. Keeping the tyre
+      // state continuous avoids an artificial grip discontinuity at the timing
+      // line while still recording the exact pointwise grip trace each lap.
+      this.lapTime = 0;
+      this.nextCheckpoint = 1;
+      this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+      this.lapValidity.reset();
+      this.lineTraceInvalidReason = undefined;
+      this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
+      return;
+    }
+
+    this.physics.stopPlayer();
+    this.vehicle = this.physics.playerState();
+
+    const evidence = this.paceEvidence.finish(
+      this.setup.trackId,
+      completedLapTime,
+      this.tire.wear,
+    );
+    const storedEvidence = savePaceEvidence(window.localStorage, evidence);
+    const physicsBenchmark = qualifyingBenchmarkSeconds(
+      this.setup.trackId,
+      TRACK_LENGTH,
+    );
+    const calibratedBenchmark = calibratedPaceBenchmark(
+      this.setup.trackId,
+      physicsBenchmark,
+      storedEvidence,
+    );
+    const assessment = assessEmpiricalLap(evidence);
+    console.info('PACE_BENCHMARK_EVIDENCE', {
+      lap: evidence,
+      eligible: assessment.eligibleForMachineLimit,
+      rejectionReasons: assessment.reasons,
+      benchmark: calibratedBenchmark,
+    });
+
     const ai = createAiField();
     const classification = qualifyingClassification(
-      this.lapTime,
+      completedLapTime,
       ai,
       this.setup.trackId,
       TRACK_LENGTH,
     );
-    const playerPosition = classification.find((entry) => entry.id === 'player')?.position ?? 8;
+    const playerPosition = classification.find(
+      (entry) => entry.id === 'player',
+    )?.position ?? 8;
     this.result = {
-      playerTime: this.lapTime,
+      playerTime: completedLapTime,
       playerPosition,
       gridOrder: qualifyingGridOrder(classification),
       classification,
@@ -392,6 +466,7 @@ class QualifyingGame {
       this.paceEvidence.markRecovered();
       this.lapValidity.invalidate();
       this.lineCandidate.markIneligible();
+      this.lineTraceInvalidReason = 'RECOVERY';
       this.lapNotice = 'LAP INVALID · RECOVERY';
       this.lapNoticeRemaining = 2.8;
     }
@@ -453,31 +528,68 @@ class QualifyingGame {
       return;
     }
 
+    const isTimeTrial = this.mode === 'TIME_TRIAL';
+    const storedLine = isTimeTrial
+      ? loadPlayerRacingLineCandidate(window.localStorage, this.setup.trackId)
+      : undefined;
+    const lineBest = storedLine?.lapSeconds;
     const countdownBanner = this.phase === 'COUNTDOWN'
       ? `<div class="race-banner">${Math.max(1, Math.ceil(this.countdown))}</div>`
       : this.phase === 'APPROACH'
-        ? '<div class="qualifying-banner">ROLLING START · TAKE CONTROL · TIMER STARTS AT LINE</div>'
+        ? `<div class="qualifying-banner">${isTimeTrial ? 'TIME TRIAL · WARM-UP · TIMER STARTS AT LINE' : 'ROLLING START · TAKE CONTROL · TIMER STARTS AT LINE'}</div>`
         : '';
     const limitBanner = this.lapNotice
       ? `<div class="qualifying-banner">${this.lapNotice}</div>`
       : '';
-    const timer = this.phase === 'FLYING' ? formatLapTime(this.lapTime) : '--:--.---';
+    const timer = this.phase === 'FLYING'
+      ? formatLapTime(this.lapTime)
+      : '--:--.---';
     const speed = Math.round(this.vehicle.speed * 3.6);
-    const state = this.phase === 'FLYING' ? 'FLYING LAP' : this.phase === 'APPROACH' ? 'APPROACH' : 'GET READY';
+    const state = this.phase === 'FLYING'
+      ? isTimeTrial
+        ? `HOT LAP ${this.completedLaps + 1}`
+        : 'FLYING LAP'
+      : this.phase === 'APPROACH'
+        ? 'APPROACH'
+        : 'GET READY';
+    const sessionLabel = isTimeTrial
+      ? 'PITWALL RACER · TIME TRIAL / LINE UPDATE'
+      : 'PITWALL RACER · QUALIFYING';
+    const runLabel = isTimeTrial
+      ? `CONTINUOUS HOTLAP · SOFT/PUSH · LINE BEST ${lineBest?.toFixed(3) ?? '—'}s`
+      : 'ONE SHOT · SOFT';
+    const controls = isTimeTrial
+      ? 'WASD DRIVE · C RECOVER · ENTER START RACE P8'
+      : 'WASD DRIVE · C RECOVER';
 
     this.hud.innerHTML = `${countdownBanner}${limitBanner}
       <div class="qualifying-hud-top">
-        <div><small>PITWALL RACER · QUALIFYING</small><b>${getActiveTrack().name}</b></div>
+        <div><small>${sessionLabel}</small><b>${getActiveTrack().name}</b></div>
         <strong>${timer}</strong>
       </div>
       <div class="qualifying-hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
-        <div><small>${state}</small><b>ONE SHOT · SOFT</b><span>WASD DRIVE · C RECOVER</span></div>
+        <div><small>${state}</small><b>${runLabel}</b><span>${controls}</span></div>
       </div>`;
   }
 
   private finish(): void {
-    if (this.resolved || !this.result) return;
+    if (this.resolved || !this.result || !this.resolveQualifying) return;
+    const result = this.result;
+    this.disposeSession();
+    this.resolveQualifying(result);
+  }
+
+  private finishTimeTrial(): void {
+    if (this.resolved || this.mode !== 'TIME_TRIAL' || !this.resolveTimeTrial) {
+      return;
+    }
+    const resolve = this.resolveTimeTrial;
+    this.disposeSession();
+    resolve();
+  }
+
+  private disposeSession(): void {
     this.resolved = true;
     cancelAnimationFrame(this.frameId);
     window.removeEventListener('resize', this.resize);
@@ -489,7 +601,6 @@ class QualifyingGame {
     this.renderer.dispose();
     this.container.innerHTML = '';
     this.hud.innerHTML = '';
-    this.resolve(this.result);
   }
 }
 
