@@ -86,4 +86,27 @@ describe('wear-driven tyre slide events', () => {
       expect(step.severity).toBe(0);
     }
   });
+  it('makes a high-wear slide materially longer and stronger than a mid-stint slide', () => {
+    const trigger = (wear: number) => {
+      let state = createTyreSlideState(0.37);
+      for (let tick = 0; tick < 12000; tick++) {
+        const step = stepTyreSlide(state, {
+          wear,
+          speed: 92,
+          steer: 0.92,
+          throttle: 0.85,
+        }, 1 / 120);
+        state = step.state;
+        if (step.triggered) return step;
+      }
+      throw new Error('slide did not trigger');
+    };
+
+    const mid = trigger(0.45);
+    const worn = trigger(0.90);
+    expect(worn.state.intensity).toBeGreaterThan(mid.state.intensity + 0.35);
+    expect(worn.state.remaining).toBeGreaterThan(mid.state.remaining + 0.30);
+    expect(worn.state.intensity).toBeGreaterThan(1.15);
+  });
+
 });

@@ -52,7 +52,7 @@ export function controlArcadeCar(
   const powerBoost = clamp(input.powerBoost ?? 0, -0.55, 0.48);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
   const rollingResistance = clamp(input.rollingResistance ?? 0, 0, 14);
-  const slideSeverity = clamp01(input.slideSeverity ?? 0);
+  const slideSeverity = clamp(input.slideSeverity ?? 0, 0, 1.5);
   const slideDirection = clamp(input.slideDirection ?? 0, -1, 1);
 
   const cos = Math.cos(motion.heading);
@@ -100,8 +100,8 @@ export function controlArcadeCar(
   // handful of km/h and creates visible lateral motion instead of silently
   // reducing steering authority for an entire stint.
   const rearSlideDrag = slideSeverity
-    * (0.65 + steeringLoad * 0.35)
-    * (3.0 + speed * 0.065);
+    * (0.72 + steeringLoad * 0.42)
+    * (4.8 + speed * 0.105);
 
   const brakingGrip = (0.20 + normalizedGrip * 0.98 + superGrip * 0.26) * surfaceGrip;
   const brakingAcceleration = brake * 31.5 * brakingGrip;
@@ -119,7 +119,7 @@ export function controlArcadeCar(
 
   const highSpeedSlip = clamp01(speed / 132);
   const tyreLateralAuthority = 0.34 + Math.pow(steeringGrip, 1.70) * 1.52 + superGrip * 0.55;
-  const slideLateralRetention = 1 - slideSeverity * 0.68;
+  const slideLateralRetention = Math.max(0.06, 1 - slideSeverity * 0.72);
   const lateralGripRate = 10.15
     * tyreLateralAuthority
     * surfaceGrip
@@ -129,7 +129,7 @@ export function controlArcadeCar(
   const rearStepAcceleration = slideDirection
     * slideSeverity
     * clamp01(speed / 78)
-    * (10.5 + speed * 0.095);
+    * (11.8 + speed * 0.105);
   const nextLateral = lateralSpeed * lateralRetention + rearStepAcceleration * Math.max(0, dt);
 
   // The miniature circuit has substantially tighter physical radii than the
@@ -154,7 +154,7 @@ export function controlArcadeCar(
   const throttleUndersteer = 1 - throttle * Math.abs(steer) * fastCorner * (0.055 + (1 - normalizedGrip) * 0.42);
   const liftRotation = throttle < 0.12 && brake < 0.08 ? 1.10 : 1;
   const brakingRotation = 1 + brake * (0.28 + fastCorner * 0.14);
-  const slideRotation = 1 + slideSeverity * 0.58;
+  const slideRotation = 1 + slideSeverity * 0.82;
   const targetAngularVelocity = steer
     * speedAuthority
     * lowSpeedBuild
