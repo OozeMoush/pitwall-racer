@@ -33,6 +33,11 @@ export const CAR_COLLIDER_HALF_WIDTH = 2.15;
 // Physical wall collision is unchanged; this only controls trace invalidation.
 export const WALL_CONTACT_MIN_NORMAL_SPEED = 8;
 export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
+// WALL CONTACT for lap validity requires more than geometric overlap. Rapier
+// must have removed a noticeable component of velocity into the wall during
+// the physics step; this filters collider tolerance/contact-pair false alarms.
+export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
+export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
 const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
@@ -492,8 +497,8 @@ export class RapierRacePhysics {
   }
 
   private updatePlayerContactKind(
-    _preStepVx: number,
-    _preStepVy: number,
+    preStepVx: number,
+    preStepVy: number,
   ): void {
     this.playerContactKindValue = 'NONE';
     const playerCollider = this.playerCollider;
@@ -506,12 +511,21 @@ export class RapierRacePhysics {
       }
 
       if (this.playerContactKindValue === 'CAR') return;
-      if (!this.barrierColliderHeadings.has(otherCollider.handle)) return;
+      const barrierHeading = this.barrierColliderHeadings.get(otherCollider.handle);
+      if (barrierHeading === undefined) return;
 
-      // Rapier reports an actual collider contact here. Kerbs and track-limit
-      // excursions are not barrier colliders, so only physically touching a
-      // safety wall becomes WALL CONTACT.
-      this.playerContactKindValue = 'BARRIER';
+      const postStepVelocity = this.playerBody.linvel();
+      if (
+        isPhysicalBarrierImpact(
+          preStepVx,
+          preStepVy,
+          postStepVelocity.x,
+          postStepVelocity.y,
+          barrierHeading,
+        )
+      ) {
+        this.playerContactKindValue = 'BARRIER';
+      }
     });
   }
 
@@ -582,3 +596,16 @@ export function isSignificantBarrierImpact(
     && incidenceSin >= WALL_CONTACT_MIN_INCIDENCE_SIN;
 }
 
+
+export function isPhysicalBarrierImpact(
+  preVx: number,
+  preVy: number,
+  postVx: number,
+  postVy: number,
+  barrierHeading: number,
+): boolean {
+  const beforeNormal = barrierNormalSpeed(preVx, preVy, barrierHeading);
+  const afterNormal = barrierNormalSpeed(postVx, postVy, barrierHeading);
+  return beforeNormal >= WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED
+    && beforeNormal - afterNormal >= WALL_CONTACT_MIN_NORMAL_SPEED_LOSS;
+}

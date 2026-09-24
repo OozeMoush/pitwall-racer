@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   barrierNormalSpeed,
   CAR_COLLIDER_HALF_LENGTH,
+  isPhysicalBarrierImpact,
   isSignificantBarrierImpact,
   RapierRacePhysics,
   WALL_CONTACT_MIN_INCIDENCE_SIN,
@@ -70,6 +71,26 @@ describe('physical safety barriers', () => {
       WALL_CONTACT_MIN_NORMAL_SPEED,
     );
     expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(true);
+  });
+
+  it('does not call a mere touching/contact-pair state a wall hit', () => {
+    expect(isPhysicalBarrierImpact(
+      80,
+      0.8,
+      79.9,
+      0.7,
+      0,
+    )).toBe(false);
+  });
+
+  it('requires an actual solver-resolved impact response for WALL CONTACT', () => {
+    expect(isPhysicalBarrierImpact(
+      72,
+      5,
+      71.8,
+      0.4,
+      0,
+    )).toBe(true);
   });
 
   it('leaves clear physical room outside the usable kerb', () => {
