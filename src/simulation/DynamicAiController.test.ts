@@ -125,7 +125,7 @@ describe('dynamicAiControl', () => {
     expect(control.targetLane).toBeGreaterThan(6.5);
   });
 
-  it('does not add AUTO corner-attack speed on top of an explicit player trace', () => {
+  it('keeps explicit player pace within the fixed CPU difficulty boost', () => {
     const driver = createAiField()[0];
     driver.progress = 0.56;
     const p = sampleTrack(driver.progress, 0);
@@ -144,7 +144,8 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.lineSource).toBe('PLAYER');
-    expect(control.targetSpeed).toBeLessThanOrEqual(64);
+    expect(control.targetSpeed).toBeGreaterThan(64);
+    expect(control.targetSpeed).toBeLessThan(68);
   });
 
   it('corrects overspeed more aggressively when PLAYER dynamics are demonstrated', () => {

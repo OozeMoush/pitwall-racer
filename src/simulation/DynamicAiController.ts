@@ -103,7 +103,9 @@ export function dynamicAiControl(
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
-  const controlGrip = aiEffectiveGrip(driver);
+  const referenceGhost = driver.id === 'debug-reference-ghost';
+  const controlGrip = referenceGhost ? driver.tire.grip : aiEffectiveGrip(driver);
+  const paceCheat = referenceGhost ? 1 : paceCheat;
   const profile = trackProfile(projection.progress, 1, controlGrip);
   const battlePreview = trackProfile(
     projection.progress + 72 / TRACK_LENGTH,
@@ -379,7 +381,7 @@ export function dynamicAiControl(
   const longitudinalSourceGrip = longitudinalSample?.tireGrip
     ?? lineAsset?.referenceGrip
     ?? driver.tire.grip;
-  const sourceGripMatched = Math.abs(driver.tire.grip - longitudinalSourceGrip) < 0.015;
+  const sourceGripMatched = Math.abs(controlGrip - longitudinalSourceGrip) < 0.015;
   const hasForwardAccelerationTrace =
     longitudinalSample?.forwardAcceleration !== undefined && sourceGripMatched;
   // Difficulty assist: CPUs are intentionally allowed a small amount of
@@ -388,7 +390,7 @@ export function dynamicAiControl(
   // on whether the player is ahead or behind.
   const nominalTargetSpeed = speedReference.targetSpeed
     * execution
-    * aiPaceCheatForSkill(driver.skill);
+    * paceCheat;
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 
@@ -443,7 +445,7 @@ export function dynamicAiControl(
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
     targetSpeed = speedReference.targetSpeed
       * Math.min(1.012, execution + 0.010)
-      * aiPaceCheatForSkill(driver.skill);
+      * paceCheat;
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
@@ -451,12 +453,12 @@ export function dynamicAiControl(
       const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
       targetSpeed = speedReference.targetSpeed
         * Math.min(1.012, execution + advantage)
-        * aiPaceCheatForSkill(driver.skill);
+        * paceCheat;
     } else if (performanceDelta < -0.002) {
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
       targetSpeed = speedReference.targetSpeed
         * Math.max(0.972, execution - compromise)
-        * aiPaceCheatForSkill(driver.skill);
+        * paceCheat;
     }
   }
 
@@ -510,7 +512,7 @@ export function dynamicAiControl(
         1,
       )
     : 0;
-  const plannedBrakeWeight = hasForwardAccelerationTrace
+  const plannedBrakeWeight = hasForwardAccelerationTrace || highFidelityLine
     ? 1
     : clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
@@ -519,14 +521,14 @@ export function dynamicAiControl(
       ? racingLineLocalBrakeIntent(
           trackId,
           longitudinalProgress,
-          driver.tire.grip,
+          controlGrip,
           speed,
           steer,
         )
       : racingLineBrakeIntent(
           trackId,
           longitudinalProgress,
-          driver.tire.grip,
+          controlGrip,
           speed,
         )
     : 0;
@@ -541,7 +543,7 @@ export function dynamicAiControl(
     ? racingLineThrottleIntent(
         trackId,
         longitudinalProgress,
-        driver.tire.grip,
+        controlGrip,
         speed,
         steer,
       )
