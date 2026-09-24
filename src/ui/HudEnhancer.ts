@@ -1,5 +1,3 @@
-import { gripPercent } from '../simulation/TireModel';
-
 interface DriverHudMemory {
   bestLap?: number;
   compounds: string[];
@@ -24,21 +22,6 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
         raceSignature = signature;
       }
       lastRaceLap = currentLap;
-    }
-
-    // Core-race tyre grip is an internal physics coefficient. Present it as a
-    // relative percentage where nominal Medium = 100%, so the number reads as
-    // tyre performance rather than an arbitrary coefficient.
-    const tyreDetail = hud.querySelector<HTMLElement>('.core-race-data > div:first-child span');
-    if (tyreDetail && tyreDetail.dataset.gripNormalized !== '1') {
-      const match = tyreDetail.textContent?.match(/GRIP\s+(\d+)%/);
-      if (match) {
-        const rawGrip = Number(match[1]) / 100;
-        const relative = Math.max(0, Math.round(gripPercent(rawGrip)));
-        tyreDetail.textContent = tyreDetail.textContent?.replace(/GRIP\s+\d+%/, `GRIP ${relative}%`) ?? '';
-        tyreDetail.dataset.gripNormalized = '1';
-        tyreDetail.title = 'Grip relative to nominal Medium tyre = 100%';
-      }
     }
 
     // Remember each driver's actual stint sequence from the live tyre column,
@@ -103,16 +86,6 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
       );
     }
 
-    // Put the player's complete stint sequence next to the live wear status as
-    // well, so the strategy remains readable even when the timing tower is not
-    // the player's focus.
-    const playerHistory = driverMemory.get('YOU')?.compounds;
-    if (tyreDetail && playerHistory && playerHistory.length > 0) {
-      const raw = (tyreDetail.textContent ?? '').replace(/^TYRES\s+[^·]+·\s*/, '');
-      tyreDetail.textContent = `TYRES ${playerHistory.join('›')} · ${raw}`;
-      tyreDetail.title = `Tyre history: ${playerHistory.join(' → ')}`;
-    }
-
     // The old NEXT STOP card mixed the selected tyre, request state and key
     // binding into one terse sentence. Turn it into an explicit pit command so
     // the player can understand it at a glance while racing.
@@ -160,13 +133,13 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
     }
 
     // Legacy energy HUD support remains for the older renderer path.
-    const energyValue = hud.querySelector<HTMLElement>('.race-data > div:nth-child(3) b');
+    const energyValue = hud.querySelector<HTMLElement>('.race-data:not(.core-race-data) > div:nth-child(3) b');
     if (!energyValue || energyValue.querySelector('.energy-meter')) return;
 
     const match = energyValue.textContent?.match(/(\d+)%/);
     if (!match) return;
     const pct = Math.max(0, Math.min(100, Number(match[1])));
-    const modeNode = hud.querySelector<HTMLElement>('.race-data > div:first-child b');
+    const modeNode = hud.querySelector<HTMLElement>('.race-data:not(.core-race-data) > div:first-child b');
     const mode = modeNode?.classList.contains('energy-harvest')
       ? 'harvest'
       : modeNode?.classList.contains('energy-deploy')

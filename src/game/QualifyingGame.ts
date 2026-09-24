@@ -694,6 +694,12 @@ class QualifyingGame {
       ? formatLapTime(this.lapTime)
       : '--:--.---';
     const speed = Math.round(this.vehicle.speed * 3.6);
+    const wearPct = Math.round(this.tire.wear * 100);
+    const tyreWearClass = wearPct >= 80
+      ? 'critical'
+      : wearPct >= 58
+        ? 'warning'
+        : 'healthy';
     const state = this.phase === 'FLYING'
       ? isTimeTrial
         ? `HOT LAP ${this.completedLaps + 1}`
@@ -763,6 +769,7 @@ class QualifyingGame {
       <div class="qualifying-hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div><small>${state}</small><b>${runLabel}</b><span>${controls}</span></div>
+        <div class="qualifying-tyre-card tyre-wear-card"><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound} <em class="tyre-wear-value ${tyreWearClass}">WEAR ${wearPct}%</em></b><span class="tyre-wear-meter ${tyreWearClass}" aria-label="tyre wear ${wearPct} percent"><i style="width:${wearPct}%"></i></span></div>
       </div>`;
   }
 

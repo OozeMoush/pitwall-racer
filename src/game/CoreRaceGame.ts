@@ -54,7 +54,6 @@ import {
   type TrackLimitPenaltyState,
 } from '../simulation/TrackLimitPenaltyModel';
 import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
-import { formatTyreRaceStatus, tyreRaceStatus } from '../simulation/TyreRaceStatus';
 import { minimumPositive, timingTone, type TimingTone } from '../simulation/TimingToneModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
@@ -1392,17 +1391,12 @@ export class CoreRaceGame {
     const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
     const speed = Math.round(this.vehicle.speed * 3.6);
     const wearPct = Math.round(this.tire.wear * 100);
+    const tyreWearClass = wearPct >= 80
+      ? 'critical'
+      : wearPct >= 58
+        ? 'warning'
+        : 'healthy';
     const towPct = Math.round(normalizedTowStrength(aero.tow) * 100);
-    const towState = towPct >= 75
-      ? 'STRONG'
-      : towPct >= 40
-        ? 'GOOD'
-        : towPct > 0
-          ? 'WEAK'
-          : 'NONE';
-    const tyreStatus = tyreRaceStatus(this.tire);
-    const tyreStatusText = formatTyreRaceStatus(tyreStatus);
-    const tyreStatusClass = tyreStatus.condition === 'CLIFF RISK' ? 'cliff' : tyreStatus.condition === 'USED' ? 'used' : 'optimal';
     const compoundHistory = [...this.usedCompounds].join(' → ');
     const delta = this.timing.deltaToBest === undefined ? '—' : `${this.timing.deltaToBest >= 0 ? '+' : ''}${this.timing.deltaToBest.toFixed(3)}`;
     const gridPosition = gridPositionFor('player', this.setup.gridOrder) ?? 8;
@@ -1504,7 +1498,7 @@ export class CoreRaceGame {
       <div class="hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
         <div class="race-data core-race-data">
-          <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span class="tyre-strategy-line ${tyreStatusClass}">${wearPct}% USED · ${tyreStatusText}</span></div>
+          <div class="tyre-wear-card"><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound} <em class="tyre-wear-value ${tyreWearClass}">WEAR ${wearPct}%</em></b><span class="tyre-wear-meter ${tyreWearClass}" aria-label="tyre wear ${wearPct} percent"><i style="width:${wearPct}%"></i></span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
           <div class="tow-card ${towPct > 0 ? 'active' : ''}" title="Slipstream strength relative to the strongest usable tow"><small>SLIPSTREAM</small><b>${towPct > 0 ? `TOW ${towPct}%` : 'NO TOW'}</b><span class="tow-meter" aria-label="tow strength ${towPct} percent"><i style="width:${towPct}%"></i></span></div>
           <div><small>RACE</small><b>${raceState}</b><span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
