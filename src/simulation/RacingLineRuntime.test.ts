@@ -409,6 +409,39 @@ describe('RacingLineRuntime', () => {
     }
   });
 
+  it('keeps the stored wrap from becoming a tiny angular corner', () => {
+    const grip = 1.18;
+    const points = Array.from({ length: 320 }, (_, index) => {
+      const progress = index / 320;
+      const laneOffset = 3 + Math.sin(progress * Math.PI * 2) * 1.5;
+      const pose = sampleTrack(progress, laneOffset);
+      return {
+        progress,
+        laneOffset,
+        targetSpeed: 70,
+        worldX: pose.x,
+        worldY: pose.y,
+        bodyHeading: pose.heading,
+        headingOffset: 0,
+        yawRate: 0,
+        tireGrip: grip,
+      };
+    });
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points,
+    });
+
+    const before = sampleRuntimeRacingLinePose('pitwall-gp', 0.9995);
+    const after = sampleRuntimeRacingLinePose('pitwall-gp', 0.0005);
+    expect(Math.abs(wrapTestAngle(
+      after.trajectoryHeading - before.trajectoryHeading,
+    ))).toBeLessThan(0.16);
+  });
+
   it('smooths a discontinuous lane schedule through start-finish', () => {
     const grip = 1.18;
     setRuntimeRacingLine('pitwall-gp', {

@@ -156,7 +156,20 @@ export function sampleRuntimeRacingLinePose(
   );
   const interpolatedLane = lerp(a.laneOffset, b.laneOffset, t);
   const laneOffset = seamSafeLaneOffset(asset, p, interpolatedLane);
-  const seamBlend = seamRepairs.has(asset) ? seamBlendAmount(p) : 0;
+  // Even a healthy circular trace has one interpolation edge from the last
+  // stored point back to point zero. Reconstruct just one sample-width around
+  // that edge in track coordinates so the follower never sees the closing
+  // world-space chord as a tiny angular corner. Wider repair remains reserved
+  // for genuinely discontinuous legacy assets.
+  const localSeamSpan = 1 / Math.max(1, asset.points.length);
+  const localSeamBlend = 1 - clamp(
+    Math.min(p, 1 - p) / localSeamSpan,
+    0,
+    1,
+  );
+  const seamBlend = seamRepairs.has(asset)
+    ? Math.max(localSeamBlend, seamBlendAmount(p))
+    : localSeamBlend;
   const interpolatedX = lerp(aPose.x, bPose.x, t);
   const interpolatedY = lerp(aPose.y, bPose.y, t);
   const trackPose = sampleTrack(p, laneOffset);

@@ -748,7 +748,6 @@ export class CoreRaceGame {
       lapSeconds: saved.lapSeconds,
       points: saved.points.length,
       raceLap: this.lap,
-      trafficAffectedSeconds: this.lineCandidateFilter.affectedSeconds,
       activatedForCpu: usingPlayerLine,
       qualityUpgrade,
       traceQuality: candidateQuality,
@@ -947,7 +946,7 @@ export class CoreRaceGame {
     this.debugEnabled = !this.debugEnabled;
     if (!this.debugEnabled) {
       this.setAiDebugVisualsVisible(false);
-      this.debugGhost = undefined;
+      this.disposeAiDebugGhost();
       return;
     }
 
@@ -981,10 +980,17 @@ export class CoreRaceGame {
     this.debugGhostTrail?.geometry.setFromPoints([]);
   }
 
+  private disposeAiDebugGhost(): void {
+    if (!this.debugGhost) return;
+    this.debugGhost.physics.world.free();
+    this.debugGhost = undefined;
+  }
+
   private resetAiDebugGhost(): void {
     // Reference replay should answer whether the stored PLAYER lap itself can
     // be reproduced. Start exactly at the lap seam using the stored speed,
     // heading and yaw rather than inheriting a standing-start/warmup history.
+    this.disposeAiDebugGhost();
     this.debugGhost = new AiReferenceGhost(0, this.setup.trackId, true);
     this.debugLineRefreshRemaining = 0;
   }
@@ -1127,7 +1133,6 @@ export class CoreRaceGame {
     this.lapStartCompound = selection.startCompound;
     this.lapPitted = false;
     this.lapValidity.reset();
-    this.lineCandidateFilter.reset();
     this.lineCandidateReferenceGrip = this.tire.grip;
     this.racingLineNotice = '';
     this.racingLineNoticeRemaining = 0;
@@ -1356,7 +1361,7 @@ export class CoreRaceGame {
         <span>LAP <b>${lap}</b></span>
         <span>TRACE <b style="color:${Math.abs(traceDelta ?? 0) > 0.5 ? '#ff6978' : '#48ff74'}">${traceLap}${traceDelta === undefined ? '' : ` (${traceDelta >= 0 ? '+' : ''}${traceDelta.toFixed(3)})`}</b></span>
         <span>MODE <b>${control?.battleState ?? '—'}</b></span>
-        <span>TRAFFIC <b>${fixed(this.lineCandidateFilter.affectedSeconds, 1)}s</b></span>
+        <span>PRESSURE <b>${Math.round(this.trafficPressure * 100)}%</b></span>
       </div>
 
       <div style="margin:6px 0 7px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px">
