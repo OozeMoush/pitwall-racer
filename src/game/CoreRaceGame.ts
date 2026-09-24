@@ -18,7 +18,6 @@ import {
   racingLineTraceQuality,
   saveBestPlayerRacingLineCandidate,
 } from '../simulation/PlayerRacingLineCandidate';
-import { RaceRacingLineCandidateFilter } from '../simulation/RaceRacingLineCandidatePolicy';
 import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
 import {
   activeReferenceTarget,
@@ -134,7 +133,6 @@ export class CoreRaceGame {
   private readonly raceIntervals = new RaceIntervalTracker();
   private readonly lapValidity = new LapValidityTracker();
   private readonly lineCandidate = new PlayerRacingLineCandidateRecorder();
-  private readonly lineCandidateFilter = new RaceRacingLineCandidateFilter();
   private lastFrame = performance.now();
   private fixedAccumulator = 0;
 
@@ -471,14 +469,6 @@ export class CoreRaceGame {
         this.racePenaltyNoticeRemaining = result.penaltyAwarded ? 5.0 : 2.8;
       }
 
-      this.lineCandidateFilter.sampleTraffic(
-        dt,
-        aero.tow,
-        aero.dirtyAir,
-        this.trafficPressure,
-      );
-      if (!this.lineCandidateFilter.eligible) this.lineCandidate.markIneligible();
-
       this.lineCandidate.sample(
         afterTrack.progress,
         afterTrack.laneOffset,
@@ -665,7 +655,6 @@ export class CoreRaceGame {
   private beginRaceLineCandidate(): void {
     this.lineCandidateReferenceGrip = this.tire.grip;
     this.lineCandidate.begin(this.setup.trackId, this.lineCandidateReferenceGrip);
-    this.lineCandidateFilter.reset();
     this.lineCandidateContact = undefined;
   }
 
@@ -690,12 +679,6 @@ export class CoreRaceGame {
           : 'RECOVERY',
       );
     }
-    if (!this.lineCandidateFilter.eligible) {
-      rejectionReasons.push(
-        `TRAFFIC ${this.lineCandidateFilter.affectedSeconds.toFixed(1)}s`,
-      );
-    }
-
     if (rejectionReasons.length > 0) {
       this.lineCandidateStatus = `REJECT · ${rejectionReasons.join(' + ')}`;
       if (

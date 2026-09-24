@@ -742,7 +742,7 @@ class QualifyingGame {
             : delta <= 0
               ? '#58f59a'
               : '#ff6f7d';
-          return `<div style="padding:8px 10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.025)"><small style="display:block;color:#8fa19b">S${index + 1} · BEST ${formatShortTime(best)}</small><b style="display:block;margin-top:4px;font-size:18px;color:${tone}">${delta === undefined ? '—' : formatDelta(delta)}</b></div>`;
+          return `<div style="padding:8px 10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.025)"><small style="display:block;color:#8fa19b">S${index + 1} · BEST</small><b style="display:block;margin-top:4px;font-size:18px;color:#e7f0ed">${formatShortTime(best)}</b><span style="display:block;margin-top:3px;color:${tone};font-size:10px">${delta === undefined ? 'THIS LAP · —' : `THIS LAP · Δ ${formatDelta(delta)}`}</span></div>`;
         }).join('')
       : '';
     const sessionLapRows = isTimeTrial
