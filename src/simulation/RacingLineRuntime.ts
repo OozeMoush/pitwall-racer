@@ -8,6 +8,7 @@ import { sampleRacingLineAsset, type RacingLineAsset } from './RacingLineAsset';
 import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 
 const active = new Map<TrackId, RacingLineAsset>();
+const seamRepairs = new WeakSet<RacingLineAsset>();
 const BRAKE_LOOKAHEAD_STEP_METRES = 12;
 const MIN_BRAKE_LOOKAHEAD_METRES = 96;
 const MAX_BRAKE_LOOKAHEAD_METRES = 240;
@@ -23,6 +24,24 @@ export function setRuntimeRacingLine(
     active.delete(trackId);
     return;
   }
+
+  // Modern PLAYER candidates already bridge start/finish while they are
+  // resampled. Only apply the legacy runtime seam repair when the stored lane
+  // schedule itself contains an implausibly sharp lateral jump at the wrap.
+  // This avoids bending a healthy demonstrated trajectory a second time.
+  const first = asset.points[0];
+  const last = asset.points[asset.points.length - 1];
+  const seamProgressSpan = first && last
+    ? Math.max(0.000001, 1 + first.progress - last.progress)
+    : 0;
+  const seamDistance = seamProgressSpan * TRACK_LENGTH;
+  const laneJump = first && last
+    ? Math.abs(first.laneOffset - last.laneOffset)
+    : 0;
+
+  if (laneJump > seamDistance) seamRepairs.add(asset);
+  else seamRepairs.delete(asset);
+
   active.set(trackId, asset);
 }
 
@@ -137,7 +156,7 @@ export function sampleRuntimeRacingLinePose(
   );
   const interpolatedLane = lerp(a.laneOffset, b.laneOffset, t);
   const laneOffset = seamSafeLaneOffset(asset, p, interpolatedLane);
-  const seamBlend = seamBlendAmount(p);
+  const seamBlend = seamRepairs.has(asset) ? seamBlendAmount(p) : 0;
   const interpolatedX = lerp(aPose.x, bPose.x, t);
   const interpolatedY = lerp(aPose.y, bPose.y, t);
   const trackPose = sampleTrack(p, laneOffset);
@@ -570,6 +589,8 @@ function seamSafeLaneOffset(
   progress: number,
   fallbackLane: number,
 ): number {
+  if (!seamRepairs.has(asset)) return fallbackLane;
+
   const p = wrap01(progress);
   if (
     p >= EXPLICIT_LINE_SEAM_BLEND_SPAN

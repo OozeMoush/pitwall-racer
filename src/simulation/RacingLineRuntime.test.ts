@@ -376,6 +376,39 @@ describe('RacingLineRuntime', () => {
   });
 
 
+  it('does not rewrite a healthy periodic PLAYER seam', () => {
+    const grip = 1.18;
+    const points = Array.from({ length: 320 }, (_, index) => {
+      const progress = index / 320;
+      const laneOffset = 4 + Math.sin(progress * Math.PI * 2) * 2.5;
+      const pose = sampleTrack(progress, laneOffset);
+      return {
+        progress,
+        laneOffset,
+        targetSpeed: 70,
+        worldX: pose.x,
+        worldY: pose.y,
+        bodyHeading: pose.heading,
+        headingOffset: 0,
+        yawRate: 0,
+        tireGrip: grip,
+      };
+    });
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points,
+    });
+
+    for (const progress of [0.996, 0.999, 0.001, 0.004]) {
+      const target = activeReferenceTarget('pitwall-gp', progress, grip);
+      const expectedLane = 4 + Math.sin(progress * Math.PI * 2) * 2.5;
+      expect(target.laneOffset).toBeCloseTo(expectedLane, 1);
+    }
+  });
+
   it('smooths a discontinuous lane schedule through start-finish', () => {
     const grip = 1.18;
     setRuntimeRacingLine('pitwall-gp', {
