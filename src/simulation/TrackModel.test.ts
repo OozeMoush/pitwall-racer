@@ -93,6 +93,17 @@ describe('TrackModel', () => {
     }
   });
 
+  it('abandons a stale continuity branch when the real road is clearly nearer', () => {
+    setActiveTrack('pitwall-gp');
+    const actualProgress = 0.31;
+    const point = sampleTrack(actualProgress, 0);
+    const projected = projectTrackNear(point.x, point.y, 0.92, 1.35);
+    const delta = Math.abs(projected.progress - actualProgress);
+    const circularDelta = Math.min(delta, 1 - delta);
+    expect(circularDelta).toBeLessThan(0.02);
+    expect(projected.distance).toBeLessThan(1);
+  });
+
   it('preserves the signed lateral side of a car on the circuit', () => {
     for (const progress of [0.12, 0.44, 0.78]) {
       const left = sampleTrack(progress, 18);

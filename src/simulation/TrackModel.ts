@@ -191,7 +191,20 @@ export function projectTrackNear(
   const jumpMetres = circularProgressDistance(nearest.progress, referenceProgress) * TRACK_LENGTH;
   const plausibleStepMetres = Math.max(5.5, raceScaleDistance(13));
   if (jumpMetres <= plausibleStepMetres) return nearest;
-  return projectTrackInternal(x, y, referenceProgress, continuityWeight);
+
+  const continuous = projectTrackInternal(
+    x,
+    y,
+    referenceProgress,
+    continuityWeight,
+  );
+
+  // Continuity is only a tie-breaker between nearby pieces of circuit. Once
+  // the old branch is clearly much farther from the physical car, clinging to
+  // it creates impossible 50-100 m lane errors and traps AI in permanent
+  // runoff recovery. Snap back to the actual nearest road in that case.
+  if (nearest.distance + 7 < continuous.distance) return nearest;
+  return continuous;
 }
 
 export function nearestTrackProgress(x: number, y: number): { progress: number; distance: number } {

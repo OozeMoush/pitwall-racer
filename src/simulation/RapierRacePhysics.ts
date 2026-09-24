@@ -158,7 +158,8 @@ export class RapierRacePhysics {
       this.latestAiControls[index] = control;
       driver.battleState = control.battleState;
       const projection = projectTrackNear(state.x, state.y, driver.progress);
-      const surface = surfaceEffect(projection.distance);
+      const physicalSurfaceProjection = projectTrack(state.x, state.y);
+      const surface = surfaceEffect(physicalSurfaceProjection.distance);
       const aero = aerodynamicEffect(
         {
           id: driver.id,
