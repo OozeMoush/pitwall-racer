@@ -63,4 +63,36 @@ describe('explicitLineFollower', () => {
     expect(target.laneError).toBeLessThan(-4);
     expect(target.steer).toBeLessThan(-0.2);
   });
+
+  it('uses geometry instead of replaying Soft yaw dynamics on a lower-grip tyre', () => {
+    const sourceGrip = 1.22;
+    const hardGrip = 0.99;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: sourceGrip,
+      points: Array.from({ length: 160 }, (_, index) => ({
+        progress: index / 160,
+        laneOffset: 0,
+        targetSpeed: 62,
+        headingOffset: 0.08,
+        yawRate: 0.42,
+        tireGrip: sourceGrip,
+      })),
+    });
+
+    const progress = 0.12;
+    const pose = sampleTrack(progress, 0);
+    const vehicle = {
+      ...createVehicle(pose.x, pose.y, pose.heading),
+      speed: 58,
+    };
+
+    expect(explicitLineFollower('pitwall-gp', vehicle, progress, sourceGrip).demonstratedDynamics)
+      .toBe(true);
+    expect(explicitLineFollower('pitwall-gp', vehicle, progress, hardGrip).demonstratedDynamics)
+      .toBe(false);
+  });
+
 });

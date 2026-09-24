@@ -99,10 +99,19 @@ export function explicitLineFollower(
   const demonstrated = lineAsset
     ? sampleRacingLineAsset(lineAsset, pathProgress)
     : undefined;
+  const demonstratedSourceGrip = demonstrated?.tireGrip
+    ?? lineAsset?.referenceGrip;
+  const dynamicsGripMatched = demonstratedSourceGrip === undefined
+    || Math.abs(tireGrip - demonstratedSourceGrip) <= 0.08;
   const demonstratedDynamics = demonstrated?.headingOffset !== undefined
-    && demonstrated?.yawRate !== undefined;
-  const desiredHeading = pathNow.demonstratedHeading ?? pathHeading;
-  const recordedYawRate = demonstrated?.yawRate;
+    && demonstrated?.yawRate !== undefined
+    && dynamicsGripMatched;
+  const desiredHeading = demonstratedDynamics
+    ? pathNow.demonstratedHeading ?? pathHeading
+    : pathHeading;
+  const recordedYawRate = demonstratedDynamics
+    ? demonstrated?.yawRate
+    : undefined;
   const targetYawRate = recordedYawRate !== undefined && demonstrated
     ? recordedYawRate * clamp(
         vehicle.speed / Math.max(1, demonstrated.targetSpeed),
@@ -152,7 +161,9 @@ export function explicitLineFollower(
     previewAhead.y - previewPoint.y,
     previewAhead.x - previewPoint.x,
   );
-  const previewHeading = previewPoint.demonstratedHeading ?? previewPathHeading;
+  const previewHeading = demonstratedDynamics
+    ? previewPoint.demonstratedHeading ?? previewPathHeading
+    : previewPathHeading;
   const headingLead = wrapAngle(previewHeading - desiredHeading);
   const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);
 

@@ -400,4 +400,44 @@ describe('dynamicAiControl', () => {
     expect(control.targetSpeed).toBeLessThanOrEqual(40);
     expect(control.brake).toBeGreaterThan(0);
   });
+
+  it('does not yank a PLAYER line off the kerb just because the car centre crosses the white line', () => {
+    const driver = createAiField()[1];
+    driver.progress = 0.18;
+    const sourceGrip = 1.22;
+    driver.tire = { ...driver.tire, grip: 1.02 };
+    const lineLane = 18.4;
+    const pose = sampleTrack(driver.progress, lineLane);
+    const vehicle = {
+      ...createVehicle(pose.x, pose.y, pose.heading),
+      speed: 60,
+    };
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: sourceGrip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const point = sampleTrack(progress, lineLane);
+        return {
+          progress,
+          laneOffset: lineLane,
+          targetSpeed: 72,
+          worldX: point.x,
+          worldY: point.y,
+          bodyHeading: point.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: sourceGrip,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.demonstratedDynamics).toBe(false);
+    expect(control.targetSpeed).toBeGreaterThan(58);
+    expect(Math.abs(control.debug.pathError)).toBeLessThan(1.5);
+  });
+
 });

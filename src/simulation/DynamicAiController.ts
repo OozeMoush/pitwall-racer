@@ -11,7 +11,12 @@ import {
   racingLineThrottleIntent,
   runtimeRacingLine,
 } from './RacingLineRuntime';
-import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
+import {
+  AI_SAFE_LANE_LIMIT,
+  TRACK_KERB_OUTER_OFFSET,
+  TRACK_ROAD_HALF_WIDTH,
+  TRACK_RUNOFF_HALF_WIDTH,
+} from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
@@ -221,7 +226,7 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
   }
 
-  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
+  const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
   if (offRoad) {
     // AUTO recovers toward the centreline, but an explicit line should not
     // suddenly be replaced by a completely different path the moment one tyre
@@ -379,12 +384,18 @@ export function dynamicAiControl(
     // turning a positive source AXF into a large negative acceleration.
     // Keep strong slowdown for genuine departures, but let ordinary Q5
     // convergence happen at the demonstrated longitudinal pace.
+    const gripTransferred =
+      Math.abs(driver.tire.grip - longitudinalSourceGrip) > 0.08;
     const normalRecoveryScale = hasForwardAccelerationTrace
       ? 1 - clamp((laneError - 5.0) / 5.0, 0, 1) * 0.30
-      : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
+      : gripTransferred
+        ? 1 - clamp((laneError - 2.6) / 5.4, 0, 1) * 0.38
+        : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
     const emergencyPathScale = hasForwardAccelerationTrace
       ? 1 - clamp((pathError - 8.0) / 6.0, 0, 1) * 0.55
-      : 1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
+      : gripTransferred
+        ? 1 - clamp((pathError - 5.5) / 5.5, 0, 1) * 0.48
+        : 1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
     targetSpeed *= Math.min(normalRecoveryScale, emergencyPathScale);
   }
 
@@ -430,7 +441,7 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
+  if (projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
