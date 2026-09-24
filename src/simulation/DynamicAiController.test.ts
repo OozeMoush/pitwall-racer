@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dynamicAiControl } from './DynamicAiController';
+import { aiPaceCheatForSkill, dynamicAiControl } from './DynamicAiController';
 import { createAiField, type RaceTrafficCar } from './RaceModel';
 import { setRuntimeRacingLine } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -438,6 +438,13 @@ describe('dynamicAiControl', () => {
     expect(control.debug.demonstratedDynamics).toBe(true);
     expect(control.targetSpeed).toBeGreaterThan(58);
     expect(Math.abs(control.debug.pathError)).toBeLessThan(1.5);
+  });
+
+
+  it('gives the field a stable skill-shaped pace advantage without rubber-banding', () => {
+    expect(aiPaceCheatForSkill(1.118)).toBeCloseTo(1.025, 5);
+    expect(aiPaceCheatForSkill(1.127)).toBeCloseTo(1.035, 5);
+    expect(aiPaceCheatForSkill(1.136)).toBeCloseTo(1.045, 5);
   });
 
 });

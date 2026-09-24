@@ -39,6 +39,8 @@ export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
 export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
 const CORE_POWER_BASELINE = 0.22;
+export const AI_GRIP_CHEAT = 1.035;
+export const AI_POWER_CHEAT = 0.045;
 
 // Arcade contact policy: the player can still make physical contact with an AI
 // car, and every car collides with the real circuit barriers. AI cars avoid one
@@ -176,10 +178,14 @@ export class RapierRacePhysics {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * (1 - aero.dirtyAir * 0.42),
+        tireGrip: driver.tire.grip
+          * AI_GRIP_CHEAT
+          * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
-        powerBoost: CORE_POWER_BASELINE + towPowerBoost(aero.tow),
+        powerBoost: CORE_POWER_BASELINE
+          + AI_POWER_CHEAT
+          + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
         rollingResistance: surface.rollingResistance,
       }, dt);

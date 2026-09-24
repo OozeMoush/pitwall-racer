@@ -62,6 +62,14 @@ const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
+const AI_PACE_CHEAT_MIN = 1.025;
+const AI_PACE_CHEAT_MAX = 1.045;
+
+export function aiPaceCheatForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_PACE_CHEAT_MIN
+    + (AI_PACE_CHEAT_MAX - AI_PACE_CHEAT_MIN) * t;
+}
 
 /**
  * Physical AI for the race weekend.
@@ -363,7 +371,13 @@ export function dynamicAiControl(
   const sourceGripMatched = Math.abs(driver.tire.grip - longitudinalSourceGrip) < 0.015;
   const hasForwardAccelerationTrace =
     longitudinalSample?.forwardAcceleration !== undefined && sourceGripMatched;
-  const nominalTargetSpeed = speedReference.targetSpeed * execution;
+  // Difficulty assist: CPUs are intentionally allowed a small amount of
+  // performance beyond the recorded human/reference pace. This is a stable
+  // car-performance advantage rather than rubber-banding, so it never depends
+  // on whether the player is ahead or behind.
+  const nominalTargetSpeed = speedReference.targetSpeed
+    * execution
+    * aiPaceCheatForSkill(driver.skill);
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 
@@ -416,16 +430,22 @@ export function dynamicAiControl(
   }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
+    targetSpeed = speedReference.targetSpeed
+      * Math.min(1.012, execution + 0.010)
+      * aiPaceCheatForSkill(driver.skill);
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
       const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
-      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
+      targetSpeed = speedReference.targetSpeed
+        * Math.min(1.012, execution + advantage)
+        * aiPaceCheatForSkill(driver.skill);
     } else if (performanceDelta < -0.002) {
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
-      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
+      targetSpeed = speedReference.targetSpeed
+        * Math.max(0.972, execution - compromise)
+        * aiPaceCheatForSkill(driver.skill);
     }
   }
 
