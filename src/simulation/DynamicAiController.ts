@@ -383,16 +383,16 @@ export function dynamicAiControl(
   const longitudinalSourceGrip = longitudinalSample?.tireGrip
     ?? lineAsset?.referenceGrip
     ?? driver.tire.grip;
-  const sourceGripMatched = Math.abs(controlGrip - longitudinalSourceGrip) < 0.015;
   const hasForwardAccelerationTrace =
-    longitudinalSample?.forwardAcceleration !== undefined && sourceGripMatched;
-  // Difficulty assist: CPUs are intentionally allowed a small amount of
-  // performance beyond the recorded human/reference pace. This is a stable
-  // car-performance advantage rather than rubber-banding, so it never depends
-  // on whether the player is ahead or behind.
+    longitudinalSample?.forwardAcceleration !== undefined;
+  // PLAYER/EDITOR targetSpeed has already been transferred to the available
+  // grip by activeReferenceTarget(). Applying the AUTO pace multiplier again
+  // asks the controller for a second speed boost on top of the race CPU's
+  // fixed grip/power assists. Keep that stable physical advantage, but execute
+  // the demonstrated speed plan itself without double-counting it.
   const nominalTargetSpeed = speedReference.targetSpeed
     * execution
-    * paceCheat;
+    * (highFidelityLine ? 1 : paceCheat);
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 

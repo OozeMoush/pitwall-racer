@@ -225,8 +225,24 @@ export function explicitLineFollower(
     vehicle.speed,
     atReference.targetSpeed * 0.92,
   );
-  const feedForwardCurvature = targetYawRate !== undefined
-    ? targetYawRate / Math.max(1, steeringSpeed)
+  // Steering needs the upcoming demonstrated rotation, not only the yaw
+  // requested at the car's current phase. Using the recorded yaw at the
+  // curvature preview lets the chassis start rotating before a compact S-bend
+  // while retaining the existing grip-scaled targetYawRate for feedback.
+  const leadSample = lineAsset
+    ? sampleRacingLineAsset(lineAsset, curvatureProgress)
+    : undefined;
+  const leadYawRate = leadSample?.yawRate !== undefined
+    ? leadSample.yawRate
+      * clamp(
+          vehicle.speed / Math.max(1, leadSample.targetSpeed),
+          0.55,
+          1.65,
+        )
+      * dynamicsScale
+    : targetYawRate;
+  const feedForwardCurvature = leadYawRate !== undefined
+    ? leadYawRate / Math.max(1, steeringSpeed)
     : signedCurvature;
   const feedForwardSteer = referenceSteerForCurvature(
     steeringSpeed,

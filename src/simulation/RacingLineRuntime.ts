@@ -362,7 +362,7 @@ export function racingLineThrottleIntent(
   const asset = active.get(trackId);
   if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR')) return 0;
 
-  const distance = 12;
+  const distance = 2;
   const currentTarget = activeReferenceTarget(
     trackId,
     progress,
@@ -374,15 +374,19 @@ export function racingLineThrottleIntent(
     tireGrip,
   ).targetSpeed;
   const selected = sampleRacingLineAsset(asset, progress);
-  const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
-  const sourceGripMatched = Math.abs(tireGrip - sourceGrip) < 0.015;
+  // Acceleration is phase evidence from the demonstrated lap. When the same
+  // line is transferred to a different grip level, preserve that phase and
+  // scale the required acceleration with v²; solve the actual pedal command
+  // against the receiving chassis below.
+  const accelerationScale =
+    (currentTarget / Math.max(1, selected.targetSpeed)) ** 2;
   const useForwardAcceleration =
-    selected.forwardAcceleration !== undefined && sourceGripMatched;
+    selected.forwardAcceleration !== undefined;
   const demonstratedAcceleration =
     selected.forwardAcceleration ?? selected.longitudinalAcceleration;
   const desiredAcceleration =
-    demonstratedAcceleration !== undefined && sourceGripMatched
-      ? demonstratedAcceleration
+    demonstratedAcceleration !== undefined
+      ? demonstratedAcceleration * accelerationScale
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
 
@@ -433,7 +437,7 @@ export function racingLineLocalBrakeIntent(
   const asset = active.get(trackId);
   if (!asset || (asset.source !== 'PLAYER' && asset.source !== 'EDITOR')) return 0;
 
-  const distance = 8;
+  const distance = 2;
   const currentTarget = activeReferenceTarget(
     trackId,
     progress,
@@ -452,15 +456,15 @@ export function racingLineLocalBrakeIntent(
   // traces keep the older tight speed correction because they do not carry the
   // stronger forward-axis state signal.
   const selected = sampleRacingLineAsset(asset, progress);
-  const sourceGrip = selected.tireGrip ?? asset.referenceGrip ?? tireGrip;
-  const sourceGripMatched = Math.abs(tireGrip - sourceGrip) < 0.015;
+  const accelerationScale =
+    (currentTarget / Math.max(1, selected.targetSpeed)) ** 2;
   const useForwardAcceleration =
-    selected.forwardAcceleration !== undefined && sourceGripMatched;
+    selected.forwardAcceleration !== undefined;
   const demonstratedAcceleration =
     selected.forwardAcceleration ?? selected.longitudinalAcceleration;
   const traceAcceleration =
-    demonstratedAcceleration !== undefined && sourceGripMatched
-      ? demonstratedAcceleration
+    demonstratedAcceleration !== undefined
+      ? demonstratedAcceleration * accelerationScale
       : (futureTarget * futureTarget - currentTarget * currentTarget)
         / (2 * distance);
   // A demonstrated negative AXF marks a real braking phase. Do not suppress

@@ -240,6 +240,8 @@ describe('AiReferenceGhost', () => {
       maxPathError,
       worstProgress,
       avgPathError: samples > 0 ? errorSum / samples : 0,
+      worstLongitudinalLoss: replay.lastWorstLoss(),
+      firstLargeSpeedDrift: replay.lastFirstSpeedDrift(),
     });
 
     expect(replayLapSeconds).toBeGreaterThan(0);
