@@ -141,7 +141,7 @@ export class CoreRaceGame {
   private lap = 0;
   private trackProgress: number;
   private lastTrackProgress: number;
-  private nextCheckpoint = 1;
+  private lapForwardProgress = 0;
   private pitRequested = false;
   private finishMessage = '';
   private steerInput = 0;
@@ -547,7 +547,7 @@ export class CoreRaceGame {
     if (this.lap === 0) {
       if (crossedStart) {
         this.lap = 1;
-        this.nextCheckpoint = 1;
+        this.lapForwardProgress = 0;
         this.sectorStartTime = this.timing.raceTime;
         this.lapStartCompound = this.tire.compound;
         this.lapPitted = false;
@@ -558,14 +558,25 @@ export class CoreRaceGame {
       return;
     }
 
-    const thresholds = [0, 0.24, 0.49, 0.74];
-    while (
-      this.nextCheckpoint <= 3
-      && this.trackProgress >= thresholds[this.nextCheckpoint]
-    ) {
-      this.nextCheckpoint += 1;
+    const rawDelta = this.trackProgress - this.lastTrackProgress;
+    const continuousDelta = rawDelta < -0.5
+      ? rawDelta + 1
+      : rawDelta > 0.5
+        ? rawDelta - 1
+        : rawDelta;
+
+    // Accumulate real forward lap progress instead of demanding exact
+    // intermediate checkpoints. Large projection teleports are ignored.
+    if (continuousDelta > 0 && continuousDelta < 0.06) {
+      this.lapForwardProgress = Math.min(
+        1.25,
+        this.lapForwardProgress + continuousDelta,
+      );
     }
-    if (!(this.nextCheckpoint === 4 && crossedStart)) return;
+
+    // Track limits never delete a Grand Prix lap. A forward start-line crossing
+    // counts once most of the circuit has actually been traversed.
+    if (!(crossedStart && this.lapForwardProgress >= 0.68)) return;
 
     const lapTime = this.timing.raceTime - this.timing.lapStartTime;
     const s1 = this.sectorTimes[0] ?? lapTime / 3;
@@ -597,7 +608,7 @@ export class CoreRaceGame {
 
     this.timing = completeLap(this.timing, validLap);
     this.lap += 1;
-    this.nextCheckpoint = 1;
+    this.lapForwardProgress = 0;
     this.nextSector = 1;
     this.sectorStartTime = this.timing.raceTime;
     this.sectorTimes = [];
@@ -1085,7 +1096,7 @@ export class CoreRaceGame {
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
     this.lastTrackProgress = playerGrid.progress;
-    this.nextCheckpoint = 1;
+    this.lapForwardProgress = 0;
     this.pitRequested = false;
     this.finishMessage = '';
     this.steerInput = 0;

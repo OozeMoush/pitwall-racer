@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { LapValidityTracker, isEntireCarBeyondTrack } from './LapValidityModel';
+import {
+  LapValidityTracker,
+  TRACK_LIMIT_HALF_WIDTH,
+  isEntireCarBeyondTrack,
+} from './LapValidityModel';
+import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
 
 describe('LapValidityModel', () => {
-  it('counts a warning only when the whole car leaves the road', () => {
-    expect(isEntireCarBeyondTrack(18.9, 0, 0)).toBe(false);
-    expect(isEntireCarBeyondTrack(19.3, 0, 0)).toBe(true);
+  it('counts a warning only when all four visible tyres leave the road', () => {
+    const edge = TRACK_ROAD_HALF_WIDTH + TRACK_LIMIT_HALF_WIDTH;
+    expect(isEntireCarBeyondTrack(edge - 0.05, 0, 0)).toBe(false);
+    expect(isEntireCarBeyondTrack(edge + 0.05, 0, 0)).toBe(true);
   });
 
   it('invalidates the lap on the third distinct full-car excursion', () => {

@@ -1,8 +1,9 @@
-import {
-  CAR_COLLIDER_HALF_LENGTH,
-  CAR_COLLIDER_HALF_WIDTH,
-} from './RapierRacePhysics';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
+
+// Track-limit legality follows the visible four-wheel envelope, not the smaller
+// Rapier collider used to make wheel-to-wheel contact feel fair.
+export const TRACK_LIMIT_HALF_LENGTH = 5.45;
+export const TRACK_LIMIT_HALF_WIDTH = 2.62;
 
 export interface LapValiditySnapshot {
   warnings: number;
@@ -84,8 +85,8 @@ export function isEntireCarBeyondTrack(
 ): boolean {
   const headingDelta = vehicleHeading - trackHeading;
   const lateralHalfExtent =
-    Math.abs(Math.sin(headingDelta)) * CAR_COLLIDER_HALF_LENGTH
-    + Math.abs(Math.cos(headingDelta)) * CAR_COLLIDER_HALF_WIDTH;
+    Math.abs(Math.sin(headingDelta)) * TRACK_LIMIT_HALF_LENGTH
+    + Math.abs(Math.cos(headingDelta)) * TRACK_LIMIT_HALF_WIDTH;
 
   return Math.abs(laneOffset) - lateralHalfExtent > TRACK_ROAD_HALF_WIDTH;
 }
