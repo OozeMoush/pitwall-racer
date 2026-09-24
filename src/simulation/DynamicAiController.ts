@@ -64,8 +64,8 @@ const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
 const AI_PACE_CHEAT_MIN = 1.055;
 const AI_PACE_CHEAT_MAX = 1.085;
-const AI_EXPLICIT_PACE_MIN = 1.005;
-const AI_EXPLICIT_PACE_MAX = 1.035;
+const AI_EXPLICIT_PACE_MIN = 1.000;
+const AI_EXPLICIT_PACE_MAX = 1.015;
 const AI_SKILL_GRIP_MAX = 1.025;
 const AI_POWER_BONUS_MIN = 0.055;
 const AI_POWER_BONUS_MAX = 0.105;
@@ -409,11 +409,10 @@ export function dynamicAiControl(
     ?? driver.tire.grip;
   const hasForwardAccelerationTrace =
     longitudinalSample?.forwardAcceleration !== undefined;
-  // PLAYER/EDITOR targetSpeed has already been transferred to the available
-  // grip by activeReferenceTarget(). Applying the AUTO pace multiplier again
-  // asks the controller for a second speed boost on top of the race CPU's
-  // fixed grip/power assists. Keep that stable physical advantage, but execute
-  // the demonstrated speed plan itself without double-counting it.
+  // PLAYER/EDITOR targetSpeed is the demonstrated plan. Race CPUs may ask for
+  // a small >=100% pace uplift, but the meaningful constructor hierarchy lives
+  // in their fixed grip/power advantages; pushing the speed trace itself too
+  // far makes the controller miss the demonstrated path rather than look fast.
   const nominalTargetSpeed = speedReference.targetSpeed
     * (
       referenceGhost
@@ -556,7 +555,9 @@ export function dynamicAiControl(
   // the deficit for the rest of the lap.
   const plannedBrakeWeight = hasForwardAccelerationTrace
     ? 1
-    : clamp((1.15 - speedError) / 2.3, 0, 1);
+    : highFidelityLine && !(explicitFollower?.demonstratedDynamics ?? false)
+      ? 1
+      : clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
   const explicitProfileBrake = highFidelityLine
     ? explicitFollower?.demonstratedDynamics

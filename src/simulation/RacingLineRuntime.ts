@@ -167,14 +167,13 @@ export function sampleRuntimeRacingLinePose(
     0,
     1,
   );
-  const seamBlend = seamRepairs.has(asset)
-    ? Math.max(localSeamBlend, seamBlendAmount(p))
-    : localSeamBlend;
+  const repairBlend = seamRepairs.has(asset) ? seamBlendAmount(p) : 0;
+  const headingBlend = Math.max(localSeamBlend, repairBlend);
   const interpolatedX = lerp(aPose.x, bPose.x, t);
   const interpolatedY = lerp(aPose.y, bPose.y, t);
   const trackPose = sampleTrack(p, laneOffset);
-  const x = lerp(interpolatedX, trackPose.x, seamBlend);
-  const y = lerp(interpolatedY, trackPose.y, seamBlend);
+  const x = lerp(interpolatedX, trackPose.x, repairBlend);
+  const y = lerp(interpolatedY, trackPose.y, repairBlend);
 
   // Never close a sparse recorded lap with a straight chord. Around
   // start/finish, derive the tangent from the circuit-following seam bridge.
@@ -198,7 +197,7 @@ export function sampleRuntimeRacingLinePose(
   const trajectoryHeading = interpolateAngle(
     rawGeometricHeading,
     seamHeading,
-    seamBlend,
+    headingBlend,
   );
 
   return {
