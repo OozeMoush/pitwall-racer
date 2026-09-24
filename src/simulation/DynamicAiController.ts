@@ -415,12 +415,18 @@ export function dynamicAiControl(
     // convergence happen at the demonstrated longitudinal pace.
     const gripTransferred =
       Math.abs(driver.tire.grip - longitudinalSourceGrip) > 0.08;
-    const normalRecoveryScale = hasForwardAccelerationTrace
+    // A demonstrated body/yaw trace is already a physically observed path.
+    // Small replay error should be corrected by steering rather than deleting
+    // longitudinal pace. Reserve the aggressive speed cap for legacy lines
+    // that do not carry demonstrated dynamics, or for a genuine departure.
+    const demonstratedPathDynamics =
+      explicitFollower?.demonstratedDynamics ?? false;
+    const normalRecoveryScale = demonstratedPathDynamics
       ? 1 - clamp((laneError - 5.0) / 5.0, 0, 1) * 0.30
       : gripTransferred
         ? 1 - clamp((laneError - 2.6) / 5.4, 0, 1) * 0.38
         : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
-    const emergencyPathScale = hasForwardAccelerationTrace
+    const emergencyPathScale = demonstratedPathDynamics
       ? 1 - clamp((pathError - 8.0) / 6.0, 0, 1) * 0.55
       : gripTransferred
         ? 1 - clamp((pathError - 5.5) / 5.5, 0, 1) * 0.48
@@ -514,7 +520,12 @@ export function dynamicAiControl(
         1,
       )
     : 0;
-  const plannedBrakeWeight = hasForwardAccelerationTrace || highFidelityLine
+  // Measured forward acceleration is an authoritative braking phase and must
+  // remain anchored to path position even when replay arrives underspeed.
+  // A legacy speed-derived brake phase is only an estimate, so let it yield
+  // when the car is already below the demonstrated target instead of compounding
+  // the deficit for the rest of the lap.
+  const plannedBrakeWeight = hasForwardAccelerationTrace
     ? 1
     : clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
