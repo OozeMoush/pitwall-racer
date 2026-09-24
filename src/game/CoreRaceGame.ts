@@ -67,7 +67,14 @@ import {
   type RaceTrafficCar,
 } from '../simulation/RaceModel';
 import { completeLap, createTiming, formatLapTime, stepTiming, type TimingState } from '../simulation/TimingModel';
-import { crossedStartLine, getActiveTrack, projectTrack, sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import {
+  crossedStartLine,
+  getActiveTrack,
+  projectTrack,
+  projectTrackNear,
+  sampleTrack,
+  TRACK_LENGTH,
+} from '../simulation/TrackModel';
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
@@ -367,7 +374,12 @@ export class CoreRaceGame {
     const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
 
-    const beforeTrack = projectTrack(this.vehicle.x, this.vehicle.y);
+    const beforeTrack = projectTrackNear(
+      this.vehicle.x,
+      this.vehicle.y,
+      this.trackProgress,
+      1.35,
+    );
     const surface = surfaceEffect(beforeTrack.distance);
     const aero = aeroEffect(this.lap, beforeTrack.progress, this.ai, beforeTrack.laneOffset);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
@@ -399,7 +411,12 @@ export class CoreRaceGame {
     }
     this.updateAiLapTiming();
 
-    const afterTrack = projectTrack(this.vehicle.x, this.vehicle.y);
+    const afterTrack = projectTrackNear(
+      this.vehicle.x,
+      this.vehicle.y,
+      this.trackProgress,
+      1.35,
+    );
     this.trackDistance = afterTrack.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterTrack.progress;
@@ -536,7 +553,12 @@ export class CoreRaceGame {
     }
 
     const thresholds = [0, 0.24, 0.49, 0.74];
-    if (this.nextCheckpoint <= 3 && this.trackProgress >= thresholds[this.nextCheckpoint]) this.nextCheckpoint += 1;
+    while (
+      this.nextCheckpoint <= 3
+      && this.trackProgress >= thresholds[this.nextCheckpoint]
+    ) {
+      this.nextCheckpoint += 1;
+    }
     if (!(this.nextCheckpoint === 4 && crossedStart)) return;
 
     const lapTime = this.timing.raceTime - this.timing.lapStartTime;

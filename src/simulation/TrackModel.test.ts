@@ -79,6 +79,20 @@ describe('TrackModel', () => {
     expect(localProjection.laneOffset).toBeLessThan(-18);
   });
 
+  it('keeps Sakura kerb attacks on the same progress branch', () => {
+    setActiveTrack('sakura-esses');
+    for (let index = 0; index < 80; index++) {
+      const progress = index / 80;
+      for (const laneOffset of [-19, 19]) {
+        const point = sampleTrack(progress, laneOffset);
+        const projected = projectTrackNear(point.x, point.y, progress, 1.35);
+        const delta = Math.abs(projected.progress - progress);
+        const circularDelta = Math.min(delta, 1 - delta);
+        expect(circularDelta).toBeLessThan(0.012);
+      }
+    }
+  });
+
   it('preserves the signed lateral side of a car on the circuit', () => {
     for (const progress of [0.12, 0.44, 0.78]) {
       const left = sampleTrack(progress, 18);

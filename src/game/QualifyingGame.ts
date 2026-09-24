@@ -35,6 +35,7 @@ import {
   crossedStartLine,
   getActiveTrack,
   projectTrack,
+  projectTrackNear,
   sampleTrack,
   TRACK_LENGTH,
 } from '../simulation/TrackModel';
@@ -293,7 +294,12 @@ class QualifyingGame {
     const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
 
-    const before = projectTrack(this.vehicle.x, this.vehicle.y);
+    const before = projectTrackNear(
+      this.vehicle.x,
+      this.vehicle.y,
+      this.currentProgress,
+      1.35,
+    );
     const surface = surfaceEffect(before.distance);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
     const load = Math.min(1.34,
@@ -331,7 +337,12 @@ class QualifyingGame {
       this.lapNoticeRemaining = 2.2;
     }
 
-    const after = projectTrack(this.vehicle.x, this.vehicle.y);
+    const after = projectTrackNear(
+      this.vehicle.x,
+      this.vehicle.y,
+      this.currentProgress,
+      1.35,
+    );
     this.lastProgress = this.currentProgress;
     this.currentProgress = after.progress;
     const crossedStart = crossedStartLine(this.lastProgress, this.currentProgress);
@@ -395,11 +406,17 @@ class QualifyingGame {
     }
 
     const thresholds = [0, 0.24, 0.49, 0.74];
-    if (this.nextCheckpoint <= 3 && this.currentProgress >= thresholds[this.nextCheckpoint]) {
+    while (
+      this.nextCheckpoint <= 3
+      && this.currentProgress >= thresholds[this.nextCheckpoint]
+    ) {
       this.nextCheckpoint += 1;
     }
 
-    if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 20) {
+    // Ordered checkpoints already prevent shortcut/false-wrap laps. Do not
+    // impose a 20 s minimum: the new compact circuits can legitimately be much
+    // quicker, and that old guard made a genuine fast lap silently disappear.
+    if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 5) {
       if (this.lapValidity.invalid) {
         // An invalid Time Trial lap is still a completed lap attempt. Keep it
         // in the session lap board, but never persist it as PB/sector history.
