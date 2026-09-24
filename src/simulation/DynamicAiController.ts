@@ -62,13 +62,23 @@ const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
-const AI_PACE_CHEAT_MIN = 1.025;
-const AI_PACE_CHEAT_MAX = 1.045;
+const AI_PACE_CHEAT_MIN = 1.055;
+const AI_PACE_CHEAT_MAX = 1.085;
 
 export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
   return AI_PACE_CHEAT_MIN
     + (AI_PACE_CHEAT_MAX - AI_PACE_CHEAT_MIN) * t;
+}
+
+export function aiGripMultiplier(compound: DriverState['tire']['compound']): number {
+  if (compound === 'SOFT') return 1.075;
+  if (compound === 'MEDIUM') return 1.055;
+  return 1.045;
+}
+
+export function aiEffectiveGrip(driver: DriverState): number {
+  return driver.tire.grip * aiGripMultiplier(driver.tire.compound);
 }
 
 /**
@@ -93,11 +103,12 @@ export function dynamicAiControl(
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
-  const profile = trackProfile(projection.progress, 1, driver.tire.grip);
+  const controlGrip = aiEffectiveGrip(driver);
+  const profile = trackProfile(projection.progress, 1, controlGrip);
   const battlePreview = trackProfile(
     projection.progress + 72 / TRACK_LENGTH,
     1,
-    driver.tire.grip,
+    controlGrip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
@@ -186,8 +197,8 @@ export function dynamicAiControl(
     ? clamp(16 + speed * 0.22, 24, 46) * technicalLookahead
     : clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
-  const lineReference = activeReferenceTarget(trackId, targetProgress, driver.tire.grip);
-  const currentLineReference = activeReferenceTarget(trackId, projection.progress, driver.tire.grip);
+  const lineReference = activeReferenceTarget(trackId, targetProgress, controlGrip);
+  const currentLineReference = activeReferenceTarget(trackId, projection.progress, controlGrip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   // Keep the proven closed-loop reference follower for clean-air pace. The
@@ -253,7 +264,7 @@ export function dynamicAiControl(
         trackId,
         vehicle,
         projection.progress,
-        driver.tire.grip,
+        controlGrip,
       )
     : undefined;
   if (explicitFollower) {
@@ -271,7 +282,7 @@ export function dynamicAiControl(
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(activeReferenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      ? clamp(activeReferenceTarget(trackId, tangentProgress, controlGrip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
@@ -360,7 +371,7 @@ export function dynamicAiControl(
     ? explicitFollower.pathProgress
     : projection.progress;
   const speedReference = highFidelityLine
-    ? activeReferenceTarget(trackId, longitudinalProgress, driver.tire.grip)
+    ? activeReferenceTarget(trackId, longitudinalProgress, controlGrip)
     : currentLineReference;
   const longitudinalSample = highFidelityLine && lineAsset
     ? sampleRacingLineAsset(lineAsset, longitudinalProgress)

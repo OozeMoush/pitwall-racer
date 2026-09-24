@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { aiPaceCheatForSkill, dynamicAiControl } from './DynamicAiController';
+import {
+  aiGripMultiplier,
+  aiPaceCheatForSkill,
+  dynamicAiControl,
+} from './DynamicAiController';
 import { createAiField, type RaceTrafficCar } from './RaceModel';
 import { setRuntimeRacingLine } from './RacingLineRuntime';
 import { AI_SAFE_LANE_LIMIT, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
@@ -442,9 +446,16 @@ describe('dynamicAiControl', () => {
 
 
   it('gives the field a stable skill-shaped pace advantage without rubber-banding', () => {
-    expect(aiPaceCheatForSkill(1.118)).toBeCloseTo(1.025, 5);
-    expect(aiPaceCheatForSkill(1.127)).toBeCloseTo(1.035, 5);
-    expect(aiPaceCheatForSkill(1.136)).toBeCloseTo(1.045, 5);
+    expect(aiPaceCheatForSkill(1.118)).toBeCloseTo(1.055, 5);
+    expect(aiPaceCheatForSkill(1.127)).toBeCloseTo(1.070, 5);
+    expect(aiPaceCheatForSkill(1.136)).toBeCloseTo(1.085, 5);
+  });
+
+
+  it('gives Soft the largest CPU grip assist for faithful player-line tracking', () => {
+    expect(aiGripMultiplier('SOFT')).toBeCloseTo(1.075, 6);
+    expect(aiGripMultiplier('MEDIUM')).toBeCloseTo(1.055, 6);
+    expect(aiGripMultiplier('HARD')).toBeCloseTo(1.045, 6);
   });
 
 });

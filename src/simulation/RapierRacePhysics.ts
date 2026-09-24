@@ -1,7 +1,11 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { aerodynamicEffect, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
-import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
+import {
+  aiEffectiveGrip,
+  dynamicAiControl,
+  type DynamicAiControl,
+} from './DynamicAiController';
 import {
   PIT_SPEED,
   beginPitStop,
@@ -39,8 +43,7 @@ export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
 export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
 const CORE_POWER_BASELINE = 0.22;
-export const AI_GRIP_CHEAT = 1.035;
-export const AI_POWER_CHEAT = 0.045;
+export const AI_POWER_CHEAT = 0.065;
 
 // Arcade contact policy: the player can still make physical contact with an AI
 // car, and every car collides with the real circuit barriers. AI cars avoid one
@@ -178,8 +181,7 @@ export class RapierRacePhysics {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip
-          * AI_GRIP_CHEAT
+        tireGrip: aiEffectiveGrip(driver)
           * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
