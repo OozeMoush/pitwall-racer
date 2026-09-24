@@ -196,9 +196,9 @@ export class CoreRaceGame {
     this.container = container;
     this.hud = hud;
     this.setup = setup;
-    this.totalLaps = Math.max(6, Math.min(30, Math.round(setup.totalLaps)));
+    this.totalLaps = Math.max(6, Math.min(60, Math.round(setup.totalLaps)));
     this.startCompound = setup.startCompound;
-    this.ai = createAiField(setup.gridOrder);
+    this.ai = createAiField(setup.gridOrder, this.totalLaps);
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
     this.lastTrackProgress = playerGrid.progress;
@@ -1535,7 +1535,13 @@ export class CoreRaceGame {
         : this.raceIntervals.gapSeconds(playerStanding, driver)
           ?? estimatedSignedGapSeconds(playerStanding, driver, referenceLap);
       const gapClass = gap < -TIMING_EPSILON ? 'gap-ahead' : gap > TIMING_EPSILON ? 'gap-behind' : 'gap-self';
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
+      const aiIndex = this.ai.findIndex((entry) => entry.id === driver.id);
+      const carColor = aiIndex >= 0 ? AI_COLORS[aiIndex] ?? 0xffffff : 0x31b9ef;
+      const carColorHex = `#${carColor.toString(16).padStart(6, '0')}`;
+      const carBadge = driver.id === 'player'
+        ? ''
+        : `<u title="CAR ${aiIndex + 1}" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-right:6px;padding:0 3px;border-radius:4px;background:${carColorHex};color:#071014;text-decoration:none;font-size:10px;font-weight:950;line-height:1">${aiIndex + 1}</u>`;
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong style="display:flex;align-items:center;min-width:0">${carBadge}<span style="overflow:hidden;text-overflow:ellipsis">${driver.name}</span></strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
     this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}

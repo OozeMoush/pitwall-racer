@@ -13,6 +13,23 @@ import {
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
+  it('spreads AI one-stop strategies across all three destination compounds', () => {
+    const field = createAiField(undefined, 50);
+    expect(field.filter((driver) => driver.nextCompound === 'HARD')).toHaveLength(3);
+    expect(field.filter((driver) => driver.nextCompound === 'SOFT')).toHaveLength(3);
+    expect(field.filter((driver) => driver.nextCompound === 'MEDIUM')).toHaveLength(1);
+    expect(field.find((driver) => driver.name === 'ORBIT')?.plannedPitLap).toBe(36);
+    expect(field.find((driver) => driver.name === 'RIFT')?.plannedPitLap).toBe(38);
+  });
+
+  it('scales planned pit windows with the selected race length', () => {
+    const forty = createAiField(undefined, 40);
+    const sixty = createAiField(undefined, 60);
+    expect(forty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(16);
+    expect(sixty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(24);
+    expect(sixty.find((driver) => driver.name === 'ZEN')?.plannedPitLap).toBe(44);
+  });
+
   it('requires two distinct dry compounds', () => {
     expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM']))).toBe(false);
     expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM', 'HARD']))).toBe(true);

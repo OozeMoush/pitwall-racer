@@ -59,25 +59,33 @@ const EMPTY_TRAFFIC: TrafficContext = {
   gapBehindMetres: Number.POSITIVE_INFINITY,
 };
 
-export function createAiField(gridOrder?: readonly string[]): DriverState[] {
-  // Fifty-lap miniature races need genuine stint shapes. Soft starters attack
-  // early then move to Hard; Medium starters extend toward the middle; Hard
-  // starters run longest before switching to Medium. This stays one-stop for
-  // now so the first long-race pass remains readable and tuneable.
+export function createAiField(
+  gridOrder?: readonly string[],
+  totalLaps = 50,
+): DriverState[] {
+  // Each car gets a recognisable one-stop shape rather than converging on Hard.
+  // Fractions scale the stop window across the 40/50/60-lap race options:
+  // early Soft starters still need durability, while Medium/Hard starters can
+  // stay out and attack the finish on Soft.
   const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 11, 'HARD', -4, 1.130],
-    ['APEX', 'MEDIUM', 20, 'HARD', 4, 1.136],
-    ['VOLT', 'HARD', 31, 'MEDIUM', -3, 1.120],
-    ['ORBIT', 'MEDIUM', 18, 'HARD', 3, 1.131],
-    ['KITE', 'SOFT', 12, 'HARD', -4, 1.127],
-    ['RIFT', 'HARD', 29, 'MEDIUM', 3, 1.118],
-    ['ZEN', 'MEDIUM', 21, 'HARD', 0, 1.129],
+    ['NOVA', 'SOFT', 0.22, 'HARD', -4, 1.130],
+    ['APEX', 'MEDIUM', 0.40, 'HARD', 4, 1.136],
+    ['VOLT', 'HARD', 0.62, 'MEDIUM', -3, 1.120],
+    ['ORBIT', 'MEDIUM', 0.72, 'SOFT', 3, 1.131],
+    ['KITE', 'SOFT', 0.24, 'HARD', -4, 1.127],
+    ['RIFT', 'HARD', 0.76, 'SOFT', 3, 1.118],
+    ['ZEN', 'MEDIUM', 0.74, 'SOFT', 0, 1.129],
   ];
 
-  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => {
+  const safeRaceLaps = Math.max(6, Math.round(totalLaps));
+  return plans.map(([name, start, pitFraction, next, preferredLane, skill], index) => {
     const id = `ai-${index}`;
     const qualifiedPosition = gridPositionFor(id, gridOrder);
     const grid = qualifiedPosition === undefined ? aiGridSlot(index) : gridSlotForPosition(qualifiedPosition);
+    const plannedPitLap = Math.max(
+      4,
+      Math.min(safeRaceLaps - 3, Math.round(safeRaceLaps * pitFraction)),
+    );
     return {
       id,
       name,
