@@ -421,13 +421,17 @@ export class CoreRaceGame {
       this.trackProgress,
       1.35,
     );
-    this.trackDistance = afterTrack.distance;
+    const afterPhysicalProjection = projectTrack(
+      this.vehicle.x,
+      this.vehicle.y,
+    );
+    this.trackDistance = afterPhysicalProjection.distance;
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterTrack.progress;
     if (this.lap >= 1) {
       const validityEvent = this.lapValidity.sample(
-        afterTrack.laneOffset,
-        afterTrack.heading,
+        afterPhysicalProjection.laneOffset,
+        afterPhysicalProjection.heading,
         this.vehicle.heading,
       );
       if (validityEvent !== 'NONE') {
@@ -460,9 +464,9 @@ export class CoreRaceGame {
       );
     }
     this.updateSectorTiming();
-    this.updateLapAndCheckpoints(afterTrack.distance);
+    this.updateLapAndCheckpoints(afterPhysicalProjection.distance);
 
-    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterTrack.distance, this.pitRequested)) {
+    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterPhysicalProjection.distance, this.pitRequested)) {
       this.lineCandidate.markIneligible();
       this.pitStop = beginPitStop();
       this.pitRequested = false;
@@ -529,9 +533,7 @@ export class CoreRaceGame {
         const sectorTime = this.timing.raceTime - this.sectorStartTime;
         this.sectorTimes.push(sectorTime);
         this.sectorTones.push(this.newSectorTone(index, sectorTime));
-        if (!this.lapValidity.invalid) {
-          this.registerSessionFastestSector(index, sectorTime);
-        }
+        this.registerSessionFastestSector(index, sectorTime);
         this.sectorStartTime = this.timing.raceTime;
         this.nextSector += 1;
       } else break;
@@ -570,12 +572,13 @@ export class CoreRaceGame {
     const s2 = this.sectorTimes[1] ?? lapTime / 3;
     const s3 = Math.max(0, lapTime - s1 - s2);
     this.sectorTones[2] = this.newSectorTone(2, s3);
-    const validLap = !this.lapValidity.invalid;
-    if (validLap) {
-      [s1, s2, s3].forEach((sectorTime, index) => {
-        this.registerSessionFastestSector(index, sectorTime);
-      });
-    }
+    // Grand Prix track limits are accumulated as race penalties. The physical
+    // lap still happened and must always advance timing/lap count. Racing-line
+    // eligibility remains stricter and is checked separately below.
+    const validLap = true;
+    [s1, s2, s3].forEach((sectorTime, index) => {
+      this.registerSessionFastestSector(index, sectorTime);
+    });
     this.lapHistory.push({
       lap: this.lap,
       compound: this.tire.compound,
@@ -1412,11 +1415,10 @@ export class CoreRaceGame {
               ? `PENALTY ${this.trackLimitPenalty.pendingPitSeconds}s · F TO BOX`
               : `NEXT ${this.selectedCompound} · F TO BOX`;
     const slideSeverity = this.physics.playerSlideSeverity();
-    const validity = this.lapValidity.snapshot();
-    const raceState = validity.invalid
-      ? 'LAP INVALID · TRACK LIMITS'
-      : validity.warnings > 0
-        ? `TRACK LIMITS ${validity.warnings}/3`
+    const raceState = this.trackLimitPenalty.pendingPitSeconds > 0
+      ? `PENALTY ${this.trackLimitPenalty.pendingPitSeconds}s · BOX TO SERVE`
+      : this.trackLimitPenalty.warnings > 0
+        ? `TRACK LIMITS ${this.trackLimitPenalty.warnings}/3`
         : slideSeverity > 0.15
           ? 'REAR SLIDE'
       : surface.label !== 'TRACK'

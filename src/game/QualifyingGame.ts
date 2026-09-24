@@ -347,6 +347,10 @@ class QualifyingGame {
       this.currentProgress,
       1.35,
     );
+    const afterPhysicalProjection = projectTrack(
+      this.vehicle.x,
+      this.vehicle.y,
+    );
     this.lastProgress = this.currentProgress;
     this.currentProgress = after.progress;
     const crossedStart = crossedStartLine(this.lastProgress, this.currentProgress);
@@ -368,8 +372,8 @@ class QualifyingGame {
     }
 
     const validityEvent = this.lapValidity.sample(
-      after.laneOffset,
-      after.heading,
+      afterPhysicalProjection.laneOffset,
+      afterPhysicalProjection.heading,
       this.vehicle.heading,
     );
     this.lineCandidate.sample(
