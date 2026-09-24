@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sampleTrack } from './TrackModel';
 import {
   PlayerRacingLineCandidateRecorder,
   loadPlayerRacingLineCandidate,
@@ -212,4 +213,16 @@ describe('player racing-line candidates', () => {
     expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')?.lapSeconds).toBe(23.6);
   });
 
+});
+
+it('bridges an unsampled start-finish arc along the road rather than a straight chord', () => {
+  const recorder = new PlayerRacingLineCandidateRecorder();
+  recorder.begin('pitwall-gp', 1.2);
+  for (let i = 0; i < 300; i++) recorder.sample(0.04 + i / 300 * 0.92, 4, 60, 0, 0);
+  const candidate = recorder.finish(30)!;
+  expect(candidate).toBeDefined();
+  for (const point of candidate.points.filter(p => p.progress < 0.035 || p.progress > 0.965)) {
+    const road = sampleTrack(point.progress, 4);
+    expect(Math.hypot(point.worldX! - road.x, point.worldY! - road.y)).toBeLessThan(0.5);
+  }
 });

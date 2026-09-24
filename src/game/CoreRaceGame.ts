@@ -9,6 +9,7 @@ import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { gridPositionFor, gridSlotForPosition, PLAYER_GRID } from '../simulation/GridModel';
 import { stepSteering } from '../simulation/InputModel';
+import { ImpactDamageTracker } from '../simulation/ImpactDamageTracker';
 import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { lapTyreLabel, liveTimingTone } from '../simulation/LapRecordModel';
 import {
@@ -177,7 +178,7 @@ export class CoreRaceGame {
   private trackLimitPenalty: TrackLimitPenaltyState = createTrackLimitPenaltyState();
   private racePenaltyNotice = '';
   private racePenaltyNoticeRemaining = 0;
-  private impactDamageCooldown = 0;
+  private readonly impactDamage = new ImpactDamageTracker();
   private impactDamageNotice = '';
   private impactDamageNoticeRemaining = 0;
   private debugEnabled = false;
@@ -309,7 +310,6 @@ export class CoreRaceGame {
     if (this.racingLineNoticeRemaining === 0) this.racingLineNotice = '';
     this.racePenaltyNoticeRemaining = Math.max(0, this.racePenaltyNoticeRemaining - dt);
     if (this.racePenaltyNoticeRemaining === 0) this.racePenaltyNotice = '';
-    this.impactDamageCooldown = Math.max(0, this.impactDamageCooldown - dt);
     this.impactDamageNoticeRemaining = Math.max(0, this.impactDamageNoticeRemaining - dt);
     if (this.impactDamageNoticeRemaining === 0) this.impactDamageNotice = '';
 
@@ -422,7 +422,8 @@ export class CoreRaceGame {
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
     const playerContact = this.physics.playerContactKind();
-    if (playerContact !== 'NONE' && this.impactDamageCooldown <= 0) {
+    const newImpact = this.impactDamage.sample(playerContact, dt);
+    if (playerContact !== 'NONE' && newImpact) {
       const impact = applyImpactTireDamage(
         this.tire,
         playerContact,
@@ -434,7 +435,6 @@ export class CoreRaceGame {
           `TYRE DAMAGE +${Math.round(impact.wearAdded * 100)}%`;
         this.impactDamageNoticeRemaining = 2.2;
       }
-      this.impactDamageCooldown = playerContact === 'BARRIER' ? 0.80 : 0.55;
     }
     if (this.lap >= 1 && playerContact !== 'NONE') {
       this.lineCandidate.markIneligible();
@@ -1159,7 +1159,7 @@ export class CoreRaceGame {
     this.launchFeedback = '';
     this.launchFeedbackTone = 'neutral';
     this.raceIntervals.reset();
-    this.impactDamageCooldown = 0;
+    this.impactDamage.reset();
     this.impactDamageNotice = '';
     this.impactDamageNoticeRemaining = 0;
     this.physics.reset(this.vehicle, this.ai);

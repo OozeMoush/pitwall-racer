@@ -247,10 +247,18 @@ function interpolateSample(
 
   const span = Math.max(0.000001, b.progress - a.progress);
   const t = (sampleProgress - a.progress) / span;
-  const worldX = lerp(a.worldX, b.worldX, t);
-  const worldY = lerp(a.worldY, b.worldY, t);
-  const bodyHeading = interpolateOptionalAngle(a.bodyHeading, b.bodyHeading, t);
   const centre = sampleTrack(progress);
+  // Missing start/finish samples must follow the intervening road arc. A
+  // world-space chord across a sparse wrap cuts the final corner and becomes
+  // a bogus target after uniform resampling hides the original sample gap.
+  const sparseWrap = (a.progress < 0 || b.progress >= 1) && span > 2 / SAMPLE_COUNT;
+  const bridge = sparseWrap ? sampleTrack(progress, lerp(a.laneOffset, b.laneOffset, t * t * (3 - 2 * t))) : undefined;
+  const worldX = bridge?.x ?? lerp(a.worldX, b.worldX, t);
+  const worldY = bridge?.y ?? lerp(a.worldY, b.worldY, t);
+  const bridgeHeading = interpolateOptionalAngle(a.headingOffset, b.headingOffset, t);
+  const bodyHeading = sparseWrap && bridgeHeading !== undefined
+    ? wrapAngle(centre.heading + bridgeHeading)
+    : interpolateOptionalAngle(a.bodyHeading, b.bodyHeading, t);
   const nx = -Math.sin(centre.heading);
   const ny = Math.cos(centre.heading);
   const laneOffset = (worldX - centre.x) * nx + (worldY - centre.y) * ny;

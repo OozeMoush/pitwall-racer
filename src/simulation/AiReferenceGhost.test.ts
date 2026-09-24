@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AiReferenceGhost } from './AiReferenceGhost';
 import { PlayerRacingLineCandidateRecorder } from './PlayerRacingLineCandidate';
 import {
@@ -203,6 +203,7 @@ describe('AiReferenceGhost', () => {
     let replayPreviousProgress = 0.01;
     let replayLapSeconds = 0;
     let maxPathError = 0;
+    let worstProgress = 0;
     let errorSum = 0;
     let samples = 0;
 
@@ -222,6 +223,7 @@ describe('AiReferenceGhost', () => {
         state.y,
         projection.progress,
       );
+      if (lineProjection.distance > maxPathError) worstProgress = projection.progress;
       maxPathError = Math.max(maxPathError, lineProjection.distance);
       errorSum += lineProjection.distance;
       samples += 1;
@@ -236,6 +238,7 @@ describe('AiReferenceGhost', () => {
       recordedLapSeconds,
       replayLapSeconds,
       maxPathError,
+      worstProgress,
       avgPathError: samples > 0 ? errorSum / samples : 0,
     });
 
@@ -277,4 +280,22 @@ function wrapAngle(angle: number): number {
     expect(ghost.driver.tire.grip).not.toBeCloseTo(before, 6);
   });
 
+});
+
+it('keeps reference propulsion, grip and execution free of race CPU assists', () => {
+  const grip = 1.18;
+  setRuntimeRacingLine('pitwall-gp', {
+    version: 1, trackId: 'pitwall-gp', source: 'PLAYER', referenceGrip: grip,
+    points: Array.from({ length: 320 }, (_, i) => ({ progress: i / 320, laneOffset: 0, targetSpeed: 65 })),
+  });
+  const ghost = new AiReferenceGhost(0.2, 'pitwall-gp', true);
+  const drive = vi.spyOn(ghost.physics, 'driveAi');
+  try {
+    ghost.step(1 / 120);
+    expect(ghost.latestControl()!.targetSpeed).toBeCloseTo(65, 5);
+    expect(ghost.latestControl()!.battleState).toBe('CLEAR');
+    expect(drive.mock.calls[0][1].tireGrip).toBe(grip);
+    expect(drive.mock.calls[0][1].powerBoost).toBe(0.22);
+    expect(ghost.driver.pitLap).toBe(999);
+  } finally { ghost.physics.world.free(); }
 });
