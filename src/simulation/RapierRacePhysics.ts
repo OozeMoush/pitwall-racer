@@ -3,6 +3,7 @@ import { aerodynamicEffect, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import {
   aiEffectiveGrip,
+  aiPowerBoostForSkill,
   dynamicAiControl,
   type DynamicAiControl,
 } from './DynamicAiController';
@@ -43,7 +44,6 @@ export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
 export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
 const CORE_POWER_BASELINE = 0.22;
-export const AI_POWER_CHEAT = 0.065;
 
 // Arcade contact policy: the player can still make physical contact with an AI
 // car, and every car collides with the real circuit barriers. AI cars avoid one
@@ -175,8 +175,9 @@ export class RapierRacePhysics {
         traffic,
       );
 
-      // AI and player have the same physical chassis baseline. Skill changes
-      // only how accurately the controller executes the reference lap.
+      // Race CPUs deliberately carry a fixed constructor advantage over the
+      // player's car. Stronger drivers also get stronger hardware; this is
+      // stable performance, never rubber-banding to the player's position.
       this.driveAi(index, {
         throttle: control.throttle,
         brake: control.brake,
@@ -186,7 +187,7 @@ export class RapierRacePhysics {
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
         powerBoost: CORE_POWER_BASELINE
-          + AI_POWER_CHEAT
+          + aiPowerBoostForSkill(driver.skill)
           + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
         rollingResistance: surface.rollingResistance,
