@@ -64,11 +64,22 @@ const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
 const AI_PACE_CHEAT_MIN = 1.055;
 const AI_PACE_CHEAT_MAX = 1.085;
+const AI_EXPLICIT_PACE_MIN = 1.005;
+const AI_EXPLICIT_PACE_MAX = 1.035;
+const AI_SKILL_GRIP_MAX = 1.025;
+const AI_POWER_BONUS_MIN = 0.055;
+const AI_POWER_BONUS_MAX = 0.105;
 
 export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
   return AI_PACE_CHEAT_MIN
     + (AI_PACE_CHEAT_MAX - AI_PACE_CHEAT_MIN) * t;
+}
+
+export function aiExplicitPaceForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_EXPLICIT_PACE_MIN
+    + (AI_EXPLICIT_PACE_MAX - AI_EXPLICIT_PACE_MIN) * t;
 }
 
 export function aiGripMultiplier(compound: DriverState['tire']['compound']): number {
@@ -77,8 +88,21 @@ export function aiGripMultiplier(compound: DriverState['tire']['compound']): num
   return 1.045;
 }
 
+export function aiSkillGripMultiplier(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return 1 + (AI_SKILL_GRIP_MAX - 1) * t;
+}
+
+export function aiPowerBoostForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_POWER_BONUS_MIN
+    + (AI_POWER_BONUS_MAX - AI_POWER_BONUS_MIN) * t;
+}
+
 export function aiEffectiveGrip(driver: DriverState): number {
-  return driver.tire.grip * aiGripMultiplier(driver.tire.compound);
+  return driver.tire.grip
+    * aiGripMultiplier(driver.tire.compound)
+    * aiSkillGripMultiplier(driver.skill);
 }
 
 /**
@@ -391,8 +415,13 @@ export function dynamicAiControl(
   // fixed grip/power assists. Keep that stable physical advantage, but execute
   // the demonstrated speed plan itself without double-counting it.
   const nominalTargetSpeed = speedReference.targetSpeed
-    * execution
-    * (highFidelityLine ? 1 : paceCheat);
+    * (
+      referenceGhost
+        ? 1
+        : highFidelityLine
+          ? aiExplicitPaceForSkill(driver.skill)
+          : execution * paceCheat
+    );
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 

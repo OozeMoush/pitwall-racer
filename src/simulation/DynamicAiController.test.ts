@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  aiExplicitPaceForSkill,
   aiGripMultiplier,
   aiPaceCheatForSkill,
+  aiPowerBoostForSkill,
+  aiSkillGripMultiplier,
   dynamicAiControl,
 } from './DynamicAiController';
 import { createAiField, type RaceTrafficCar } from './RaceModel';
@@ -144,8 +147,8 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.lineSource).toBe('PLAYER');
-    expect(control.targetSpeed).toBeGreaterThan(64);
-    expect(control.targetSpeed).toBeLessThan(68);
+    expect(control.targetSpeed).toBeGreaterThan(64 * 1.01);
+    expect(control.targetSpeed).toBeLessThan(72);
   });
 
   it('corrects overspeed more aggressively when PLAYER dynamics are demonstrated', () => {
@@ -450,6 +453,16 @@ describe('dynamicAiControl', () => {
     expect(aiPaceCheatForSkill(1.118)).toBeCloseTo(1.055, 5);
     expect(aiPaceCheatForSkill(1.127)).toBeCloseTo(1.070, 5);
     expect(aiPaceCheatForSkill(1.136)).toBeCloseTo(1.085, 5);
+  });
+
+
+  it('runs every race CPU above the demonstrated PLAYER pace and gives the top car more hardware', () => {
+    expect(aiExplicitPaceForSkill(1.118)).toBeCloseTo(1.005, 5);
+    expect(aiExplicitPaceForSkill(1.136)).toBeCloseTo(1.035, 5);
+    expect(aiSkillGripMultiplier(1.118)).toBeCloseTo(1.0, 6);
+    expect(aiSkillGripMultiplier(1.136)).toBeCloseTo(1.025, 6);
+    expect(aiPowerBoostForSkill(1.118)).toBeCloseTo(0.055, 6);
+    expect(aiPowerBoostForSkill(1.136)).toBeCloseTo(0.105, 6);
   });
 
 
