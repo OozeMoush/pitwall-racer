@@ -59,6 +59,13 @@ export interface QualifyingSessionResult {
   classification: QualifyingEntry[];
 }
 
+interface TimeTrialSessionLap {
+  lapNumber: number;
+  lapTime: number;
+  sectors?: [number, number, number];
+  valid: boolean;
+}
+
 export function runQualifyingSession(
   container: HTMLElement,
   hud: HTMLElement,
@@ -121,6 +128,10 @@ class QualifyingGame {
   private sectorStartTime = 0;
   private sectorTimes: number[] = [];
   private timeTrialRecord: TimeTrialRecord;
+  private readonly sessionTimeTrialLaps: TimeTrialSessionLap[] = [];
+  private splitNotice = '';
+  private splitNoticeTone: 'green' | 'red' = 'green';
+  private splitNoticeRemaining = 0;
 
   constructor(
     container: HTMLElement,
@@ -236,6 +247,8 @@ class QualifyingGame {
     this.lastFrame = now;
     this.lapNoticeRemaining = Math.max(0, this.lapNoticeRemaining - dt);
     if (this.lapNoticeRemaining === 0) this.lapNotice = '';
+    this.splitNoticeRemaining = Math.max(0, this.splitNoticeRemaining - dt);
+    if (this.splitNoticeRemaining === 0) this.splitNotice = '';
 
     if (this.phase !== 'RESULTS') {
       this.fixedAccumulator += dt;
@@ -368,8 +381,12 @@ class QualifyingGame {
     while (this.nextSector <= 2) {
       const threshold = SOLO_SECTOR_BOUNDARIES[this.nextSector - 1];
       if (this.lastProgress < threshold && this.currentProgress >= threshold) {
+        const sectorIndex = this.nextSector - 1;
         const sectorTime = this.lapTime - this.sectorStartTime;
         this.sectorTimes.push(sectorTime);
+        if (this.mode === 'TIME_TRIAL') {
+          this.announceSectorSplit(sectorIndex, sectorTime);
+        }
         this.sectorStartTime = this.lapTime;
         this.nextSector += 1;
       } else {
@@ -384,9 +401,24 @@ class QualifyingGame {
 
     if (crossedStart && this.nextCheckpoint === 4 && this.lapTime > 20) {
       if (this.lapValidity.invalid) {
-        // An invalid Time Trial lap is still a completed lap attempt. Advance
-        // the visible lap counter while withholding PB/sector persistence.
-        if (this.mode === 'TIME_TRIAL') this.completedLaps += 1;
+        // An invalid Time Trial lap is still a completed lap attempt. Keep it
+        // in the session lap board, but never persist it as PB/sector history.
+        if (this.mode === 'TIME_TRIAL') {
+          const s1 = this.sectorTimes[0];
+          const s2 = this.sectorTimes[1];
+          const s3 = s1 !== undefined && s2 !== undefined
+            ? Math.max(0, this.lapTime - s1 - s2)
+            : undefined;
+          this.completedLaps += 1;
+          this.sessionTimeTrialLaps.push({
+            lapNumber: this.completedLaps,
+            lapTime: this.lapTime,
+            sectors: s1 !== undefined && s2 !== undefined && s3 !== undefined
+              ? [s1, s2, s3]
+              : undefined,
+            valid: false,
+          });
+        }
         this.restartInvalidFlyingLap();
       } else {
         this.completeLap();
@@ -440,6 +472,15 @@ class QualifyingGame {
       const s3 = s1 !== undefined && s2 !== undefined
         ? Math.max(0, completedLapTime - s1 - s2)
         : undefined;
+      if (s3 !== undefined) this.announceSectorSplit(2, s3);
+      this.sessionTimeTrialLaps.push({
+        lapNumber: this.completedLaps,
+        lapTime: completedLapTime,
+        sectors: s1 !== undefined && s2 !== undefined && s3 !== undefined
+          ? [s1, s2, s3]
+          : undefined,
+        valid: validity.candidateEligible,
+      });
       if (
         validity.candidateEligible
         && s1 !== undefined
@@ -522,6 +563,19 @@ class QualifyingGame {
     };
     this.phase = 'RESULTS';
     this.resultHold = 0;
+  }
+
+  private announceSectorSplit(index: number, sectorTime: number): void {
+    const best = this.timeTrialRecord.bestSectors[index];
+    if (best === undefined) {
+      this.splitNotice = `S${index + 1} · FIRST ${sectorTime.toFixed(3)}`;
+      this.splitNoticeTone = 'green';
+    } else {
+      const delta = sectorTime - best;
+      this.splitNotice = `S${index + 1} · ${formatDelta(delta)}`;
+      this.splitNoticeTone = delta <= 0 ? 'green' : 'red';
+    }
+    this.splitNoticeRemaining = 1.8;
   }
 
   private recover(): void {
@@ -612,6 +666,9 @@ class QualifyingGame {
     const limitBanner = this.lapNotice
       ? `<div class="qualifying-banner">${this.lapNotice}</div>`
       : '';
+    const splitBanner = isTimeTrial && this.splitNotice
+      ? `<div class="qualifying-banner" style="top:136px;color:${this.splitNoticeTone === 'green' ? '#58f59a' : '#ff6f7d'};border-color:${this.splitNoticeTone === 'green' ? 'rgba(88,245,154,.55)' : 'rgba(255,111,125,.55)'};font-size:20px;font-weight:800">${this.splitNotice}</div>`
+      : '';
     const timer = this.phase === 'FLYING'
       ? formatLapTime(this.lapTime)
       : '--:--.---';
@@ -649,27 +706,38 @@ class QualifyingGame {
           const delta = current !== undefined && best !== undefined
             ? current - best
             : undefined;
-          const deltaText = delta === undefined
-            ? '—'
-            : `${delta >= 0 ? '+' : ''}${delta.toFixed(3)}`;
-          return `<div><small>S${index + 1} ALL-TIME</small><b>${formatShortTime(best)}</b><span>${current === undefined ? 'TARGET' : `LIVE ${formatShortTime(current)} · ${deltaText}`}</span></div>`;
+          const tone = delta === undefined
+            ? '#aab8b4'
+            : delta <= 0
+              ? '#58f59a'
+              : '#ff6f7d';
+          return `<div style="padding:8px 10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.025)"><small style="display:block;color:#8fa19b">S${index + 1} · BEST ${formatShortTime(best)}</small><b style="display:block;margin-top:4px;font-size:18px;color:${tone}">${delta === undefined ? '—' : formatDelta(delta)}</b></div>`;
         }).join('')
       : '';
-    const historyHtml = isTimeTrial
-      ? ttRecord?.laps.slice(0, 5).map((lap, index) =>
-          `<span><i>#${index + 1}</i><b>${formatLapTime(lap.lapTime)}</b><small>${lap.sectors.map((s) => s.toFixed(3)).join(' · ')}</small></span>`,
-        ).join('') ?? ''
+    const sessionLapRows = isTimeTrial
+      ? [...this.sessionTimeTrialLaps].reverse().slice(0, 8).map((lap) => {
+          const sectors = lap.sectors;
+          const validity = lap.valid
+            ? ''
+            : '<span style="color:#ff6f7d;font-size:10px">INVALID</span>';
+          return `<div style="display:grid;grid-template-columns:34px 62px 62px 62px 86px 54px;gap:6px;align-items:center;padding:6px 8px;border-top:1px solid rgba(255,255,255,.08)"><i style="color:#91a49e">#${lap.lapNumber}</i><span>${formatShortTime(sectors?.[0])}</span><span>${formatShortTime(sectors?.[1])}</span><span>${formatShortTime(sectors?.[2])}</span><b style="color:${lap.valid ? '#e7f0ed' : '#ff8792'}">${formatLapTime(lap.lapTime)}</b>${validity || '<span></span>'}</div>`;
+        }).join('')
       : '';
 
-    this.hud.innerHTML = `${countdownBanner}${limitBanner}
+    this.hud.innerHTML = `${countdownBanner}${limitBanner}${splitBanner}
       <div class="qualifying-hud-top">
         <div><small>${sessionLabel}</small><b>${getActiveTrack().name}</b></div>
         <strong>${timer}</strong>
       </div>
-      ${isTimeTrial ? `<div style="position:absolute;right:24px;top:96px;width:min(520px,calc(100vw - 48px));padding:12px 14px;background:rgba(4,10,12,.92);border:1px solid rgba(255,255,255,.16);color:#e7f0ed;font:12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace">
-        <div style="display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:8px;margin-bottom:8px"><b>ALL-TIME PB · ${formatLapTime(ttRecord?.bestLap)}</b><span>IDEAL · ${formatLapTime(idealLap)}</span></div>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${historicalSectorHtml}</div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12)">${historyHtml || '<span><b>NO VALID LAPS YET</b></span>'}</div>
+      ${isTimeTrial ? `
+      <div style="position:absolute;left:24px;top:96px;width:390px;background:rgba(4,10,12,.92);border:1px solid rgba(255,255,255,.16);color:#e7f0ed;font:12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace">
+        <div style="display:flex;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.12)"><b>THIS ATTACK</b><span>LAP TIMES</span></div>
+        <div style="display:grid;grid-template-columns:34px 62px 62px 62px 86px 54px;gap:6px;padding:6px 8px;color:#83958f;font-size:10px"><i>#</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i><i>STATE</i></div>
+        ${sessionLapRows || '<div style="padding:12px;color:#82938e">NO COMPLETED LAPS YET</div>'}
+      </div>
+      <div style="position:absolute;right:24px;top:96px;width:420px;padding:12px 14px;background:rgba(4,10,12,.92);border:1px solid rgba(255,255,255,.16);color:#e7f0ed;font:12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace">
+        <div style="display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:8px;margin-bottom:8px"><b>PB · ${formatLapTime(ttRecord?.bestLap)}</b><span>IDEAL · ${formatLapTime(idealLap)}</span></div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">${historicalSectorHtml}</div>
       </div>` : ''}
       <div class="qualifying-hud-bottom">
         <div class="speedo"><strong>${speed}</strong><span>KM/H</span></div>
@@ -728,4 +796,9 @@ function clamp(value: number, min: number, max: number): number {
 function formatShortTime(seconds?: number): string {
   if (seconds === undefined || !Number.isFinite(seconds)) return '—';
   return seconds.toFixed(3);
+}
+
+function formatDelta(delta: number): string {
+  const normalized = Math.abs(delta) < 0.0005 ? 0 : delta;
+  return `${normalized >= 0 ? '+' : ''}${normalized.toFixed(3)}`;
 }
