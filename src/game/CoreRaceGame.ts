@@ -380,7 +380,11 @@ export class CoreRaceGame {
       this.trackProgress,
       1.35,
     );
-    const surface = surfaceEffect(beforeTrack.distance);
+    const physicalSurfaceProjection = projectTrack(
+      this.vehicle.x,
+      this.vehicle.y,
+    );
+    const surface = surfaceEffect(physicalSurfaceProjection.distance);
     const aero = aeroEffect(this.lap, beforeTrack.progress, this.ai, beforeTrack.laneOffset);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
     const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.92;
