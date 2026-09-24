@@ -65,10 +65,10 @@ const ALONGSIDE_EXIT_RANGE = 13.0;
 const AI_PACE_CHEAT_MIN = 1.055;
 const AI_PACE_CHEAT_MAX = 1.085;
 const AI_EXPLICIT_PACE_MIN = 1.000;
-const AI_EXPLICIT_PACE_MAX = 1.015;
-const AI_SKILL_GRIP_MAX = 1.025;
-const AI_POWER_BONUS_MIN = 0.055;
-const AI_POWER_BONUS_MAX = 0.105;
+const AI_EXPLICIT_PACE_MAX = 1.000;
+const AI_SKILL_GRIP_MAX = 1.010;
+const AI_POWER_BONUS_MIN = 0.065;
+const AI_POWER_BONUS_MAX = 0.115;
 
 export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);

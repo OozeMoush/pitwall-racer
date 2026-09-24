@@ -458,11 +458,11 @@ describe('dynamicAiControl', () => {
 
   it('runs every race CPU above the demonstrated PLAYER pace and gives the top car more hardware', () => {
     expect(aiExplicitPaceForSkill(1.118)).toBeCloseTo(1.000, 5);
-    expect(aiExplicitPaceForSkill(1.136)).toBeCloseTo(1.015, 5);
+    expect(aiExplicitPaceForSkill(1.136)).toBeCloseTo(1.000, 5);
     expect(aiSkillGripMultiplier(1.118)).toBeCloseTo(1.0, 6);
-    expect(aiSkillGripMultiplier(1.136)).toBeCloseTo(1.025, 6);
-    expect(aiPowerBoostForSkill(1.118)).toBeCloseTo(0.055, 6);
-    expect(aiPowerBoostForSkill(1.136)).toBeCloseTo(0.105, 6);
+    expect(aiSkillGripMultiplier(1.136)).toBeCloseTo(1.010, 6);
+    expect(aiPowerBoostForSkill(1.118)).toBeCloseTo(0.065, 6);
+    expect(aiPowerBoostForSkill(1.136)).toBeCloseTo(0.115, 6);
   });
 
 

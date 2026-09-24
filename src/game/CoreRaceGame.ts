@@ -542,6 +542,7 @@ export class CoreRaceGame {
   }
 
   private updateSectorTiming(): void {
+    if (this.lap === 0) return;
     if (this.lastTrackProgress > this.trackProgress) return;
     while (this.nextSector <= 2) {
       const threshold = SECTOR_BOUNDARIES[this.nextSector - 1];
@@ -565,7 +566,18 @@ export class CoreRaceGame {
       if (crossedStart) {
         this.lap = 1;
         this.lapForwardProgress = 0;
+        // The grid-to-line rollout is not part of lap 1. Reset both the lap
+        // clock and sector state exactly at the first timing-line crossing so
+        // the rollout cannot reappear later as an inflated S3.
+        this.timing = {
+          ...this.timing,
+          lapStartTime: this.timing.raceTime,
+          currentLapTime: 0,
+        };
+        this.nextSector = 1;
         this.sectorStartTime = this.timing.raceTime;
+        this.sectorTimes = [];
+        this.sectorTones = [];
         this.lapStartCompound = this.tire.compound;
         this.lapPitted = false;
         this.lapValidity.reset();
@@ -1478,7 +1490,7 @@ export class CoreRaceGame {
           tone: liveTimingTone(completed, best, this.sessionFastestSectors[sector - 1]),
         };
       }
-      if (currentSector === sector && this.flow.phase === 'RACING') {
+      if (this.lap >= 1 && currentSector === sector && this.flow.phase === 'RACING') {
         return { text: formatShortTime(currentSectorElapsed), tone: 'neutral' as TimingTone };
       }
       return { text: '—', tone: 'neutral' as TimingTone };

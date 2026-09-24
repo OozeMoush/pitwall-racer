@@ -9,13 +9,47 @@ import { createPitStopState } from '../simulation/PitLaneModel';
 import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { ImpactDamageTracker } from '../simulation/ImpactDamageTracker';
 import { PlayerRacingLineCandidateRecorder } from '../simulation/PlayerRacingLineCandidate';
-import { RaceRacingLineCandidateFilter } from '../simulation/RaceRacingLineCandidatePolicy';
 import { RaceIntervalTracker } from '../simulation/RaceIntervalModel';
 import { createTrackLimitPenaltyState } from '../simulation/TrackLimitPenaltyModel';
 import { sampleTrack, setActiveTrack } from '../simulation/TrackModel';
 
 beforeAll(async () => { await RAPIER.init(); });
 afterEach(() => { vi.unstubAllGlobals(); });
+
+it('starts lap 1 timing at the first start-line crossing instead of the grid', () => {
+  setActiveTrack('pitwall-gp');
+  vi.stubGlobal('window', { performance, localStorage: { getItem: () => null, setItem: () => {} } });
+  const beforeLine = sampleTrack(0.99, 0);
+  const vehicle = createVehicle(beforeLine.x, beforeLine.y, beforeLine.heading);
+  const physics = new RapierRacePhysics(vehicle, []);
+  const game = Object.assign(Object.create(CoreRaceGame.prototype), {
+    setup: { trackId: 'pitwall-gp' }, totalLaps: 10, ai: [], vehicle, physics,
+    tire: createTire('SOFT'),
+    timing: { ...createTiming(), raceTime: 4.5, currentLapTime: 4.5 },
+    flow: { phase: 'RACING', countdown: 0, goFlash: 0 },
+    keys: new Set(), pitStop: createPitStopState(), selectedCompound: 'MEDIUM',
+    usedCompounds: new Set(['SOFT']), lap: 0, trackProgress: 0.01,
+    lastTrackProgress: 0.99, lapForwardProgress: 0, pitRequested: false,
+    steerInput: 0, trafficPressure: 0, nextSector: 3, sectorStartTime: 0,
+    sectorTimes: [1.2, 1.3], sectorTones: [], lapHistory: [],
+    lapStartCompound: 'SOFT', lapPitted: false, sessionFastestSectors: [],
+    aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(),
+    lapValidity: new LapValidityTracker(), lineCandidate: new PlayerRacingLineCandidateRecorder(),
+    trackLimitPenalty: createTrackLimitPenaltyState(), impactDamage: new ImpactDamageTracker(),
+    playerCar: { setCompound: vi.fn() }, launchEffectRemaining: 0,
+  });
+  try {
+    game.updateLapAndCheckpoints(0);
+    expect(game.lap).toBe(1);
+    expect(game.timing.lapStartTime).toBeCloseTo(4.5, 6);
+    expect(game.timing.currentLapTime).toBe(0);
+    expect(game.nextSector).toBe(1);
+    expect(game.sectorStartTime).toBeCloseTo(4.5, 6);
+    expect(game.sectorTimes).toEqual([]);
+  } finally {
+    physics.world.free();
+  }
+});
 
 it('counts GP laps and all sectors on kerbs, then enters and serves a requested pit after warnings', () => {
   setActiveTrack('pitwall-gp');
@@ -33,7 +67,7 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     steerInput: 0, trafficPressure: 0, nextSector: 1, sectorStartTime: 0, sectorTimes: [], sectorTones: [],
     lapHistory: [], lapStartCompound: 'SOFT', lapPitted: false, sessionFastestSectors: [],
     aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(), lapValidity: new LapValidityTracker(),
-    lineCandidate: new PlayerRacingLineCandidateRecorder(), lineCandidateFilter: new RaceRacingLineCandidateFilter(),
+    lineCandidate: new PlayerRacingLineCandidateRecorder(),
     trackLimitPenalty: createTrackLimitPenaltyState(), impactDamage: new ImpactDamageTracker(),
     playerCar: { setCompound: vi.fn() }, launchEffectRemaining: 0,
   });
