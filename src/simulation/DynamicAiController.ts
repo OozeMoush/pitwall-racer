@@ -105,7 +105,9 @@ export function dynamicAiControl(
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
   const referenceGhost = driver.id === 'debug-reference-ghost';
   const controlGrip = referenceGhost ? driver.tire.grip : aiEffectiveGrip(driver);
-  const paceCheat = referenceGhost ? 1 : paceCheat;
+  const paceCheat = referenceGhost
+    ? 1
+    : aiPaceCheatForSkill(driver.skill);
   const profile = trackProfile(projection.progress, 1, controlGrip);
   const battlePreview = trackProfile(
     projection.progress + 72 / TRACK_LENGTH,
