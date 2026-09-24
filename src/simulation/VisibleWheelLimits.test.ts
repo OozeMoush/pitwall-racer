@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { expect, it } from 'vitest';
 import { createFormulaCar } from '../rendering3d/Car3D';
 import { WORLD_SCALE } from '../rendering3d/WorldTransform';
-import { isEntireCarBeyondTrack, TRACK_LIMIT_HALF_WIDTH } from './LapValidityModel';
+import { isEntireCarBeyondTrack, isEntireCarBeyondTrackAt, TRACK_LIMIT_HALF_WIDTH } from './LapValidityModel';
 import { WHEEL_CENTRES } from './CarGeometry';
 import { sampleTrack, projectTrack } from './TrackModel';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
@@ -43,7 +43,10 @@ it('does not warn on curved road when a visible wheel centre is still on asphalt
           pose.x + wheel.x * Math.cos(heading) - wheel.y * Math.sin(heading),
           pose.y + wheel.x * Math.sin(heading) + wheel.y * Math.cos(heading),
         ).distance <= TRACK_ROAD_HALF_WIDTH);
-        if (hasWheelOnRoad) expect(isEntireCarBeyondTrack(lane, pose.heading, heading), `progress=${i/160} lane=${lane}`).toBe(false);
+        if (hasWheelOnRoad) expect(
+          isEntireCarBeyondTrackAt(pose.x, pose.y, heading),
+          `progress=${i / 160} lane=${lane}`,
+        ).toBe(false);
       }
     }
   }

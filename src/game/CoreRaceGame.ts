@@ -456,9 +456,9 @@ export class CoreRaceGame {
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterPhysicalProjection.progress;
     if (this.lap >= 1) {
-      const validityEvent = this.lapValidity.sample(
-        afterPhysicalProjection.laneOffset,
-        afterPhysicalProjection.heading,
+      const validityEvent = this.lapValidity.sampleWorld(
+        this.vehicle.x,
+        this.vehicle.y,
         this.vehicle.heading,
       );
       if (validityEvent !== 'NONE') {

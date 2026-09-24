@@ -371,9 +371,9 @@ class QualifyingGame {
       return;
     }
 
-    const validityEvent = this.lapValidity.sample(
-      afterPhysicalProjection.laneOffset,
-      afterPhysicalProjection.heading,
+    const validityEvent = this.lapValidity.sampleWorld(
+      this.vehicle.x,
+      this.vehicle.y,
       this.vehicle.heading,
     );
     this.lineCandidate.sample(
