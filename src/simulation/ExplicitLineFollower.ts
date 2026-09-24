@@ -100,24 +100,32 @@ export function explicitLineFollower(
     ? sampleRacingLineAsset(lineAsset, pathProgress)
     : undefined;
   const demonstratedSourceGrip = demonstrated?.tireGrip
-    ?? lineAsset?.referenceGrip;
-  const dynamicsGripMatched = demonstratedSourceGrip === undefined
-    || Math.abs(tireGrip - demonstratedSourceGrip) <= 0.08;
+    ?? lineAsset?.referenceGrip
+    ?? tireGrip;
   const demonstratedDynamics = demonstrated?.headingOffset !== undefined
-    && demonstrated?.yawRate !== undefined
-    && dynamicsGripMatched;
-  const desiredHeading = demonstratedDynamics
-    ? pathNow.demonstratedHeading ?? pathHeading
+    && demonstrated?.yawRate !== undefined;
+  const gripRatio = clamp(
+    tireGrip / Math.max(0.01, demonstratedSourceGrip),
+    0.68,
+    1.12,
+  );
+  const dynamicsScale = clamp(Math.sqrt(gripRatio), 0.80, 1.06);
+  const demonstratedHeading = pathNow.demonstratedHeading;
+  const desiredHeading = demonstratedDynamics && demonstratedHeading !== undefined
+    ? pathHeading
+      + wrapAngle(demonstratedHeading - pathHeading) * dynamicsScale
     : pathHeading;
   const recordedYawRate = demonstratedDynamics
     ? demonstrated?.yawRate
     : undefined;
   const targetYawRate = recordedYawRate !== undefined && demonstrated
-    ? recordedYawRate * clamp(
-        vehicle.speed / Math.max(1, demonstrated.targetSpeed),
-        0.55,
-        1.65,
-      )
+    ? recordedYawRate
+      * clamp(
+          vehicle.speed / Math.max(1, demonstrated.targetSpeed),
+          0.55,
+          1.65,
+        )
+      * dynamicsScale
     : undefined;
 
   const pathNormalX = -Math.sin(pathHeading);
@@ -162,7 +170,10 @@ export function explicitLineFollower(
     previewAhead.x - previewPoint.x,
   );
   const previewHeading = demonstratedDynamics
-    ? previewPoint.demonstratedHeading ?? previewPathHeading
+    && previewPoint.demonstratedHeading !== undefined
+    ? previewPathHeading
+      + wrapAngle(previewPoint.demonstratedHeading - previewPathHeading)
+        * dynamicsScale
     : previewPathHeading;
   const headingLead = wrapAngle(previewHeading - desiredHeading);
   const leadWeight = clamp(vehicle.speed / 72, 0.38, 1);

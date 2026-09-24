@@ -64,7 +64,7 @@ describe('explicitLineFollower', () => {
     expect(target.steer).toBeLessThan(-0.2);
   });
 
-  it('uses geometry instead of replaying Soft yaw dynamics on a lower-grip tyre', () => {
+  it('keeps demonstrated dynamics on lower-grip tyres but scales the yaw demand', () => {
     const sourceGrip = 1.22;
     const hardGrip = 0.99;
     setRuntimeRacingLine('pitwall-gp', {
@@ -88,11 +88,14 @@ describe('explicitLineFollower', () => {
       ...createVehicle(pose.x, pose.y, pose.heading),
       speed: 58,
     };
+    const soft = explicitLineFollower('pitwall-gp', vehicle, progress, sourceGrip);
+    const hard = explicitLineFollower('pitwall-gp', vehicle, progress, hardGrip);
 
-    expect(explicitLineFollower('pitwall-gp', vehicle, progress, sourceGrip).demonstratedDynamics)
-      .toBe(true);
-    expect(explicitLineFollower('pitwall-gp', vehicle, progress, hardGrip).demonstratedDynamics)
-      .toBe(false);
+    expect(soft.demonstratedDynamics).toBe(true);
+    expect(hard.demonstratedDynamics).toBe(true);
+    expect(Math.abs(hard.targetYawRate ?? 0)).toBeLessThan(
+      Math.abs(soft.targetYawRate ?? 0),
+    );
   });
 
 });
