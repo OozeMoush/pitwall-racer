@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
 import { AiReferenceGhost } from '../simulation/AiReferenceGhost';
+import { normalizedTowStrength, towPowerBoost } from '../simulation/AeroModel';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
@@ -402,7 +403,7 @@ export class CoreRaceGame {
       tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST + aero.tow * 0.22 + launchPower,
+      powerBoost: CORE_POWER_BOOST + towPowerBoost(aero.tow) + launchPower,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
@@ -1391,6 +1392,14 @@ export class CoreRaceGame {
     const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
     const speed = Math.round(this.vehicle.speed * 3.6);
     const wearPct = Math.round(this.tire.wear * 100);
+    const towPct = Math.round(normalizedTowStrength(aero.tow) * 100);
+    const towState = towPct >= 75
+      ? 'STRONG'
+      : towPct >= 40
+        ? 'GOOD'
+        : towPct > 0
+          ? 'WEAK'
+          : 'NONE';
     const tyreStatus = tyreRaceStatus(this.tire);
     const tyreStatusText = formatTyreRaceStatus(tyreStatus);
     const tyreStatusClass = tyreStatus.condition === 'CLIFF RISK' ? 'cliff' : tyreStatus.condition === 'USED' ? 'used' : 'optimal';
@@ -1423,7 +1432,7 @@ export class CoreRaceGame {
           : aero.dirtyAir > 0.01
             ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
             : aero.tow > 0.01
-              ? `TOW ${(aero.tow * 100).toFixed(0)}% · CLEAN AIR`
+              ? 'SLIPSTREAM'
               : 'CLEAN AIR';
 
     const currentSector = Math.min(3, this.nextSector);
@@ -1497,6 +1506,7 @@ export class CoreRaceGame {
         <div class="race-data core-race-data">
           <div><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound}</b><span class="tyre-strategy-line ${tyreStatusClass}">${wearPct}% USED · ${tyreStatusText}</span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
+          <div class="tow-card ${towPct > 0 ? 'active' : ''}" title="Slipstream strength relative to the strongest usable tow"><small>SLIPSTREAM</small><b>${towPct > 0 ? `TOW ${towPct}%` : 'NO TOW'}</b><span class="tow-meter" aria-label="tow strength ${towPct} percent"><i style="width:${towPct}%"></i></span></div>
           <div><small>RACE</small><b>${raceState}</b><span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
         </div>
       </div>

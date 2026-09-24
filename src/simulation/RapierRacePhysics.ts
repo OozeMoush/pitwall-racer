@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { aerodynamicEffect } from './AeroModel';
+import { aerodynamicEffect, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
 import {
@@ -178,7 +178,7 @@ export class RapierRacePhysics {
         tireGrip: driver.tire.grip * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
-        powerBoost: CORE_POWER_BASELINE + aero.tow * 0.22,
+        powerBoost: CORE_POWER_BASELINE + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
         rollingResistance: surface.rollingResistance,
       }, dt);
