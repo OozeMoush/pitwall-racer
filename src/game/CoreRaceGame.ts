@@ -54,7 +54,13 @@ import {
   serveTrackLimitPitPenalty,
   type TrackLimitPenaltyState,
 } from '../simulation/TrackLimitPenaltyModel';
-import { createTire, stepTire, type Compound, type TireState } from '../simulation/TireModel';
+import {
+  applyImpactTireDamage,
+  createTire,
+  stepTire,
+  type Compound,
+  type TireState,
+} from '../simulation/TireModel';
 import { minimumPositive, timingTone, type TimingTone } from '../simulation/TimingToneModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
@@ -171,6 +177,9 @@ export class CoreRaceGame {
   private trackLimitPenalty: TrackLimitPenaltyState = createTrackLimitPenaltyState();
   private racePenaltyNotice = '';
   private racePenaltyNoticeRemaining = 0;
+  private impactDamageCooldown = 0;
+  private impactDamageNotice = '';
+  private impactDamageNoticeRemaining = 0;
   private debugEnabled = false;
   private debugDetailEnabled = false;
   private debugAiIndex = 0;
@@ -300,6 +309,9 @@ export class CoreRaceGame {
     if (this.racingLineNoticeRemaining === 0) this.racingLineNotice = '';
     this.racePenaltyNoticeRemaining = Math.max(0, this.racePenaltyNoticeRemaining - dt);
     if (this.racePenaltyNoticeRemaining === 0) this.racePenaltyNotice = '';
+    this.impactDamageCooldown = Math.max(0, this.impactDamageCooldown - dt);
+    this.impactDamageNoticeRemaining = Math.max(0, this.impactDamageNoticeRemaining - dt);
+    if (this.impactDamageNoticeRemaining === 0) this.impactDamageNotice = '';
 
     if (this.flow.phase !== 'FINISHED') {
       this.fixedAccumulator += dt;
@@ -410,6 +422,20 @@ export class CoreRaceGame {
     this.physics.step(dt);
     this.vehicle = this.physics.playerState();
     const playerContact = this.physics.playerContactKind();
+    if (playerContact !== 'NONE' && this.impactDamageCooldown <= 0) {
+      const impact = applyImpactTireDamage(
+        this.tire,
+        playerContact,
+        this.vehicle.speed,
+      );
+      this.tire = impact.tire;
+      if (impact.wearAdded > 0.0005) {
+        this.impactDamageNotice =
+          `TYRE DAMAGE +${Math.round(impact.wearAdded * 100)}%`;
+        this.impactDamageNoticeRemaining = 2.2;
+      }
+      this.impactDamageCooldown = playerContact === 'BARRIER' ? 0.80 : 0.55;
+    }
     if (this.lap >= 1 && playerContact !== 'NONE') {
       this.lineCandidate.markIneligible();
       this.lineCandidateContact = playerContact;
@@ -1133,6 +1159,9 @@ export class CoreRaceGame {
     this.launchFeedback = '';
     this.launchFeedbackTone = 'neutral';
     this.raceIntervals.reset();
+    this.impactDamageCooldown = 0;
+    this.impactDamageNotice = '';
+    this.impactDamageNoticeRemaining = 0;
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
     if (this.debugEnabled) {
@@ -1489,6 +1518,9 @@ export class CoreRaceGame {
     const penaltyHtml = this.racePenaltyNotice
       ? `<div class="race-warning" style="top:118px">${this.racePenaltyNotice}</div>`
       : '';
+    const impactDamageHtml = this.impactDamageNotice
+      ? `<div class="race-warning" style="top:158px;color:#ff8892;border-color:rgba(255,95,109,.55)">${this.impactDamageNotice}</div>`
+      : '';
     const racingLineHtml = this.racingLineNotice
       ? `<div class="racing-line-notice">${this.racingLineNotice}</div>`
       : '';
@@ -1506,7 +1538,7 @@ export class CoreRaceGame {
       return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong>${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>

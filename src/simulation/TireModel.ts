@@ -8,6 +8,13 @@ export interface TireState {
   grip: number;
 }
 
+export type TireImpactKind = 'CAR' | 'BARRIER';
+
+export interface TireImpactDamage {
+  tire: TireState;
+  wearAdded: number;
+}
+
 // Make the choice legible without changing straight-line power. Soft has a
 // real one-lap/cornering advantage, Medium is the default race tyre, and Hard
 // gives away enough peak pace to be a deliberate endurance choice rather than
@@ -92,6 +99,32 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
   return { ...state, wear, temperature, grip };
 }
 
+export function applyImpactTireDamage(
+  state: TireState,
+  kind: TireImpactKind,
+  speedMetresPerSecond: number,
+): TireImpactDamage {
+  const speedKmh = Math.max(0, speedMetresPerSecond) * 3.6;
+  const severity = clamp01((speedKmh - 35) / 265);
+  const requestedDamage = kind === 'BARRIER'
+    ? 0.030 + severity * 0.100
+    : 0.006 + severity * 0.026;
+  const wear = Math.min(1, state.wear + requestedDamage);
+  const wearAdded = wear - state.wear;
+
+  // Wear is the persistent damage channel. Apply a small immediate grip loss
+  // as well so a heavy impact is felt before the next tyre-model update.
+  const grip = Math.max(0.40, state.grip * (1 - wearAdded * 0.48));
+  return {
+    tire: { ...state, wear, grip },
+    wearAdded,
+  };
+}
+
 export function compoundColor(name: Compound): number {
   return name === 'SOFT' ? 0xff4054 : name === 'MEDIUM' ? 0xffd326 : 0xf4f5f2;
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
