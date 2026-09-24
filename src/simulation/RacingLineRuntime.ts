@@ -13,6 +13,7 @@ const MIN_BRAKE_LOOKAHEAD_METRES = 96;
 const MAX_BRAKE_LOOKAHEAD_METRES = 240;
 const AXF_SPEED_GUARD_DEADBAND = 4.0;
 const AXF_SPEED_GUARD_CORRECTION_DISTANCE = 36;
+const EXPLICIT_LINE_SEAM_BLEND_SPAN = 0.018;
 
 export function setRuntimeRacingLine(
   trackId: TrackId,
@@ -125,19 +126,55 @@ export function sampleRuntimeRacingLinePose(
   const bBodyHeading = b.bodyHeading ?? (b.headingOffset === undefined
     ? undefined
     : wrapAngle(bCentre.heading + b.headingOffset));
-  const geometricHeading = Math.atan2(bPose.y - aPose.y, bPose.x - aPose.x);
+  const rawGeometricHeading = Math.atan2(
+    bPose.y - aPose.y,
+    bPose.x - aPose.x,
+  );
   const demonstratedHeading = interpolateOptionalAngle(
     aBodyHeading,
     bBodyHeading,
     t,
   );
+  const interpolatedLane = lerp(a.laneOffset, b.laneOffset, t);
+  const laneOffset = seamSafeLaneOffset(asset, p, interpolatedLane);
+  const seamBlend = seamBlendAmount(p);
+  const interpolatedX = lerp(aPose.x, bPose.x, t);
+  const interpolatedY = lerp(aPose.y, bPose.y, t);
+  const trackPose = sampleTrack(p, laneOffset);
+  const x = lerp(interpolatedX, trackPose.x, seamBlend);
+  const y = lerp(interpolatedY, trackPose.y, seamBlend);
+
+  // Never close a sparse recorded lap with a straight chord. Around
+  // start/finish, derive the tangent from the circuit-following seam bridge.
+  const probe = 0.0015;
+  const beforeP = wrap01(p - probe);
+  const afterP = wrap01(p + probe);
+  const beforeRaw = sampleRacingLineAsset(asset, beforeP);
+  const afterRaw = sampleRacingLineAsset(asset, afterP);
+  const beforeTrack = sampleTrack(
+    beforeP,
+    seamSafeLaneOffset(asset, beforeP, beforeRaw.laneOffset),
+  );
+  const afterTrack = sampleTrack(
+    afterP,
+    seamSafeLaneOffset(asset, afterP, afterRaw.laneOffset),
+  );
+  const seamHeading = Math.atan2(
+    afterTrack.y - beforeTrack.y,
+    afterTrack.x - beforeTrack.x,
+  );
+  const trajectoryHeading = interpolateAngle(
+    rawGeometricHeading,
+    seamHeading,
+    seamBlend,
+  );
 
   return {
-    x: lerp(aPose.x, bPose.x, t),
-    y: lerp(aPose.y, bPose.y, t),
-    heading: demonstratedHeading ?? geometricHeading,
-    trajectoryHeading: geometricHeading,
-    laneOffset: lerp(a.laneOffset, b.laneOffset, t),
+    x,
+    y,
+    heading: demonstratedHeading ?? trajectoryHeading,
+    trajectoryHeading,
+    laneOffset,
     targetSpeed: lerp(a.targetSpeed, b.targetSpeed, t),
     demonstratedHeading,
   };
@@ -522,11 +559,54 @@ export function activeReferenceTarget(
 
   return {
     ...fallback,
-    laneOffset: selected.laneOffset,
+    laneOffset: seamSafeLaneOffset(asset, progress, selected.laneOffset),
     targetSpeed: selected.targetSpeed * clamp(gripTransfer, 0.72, 1.18),
   };
 }
 
+
+function seamSafeLaneOffset(
+  asset: RacingLineAsset,
+  progress: number,
+  fallbackLane: number,
+): number {
+  const p = wrap01(progress);
+  if (
+    p >= EXPLICIT_LINE_SEAM_BLEND_SPAN
+    && p <= 1 - EXPLICIT_LINE_SEAM_BLEND_SPAN
+  ) {
+    return fallbackLane;
+  }
+
+  const before = sampleRacingLineAsset(
+    asset,
+    1 - EXPLICIT_LINE_SEAM_BLEND_SPAN,
+  ).laneOffset;
+  const after = sampleRacingLineAsset(
+    asset,
+    EXPLICIT_LINE_SEAM_BLEND_SPAN,
+  ).laneOffset;
+  const seamProgress = p < EXPLICIT_LINE_SEAM_BLEND_SPAN
+    ? p + EXPLICIT_LINE_SEAM_BLEND_SPAN
+    : p - (1 - EXPLICIT_LINE_SEAM_BLEND_SPAN);
+  const t = clamp(
+    seamProgress / (EXPLICIT_LINE_SEAM_BLEND_SPAN * 2),
+    0,
+    1,
+  );
+  const smooth = t * t * (3 - 2 * t);
+  return lerp(before, after, smooth);
+}
+
+function seamBlendAmount(progress: number): number {
+  const p = wrap01(progress);
+  const distance = Math.min(p, 1 - p);
+  return 1 - clamp(distance / EXPLICIT_LINE_SEAM_BLEND_SPAN, 0, 1);
+}
+
+function interpolateAngle(a: number, b: number, t: number): number {
+  return wrapAngle(a + wrapAngle(b - a) * t);
+}
 
 function interpolateOptionalAngle(
   a: number | undefined,

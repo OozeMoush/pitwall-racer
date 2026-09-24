@@ -375,6 +375,48 @@ describe('RacingLineRuntime', () => {
     expect(target.targetSpeed).toBeCloseTo(70, 6);
   });
 
+
+  it('smooths a discontinuous lane schedule through start-finish', () => {
+    const grip = 1.18;
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const laneOffset = progress > 0.97
+          ? -12
+          : progress < 0.03
+            ? 12
+            : 0;
+        const pose = sampleTrack(progress, laneOffset);
+        return {
+          progress,
+          laneOffset,
+          targetSpeed: 70,
+          worldX: pose.x,
+          worldY: pose.y,
+          bodyHeading: pose.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: grip,
+        };
+      }),
+    });
+
+    const before = activeReferenceTarget('pitwall-gp', 0.999, grip);
+    const after = activeReferenceTarget('pitwall-gp', 0.001, grip);
+    expect(Math.abs(after.laneOffset - before.laneOffset)).toBeLessThan(4);
+
+    const beforePose = sampleRuntimeRacingLinePose('pitwall-gp', 0.999);
+    const afterPose = sampleRuntimeRacingLinePose('pitwall-gp', 0.001);
+    expect(Math.hypot(
+      afterPose.x - beforePose.x,
+      afterPose.y - beforePose.y,
+    )).toBeLessThan(30);
+  });
+
 });
 
 function wrapTestAngle(angle: number): number {

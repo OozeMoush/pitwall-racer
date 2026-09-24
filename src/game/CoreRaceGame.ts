@@ -23,6 +23,7 @@ import {
   activeReferenceTarget,
   racingLineTraceLapSeconds,
   runtimeRacingLine,
+  sampleRuntimeRacingLinePose,
 } from '../simulation/RacingLineRuntime';
 import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
 import { classifyLivePositions, type LiveStandingEntry } from '../simulation/LiveStandingsModel';
@@ -982,8 +983,15 @@ export class CoreRaceGame {
   private refreshAiDebugReferenceLine(): void {
     if (!this.debugReferenceLine) return;
     const grip = this.ai[this.debugAiIndex]?.tire.grip ?? this.tire.grip;
+    const lineAsset = runtimeRacingLine(this.setup.trackId);
+    const highFidelity =
+      lineAsset?.source === 'PLAYER' || lineAsset?.source === 'EDITOR';
     const points = Array.from({ length: 240 }, (_, index) => {
       const progress = index / 240;
+      if (highFidelity) {
+        const pose = sampleRuntimeRacingLinePose(this.setup.trackId, progress);
+        return toWorld(pose.x, pose.y, 0.17);
+      }
       const reference = activeReferenceTarget(this.setup.trackId, progress, grip);
       const track = sampleTrack(progress, reference.laneOffset);
       return toWorld(track.x, track.y, 0.17);
