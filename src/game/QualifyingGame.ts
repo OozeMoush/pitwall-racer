@@ -352,7 +352,7 @@ class QualifyingGame {
       this.vehicle.y,
     );
     this.lastProgress = this.currentProgress;
-    this.currentProgress = after.progress;
+    this.currentProgress = afterPhysicalProjection.progress;
     const crossedStart = crossedStartLine(this.lastProgress, this.currentProgress);
 
     if (this.phase === 'APPROACH') {
