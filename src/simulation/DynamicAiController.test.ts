@@ -459,4 +459,46 @@ describe('dynamicAiControl', () => {
     expect(aiGripMultiplier('HARD')).toBeCloseTo(1.045, 6);
   });
 
+
+  it('releases a demonstrated brake phase when a race CPU has been knocked to a halt', () => {
+    const driver = createAiField()[4];
+    driver.progress = 0.72;
+    const grip = driver.tire.grip;
+    const pose = sampleTrack(driver.progress, 0);
+    const vehicle = {
+      ...createVehicle(pose.x, pose.y, pose.heading),
+      speed: 0.5,
+    };
+
+    setRuntimeRacingLine('pitwall-gp', {
+      version: 1,
+      trackId: 'pitwall-gp',
+      source: 'PLAYER',
+      referenceGrip: grip,
+      points: Array.from({ length: 320 }, (_, index) => {
+        const progress = index / 320;
+        const point = sampleTrack(progress, 0);
+        return {
+          progress,
+          laneOffset: 0,
+          targetSpeed: 40,
+          worldX: point.x,
+          worldY: point.y,
+          bodyHeading: point.heading,
+          headingOffset: 0,
+          yawRate: 0,
+          tireGrip: grip,
+          longitudinalAcceleration: -8,
+          forwardAcceleration: -10,
+        };
+      }),
+    });
+
+    const control = dynamicAiControl(driver, vehicle, []);
+    expect(control.debug.profileBrake).toBeGreaterThan(0.1);
+    expect(control.brake).toBe(0);
+    expect(control.throttle).toBeGreaterThan(0.4);
+    expect(control.targetSpeed).toBeGreaterThan(20);
+  });
+
 });

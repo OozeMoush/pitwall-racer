@@ -577,6 +577,26 @@ export function dynamicAiControl(
     throttle = brake > 0.08 ? 0 : Math.max(throttle, 0.58);
   }
 
+  // A demonstrated racing line can legitimately contain full-brake samples at
+  // this phase. If a CPU has been knocked almost to a halt, replaying that
+  // sample forever creates a deadlock: progress no longer advances, therefore
+  // the controller never leaves the braking phase. At very low speed, when the
+  // requested pace is clearly much faster, temporarily prioritise getting the
+  // car rolling and steering back toward the path. Normal recorded braking
+  // resumes once it is moving fast enough to advance through the phase.
+  const lowSpeedRecovery =
+    speed < 14
+    && targetSpeed - speed > 12
+    && !referenceGhost;
+  if (lowSpeedRecovery) {
+    brake = 0;
+    const alignment = 1 - clamp(Math.abs(bearingError) / (Math.PI * 0.75), 0, 1);
+    throttle = Math.max(
+      throttle,
+      0.44 + alignment * 0.34,
+    );
+  }
+
   return {
     throttle,
     brake,
