@@ -1541,7 +1541,7 @@ export class CoreRaceGame {
       const carBadge = driver.id === 'player'
         ? ''
         : `<u title="CAR ${aiIndex + 1}" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-right:6px;padding:0 3px;border-radius:4px;background:${carColorHex};color:#071014;text-decoration:none;font-size:10px;font-weight:950;line-height:1">${aiIndex + 1}</u>`;
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong style="display:flex;align-items:center;min-width:0">${carBadge}<span style="overflow:hidden;text-overflow:ellipsis">${driver.name}</span></strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
     this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}

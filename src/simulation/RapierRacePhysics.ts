@@ -326,7 +326,16 @@ export class RapierRacePhysics {
       driver.tire = createTire(driver.nextCompound);
       driver.usedCompounds = new Set(driver.usedCompounds);
       driver.usedCompounds.add(driver.nextCompound);
-      driver.strategyIntent = 'DONE';
+      driver.pitStopIndex += 1;
+      const followingStop = driver.pitPlan[driver.pitStopIndex];
+      if (followingStop) {
+        driver.plannedPitLap = followingStop.plannedLap;
+        driver.pitLap = followingStop.plannedLap;
+        driver.nextCompound = followingStop.compound;
+        driver.strategyIntent = 'PLAN';
+      } else {
+        driver.strategyIntent = 'DONE';
+      }
     }
 
     const pose = pitLanePose(next.t);
@@ -407,7 +416,7 @@ export class RapierRacePhysics {
       const currentLap = this.aiLaps[index] ?? driver.lap;
       const wantsPit = currentLap > 0
         && currentLap >= driver.pitLap
-        && !driver.usedCompounds.has(driver.nextCompound);
+        && driver.pitStopIndex < driver.pitPlan.length;
       if (!isPitActive(this.aiPitStops[index])
         && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit)) {
         this.aiPitStops[index] = beginPitStop();
