@@ -105,10 +105,12 @@ export function applyImpactTireDamage(
   speedMetresPerSecond: number,
 ): TireImpactDamage {
   const speedKmh = Math.max(0, speedMetresPerSecond) * 3.6;
-  const severity = clamp01((speedKmh - 35) / 265);
+  // Tiny rubs should not silently accumulate tyre damage. Scale from zero at
+  // low impact energy while preserving roughly the same heavy-crash ceiling.
+  const severity = clamp01((speedKmh - 15) / 285);
   const requestedDamage = kind === 'BARRIER'
-    ? 0.030 + severity * 0.100
-    : 0.006 + severity * 0.026;
+    ? severity * 0.130
+    : severity * 0.032;
   const wear = Math.min(1, state.wear + requestedDamage);
   const wearAdded = wear - state.wear;
 

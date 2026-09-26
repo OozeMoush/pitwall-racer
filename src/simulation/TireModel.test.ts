@@ -38,4 +38,10 @@ describe('TireModel', () => {
     expect(car.wearAdded).toBeLessThan(wall.wearAdded);
   });
 
+  it('does not accumulate tyre damage from a low-energy brush', () => {
+    const fresh = createTire('MEDIUM');
+    expect(applyImpactTireDamage(fresh, 'CAR', 3).wearAdded).toBe(0);
+    expect(applyImpactTireDamage(fresh, 'BARRIER', 3).wearAdded).toBe(0);
+  });
+
 });
