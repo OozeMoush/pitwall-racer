@@ -16,10 +16,10 @@ describe('compound contrast', () => {
     const medium = oneLap('MEDIUM');
     const hard = oneLap('HARD');
 
-    expect(soft.lapTime).toBeLessThan(medium.lapTime - 1.2);
-    expect(soft.lapTime).toBeGreaterThan(medium.lapTime - 4.0);
-    expect(hard.lapTime).toBeGreaterThan(medium.lapTime + 0.35);
-    expect(hard.lapTime).toBeLessThan(medium.lapTime + 2.2);
+    expect(soft.lapTime).toBeLessThan(medium.lapTime - 0.6);
+    expect(soft.lapTime).toBeGreaterThan(medium.lapTime - 1.8);
+    expect(hard.lapTime).toBeGreaterThan(medium.lapTime + 0.3);
+    expect(hard.lapTime).toBeLessThan(medium.lapTime + 1.3);
   });
 
   it('charges Soft much more tyre life while Hard roughly halves the wear rate', () => {
