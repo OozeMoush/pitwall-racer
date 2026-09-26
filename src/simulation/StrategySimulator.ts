@@ -34,8 +34,11 @@ export interface BalanceSnapshot {
   spreadToSecond: number;
 }
 
-const BASE_LAP_SECONDS = 62;
-const REPRESENTATIVE_SECONDS_PER_LAP = 58;
+// The current miniature circuits run in the low/mid-20-second range. Keep
+// this harness on the same time scale so wear accumulated per "lap" represents
+// the 40/50/60-lap game rather than the retired 10/12/16-lap format.
+const BASE_LAP_SECONDS = 24;
+const REPRESENTATIVE_SECONDS_PER_LAP = 24;
 const DT = 0.5;
 const CORNER_TIME_FRACTION = 0.45;
 const GRIP_RESPONSE_EXPONENT = 0.85;
@@ -53,7 +56,7 @@ const modeLapAdjustment: Record<PaceMode, number> = {
   PUSH: -1.15,
 };
 
-export function simulateStrategy(plan: StrategyPlan, totalLaps = 12): StrategyResult {
+export function simulateStrategy(plan: StrategyPlan, totalLaps = 50): StrategyResult {
   let tire = createTire(plan.startCompound);
   const usedCompounds = new Set<Compound>([plan.startCompound]);
   const laps: SimulatedLap[] = [];
@@ -106,19 +109,15 @@ export function balancedPace(_: number, tire: TireState): PaceMode {
   return 'BALANCED';
 }
 
-export function attackFinish(lap: number, tire: TireState): PaceMode {
-  if (tire.wear > 0.76) return 'CONSERVE';
-  return lap >= 10 ? 'PUSH' : 'BALANCED';
-}
-
 export function pushAlways(): PaceMode {
   return 'PUSH';
 }
 
-export function benchmarkStrategies(totalLaps = 12): BalanceSnapshot {
+export function benchmarkStrategies(totalLaps = 50): BalanceSnapshot {
   // Evaluate every legal one-stop compound pairing at every possible stop lap.
-  // Fixed stop laps hide the value of Hard in a 16-lap race and overstate it in
-  // shorter races; the benchmark should measure the best version of each idea.
+  // The live game also contains one deliberately aggressive two-stop CPU, but
+  // this harness answers the simpler baseline question: can a legal one-stop
+  // strategy remain competitive across the selectable 40/50/60-lap races?
   const plans: StrategyPlan[] = [];
   for (const start of COMPOUNDS) {
     for (const next of COMPOUNDS) {
