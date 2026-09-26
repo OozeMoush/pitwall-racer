@@ -30,17 +30,23 @@ describe('compact physical grid launch', () => {
       const aiIds = Array.from({ length: 7 }, (_, index) => `ai-${index}`);
       const others = aiIds.filter((id) => id !== p2Id);
       const gridOrder = [others[0], p2Id, ...others.slice(1), 'player'];
-      const ai = createAiField(gridOrder);
-      const p2Index = ai.findIndex((driver) => driver.id === p2Id);
-      expect(p2Index).toBeGreaterThanOrEqual(0);
+      const field = createAiField(gridOrder);
+      const p2 = field.find((driver) => driver.id === p2Id);
+      expect(p2).toBeDefined();
+      expect(gridOrder.indexOf(p2Id)).toBe(1);
 
+      // AI cars intentionally do not collide with one another. The original
+      // P2 regression was a slot-versus-wall problem, so a one-car physics
+      // world exercises the same barrier/controller path without spending most
+      // of the test budget simulating six irrelevant opponents.
+      const ai = [p2!];
       const remotePlayer = sampleTrack(0.5, 260);
       const physics = new RapierRacePhysics(
         createVehicle(remotePlayer.x, remotePlayer.y, remotePlayer.heading),
         ai,
       );
       const startDistance =
-        raceDistance(ai[p2Index].lap, ai[p2Index].progress) * TRACK_LENGTH;
+        raceDistance(p2!.lap, p2!.progress) * TRACK_LENGTH;
 
       try {
         for (let tick = 0; tick < LAUNCH_SECONDS / DT; tick++) {
@@ -48,10 +54,10 @@ describe('compact physical grid launch', () => {
           physics.step(DT);
         }
 
-        const state = physics.aiStates()[p2Index];
+        const state = physics.aiStates()[0];
         const projection = projectTrack(state.x, state.y);
         const endDistance =
-          raceDistance(ai[p2Index].lap, ai[p2Index].progress) * TRACK_LENGTH;
+          raceDistance(p2!.lap, p2!.progress) * TRACK_LENGTH;
 
         expect(endDistance - startDistance).toBeGreaterThan(25);
         expect(state.speed).toBeGreaterThan(15);
