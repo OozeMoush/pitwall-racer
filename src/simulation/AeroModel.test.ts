@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aerodynamicEffect,
   normalizedTowStrength,
+  towDragMultiplier,
   towPowerBoost,
   type AeroCarPose,
 } from './AeroModel';
@@ -59,8 +60,9 @@ describe('aerodynamicEffect', () => {
     expect(normalized).toBeLessThanOrEqual(1);
   });
 
-  it('turns a strong tow into a material chassis power boost', () => {
+  it('turns a strong tow into material power and drag advantages', () => {
     const effect = aerodynamicEffect(car('you', 100), [car('ahead', 124)]);
-    expect(towPowerBoost(effect.tow)).toBeGreaterThan(0.09);
+    expect(towPowerBoost(effect.tow)).toBeGreaterThan(0.11);
+    expect(towDragMultiplier(effect.tow)).toBeLessThan(0.68);
   });
 });
