@@ -4,7 +4,6 @@ import { predictiveAiSteer } from './PredictiveAiSteering';
 import { predictiveExplicitLineSteer } from './PredictiveExplicitLineSteering';
 import { driverPerformanceAt } from './DriverPerformanceModel';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
-import { referenceExecutionForSkill } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
@@ -150,7 +149,6 @@ export function dynamicAiControl(
     laneBlocked && aheadGap < 40 ? 'FOLLOW' : 'CLEAR';
 
   const trackId = getActiveTrack().id;
-  const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
   const lineAsset = runtimeRacingLine(trackId);
   const highFidelityLine = lineAsset?.source === 'PLAYER' || lineAsset?.source === 'EDITOR';
@@ -298,7 +296,7 @@ export function dynamicAiControl(
         ? 1
         : highFidelityLine
           ? liveExecution
-          : execution * paceCheat * liveExecution
+          : paceCheat * liveExecution
     );
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
