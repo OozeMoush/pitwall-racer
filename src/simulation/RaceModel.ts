@@ -303,6 +303,14 @@ function choosePitStrategy(
     return { pitLap: driver.pitLap, intent: 'DONE' };
   }
 
+  // Once an undercut/overcut has been committed, do not reverse that call on a
+  // later controller tick just because traffic cleared or the planned lap was
+  // reached. The physical pit-entry model reads driver.pitLap continuously, so
+  // changing it at the last moment can make a car drive past its intended stop.
+  if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
+    return { pitLap: driver.pitLap, intent: driver.strategyIntent };
+  }
+
   // Let long races breathe: a strategy can move two laps either way rather than
   // the old one-lap window that was designed around twelve-lap sprints.
   const earliest = Math.max(4, driver.plannedPitLap - 2);
@@ -314,10 +322,6 @@ function choosePitStrategy(
 
   if (driver.lap >= driver.plannedPitLap && driver.lap < latest && battleState === 'CLEAR' && tireHealth > 0.52) {
     return { pitLap: latest, intent: 'OVERCUT' };
-  }
-
-  if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
-    return { pitLap: driver.pitLap, intent: driver.strategyIntent };
   }
 
   return { pitLap: driver.plannedPitLap, intent: 'PLAN' };
