@@ -25,7 +25,8 @@ const SIDE_BY_SIDE_LATERAL = 7;
 // now produces a clearly visible straight-line gain without becoming a magic
 // overtake button. Player and AI consume the same value.
 export const MAX_TOW_STRENGTH = 0.30;
-export const MAX_TOW_POWER_BOOST = 0.13;
+export const MAX_TOW_POWER_BOOST = 0.16;
+export const MAX_TOW_DRAG_REDUCTION = 0.45;
 const DIRTY_AIR_STRENGTH = 0.28;
 
 /**
@@ -85,6 +86,10 @@ export function normalizedTowStrength(tow: number): number {
 
 export function towPowerBoost(tow: number): number {
   return normalizedTowStrength(tow) * MAX_TOW_POWER_BOOST;
+}
+
+export function towDragMultiplier(tow: number): number {
+  return 1 - normalizedTowStrength(tow) * MAX_TOW_DRAG_REDUCTION;
 }
 
 function forwardTrackDistance(fromProgress: number, toProgress: number): number {

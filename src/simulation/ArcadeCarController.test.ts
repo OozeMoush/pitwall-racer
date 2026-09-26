@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { controlArcadeCar } from './ArcadeCarController';
+import {
+  MAX_TOW_STRENGTH,
+  towDragMultiplier,
+  towPowerBoost,
+} from './AeroModel';
 
 function stepSpeed(seconds: number, powerBoost = 0): number {
   let vx = 0;
@@ -31,6 +36,33 @@ describe('ArcadeCarController', () => {
     expect(afterOne).toBeLessThan(20);
     expect(afterFive).toBeGreaterThan(afterOne * 2.2);
     expect(afterTen).toBeGreaterThan(afterFive);
+  });
+
+  it('makes a full slipstream visibly stronger within one second at race speed', () => {
+    const run = (tow: number): number => {
+      let vx = 90;
+      const dt = 1 / 120;
+      for (let tick = 0; tick < 120; tick++) {
+        const next = controlArcadeCar(
+          { vx, vy: 0, heading: 0, angularVelocity: 0 },
+          {
+            throttle: 1,
+            brake: 0,
+            steer: 0,
+            tireGrip: 1,
+            powerBoost: 0.22 + towPowerBoost(tow),
+            aeroDragMultiplier: towDragMultiplier(tow),
+          },
+          dt,
+        );
+        vx = next.vx;
+      }
+      return vx;
+    };
+
+    const cleanAir = run(0);
+    const fullTow = run(MAX_TOW_STRENGTH);
+    expect(fullTow).toBeGreaterThan(cleanAir + 1.5);
   });
 
   it('makes deploy meaningfully faster than harvest over a long acceleration zone', () => {
