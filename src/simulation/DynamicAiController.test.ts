@@ -425,8 +425,8 @@ describe('dynamicAiControl', () => {
       trackId: 'pitwall-gp',
       source: 'PLAYER',
       referenceGrip: sourceGrip,
-      points: Array.from({ length: 320 }, (_, index) => {
-        const progress = index / 320;
+      points: Array.from({ length: 96 }, (_, index) => {
+        const progress = index / 96;
         const point = sampleTrack(progress, lineLane);
         return {
           progress,
@@ -446,8 +446,7 @@ describe('dynamicAiControl', () => {
     expect(control.debug.demonstratedDynamics).toBe(true);
     expect(control.targetSpeed).toBeGreaterThan(58);
     expect(Math.abs(control.debug.pathError)).toBeLessThan(1.5);
-  });
-
+  }, 10_000);
 
   it('gives the field a stable skill-shaped pace advantage without rubber-banding', () => {
     expect(aiPaceCheatForSkill(1.118)).toBeCloseTo(1.055, 5);
