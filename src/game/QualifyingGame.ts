@@ -21,7 +21,7 @@ import {
   type QualifyingEntry,
 } from '../simulation/QualifyingModel';
 import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
-import { referenceTarget } from '../simulation/ReferenceDriverModel';
+import { REFERENCE_POWER_BOOST, referenceTarget } from '../simulation/ReferenceDriverModel';
 import { createAiField } from '../simulation/RaceModel';
 import { surfaceEffect } from '../simulation/SurfaceModel';
 import { createTire, stepTire, type TireState } from '../simulation/TireModel';
@@ -46,7 +46,6 @@ const FIXED_DT = 1 / 120;
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const START_PROGRESS = 0.72;
-const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
 const SOLO_SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
 
@@ -323,7 +322,7 @@ class QualifyingGame {
       tireGrip: this.tire.grip,
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST,
+      powerBoost: REFERENCE_POWER_BOOST,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
