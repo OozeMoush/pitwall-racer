@@ -169,9 +169,10 @@ describe('RaceModel', () => {
       speed: 68, laneOffset: 0, performance: 0.92, isPlayer: true,
     };
 
+    const [baseline] = stepAiField([{ ...driver }], 0.1, 50);
     const [next] = stepAiField([driver], 0.1, 50, [player]);
     expect(next.battleState).toBe('FOLLOW');
-    expect(Math.abs(next.laneOffset)).toBeLessThan(1);
+    expect(next.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
   });
 
   it('does not weave defensively just because the player is approaching from behind', () => {
