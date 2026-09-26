@@ -19,6 +19,7 @@ import {
   type PitStopState,
 } from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
+import { REFERENCE_POWER_BOOST } from './ReferenceDriverModel';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { safetyBarrierSegments } from './TrackBarrierModel';
@@ -44,7 +45,6 @@ export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 // the physics step; this filters collider tolerance/contact-pair false alarms.
 export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
 export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
-const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
 // car, and every car collides with the real circuit barriers. AI cars avoid one
@@ -187,7 +187,7 @@ export class RapierRacePhysics {
           * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
-        powerBoost: CORE_POWER_BASELINE
+        powerBoost: REFERENCE_POWER_BOOST
           + aiPowerBoostForSkill(driver.skill)
           + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
