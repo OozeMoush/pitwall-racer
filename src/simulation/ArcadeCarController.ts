@@ -13,6 +13,7 @@ export interface ArcadeCarInput {
   surfaceGrip?: number;
   powerBoost?: number;
   powerMultiplier?: number;
+  aeroDragMultiplier?: number;
   rollingResistance?: number;
   slideSeverity?: number;
   slideDirection?: number;
@@ -51,6 +52,7 @@ export function controlArcadeCar(
   const surfaceGrip = clamp(input.surfaceGrip ?? 1, 0.42, 1.05);
   const powerBoost = clamp(input.powerBoost ?? 0, -0.55, 0.48);
   const powerMultiplier = clamp(input.powerMultiplier ?? 1, 0.3, 1.1);
+  const aeroDragMultiplier = clamp(input.aeroDragMultiplier ?? 1, 0.45, 1.2);
   const rollingResistance = clamp(input.rollingResistance ?? 0, 0, 14);
   const slideSeverity = clamp(input.slideSeverity ?? 0, 0, 1.5);
   const slideDirection = clamp(input.slideDirection ?? 0, -1, 1);
@@ -87,7 +89,7 @@ export function controlArcadeCar(
     * straightTraction
     * Math.max(0.38, combinedTraction);
 
-  const aeroDrag = 0.000235 * speed * speed;
+  const aeroDrag = 0.000235 * speed * speed * aeroDragMultiplier;
   const rollingDrag = 0.55 + rollingResistance;
   // Grass must be categorically slower than staying on the circuit at race
   // speed, while a nearly stopped car still needs enough engine to recover.
