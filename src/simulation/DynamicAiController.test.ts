@@ -48,6 +48,46 @@ describe('dynamicAiControl', () => {
     expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
+  it('stays in the wake when both passing corridors are occupied', () => {
+    const driver = createAiField()[0];
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
+    const ahead: RaceTrafficCar = {
+      id: 'leader',
+      lap: driver.lap,
+      progress: driver.progress + 12 / TRACK_LENGTH,
+      speed: 68,
+      laneOffset: 0,
+      performance: 1,
+    };
+    const ordinaryFollow = dynamicAiControl(driver, vehicle, [{
+      ...ahead,
+      progress: driver.progress + 26 / TRACK_LENGTH,
+    }]);
+    const blocked = dynamicAiControl(driver, vehicle, [
+      ahead,
+      {
+        id: 'left-blocker',
+        lap: driver.lap,
+        progress: driver.progress + 5 / TRACK_LENGTH,
+        speed: 76,
+        laneOffset: -6.8,
+        performance: 1,
+      },
+      {
+        id: 'right-blocker',
+        lap: driver.lap,
+        progress: driver.progress + 5 / TRACK_LENGTH,
+        speed: 76,
+        laneOffset: 6.8,
+        performance: 1,
+      },
+    ]);
+
+    expect(blocked.battleState).toBe('FOLLOW');
+    expect(blocked.targetLane).toBeCloseTo(ordinaryFollow.targetLane, 6);
+  });
+
   it('chooses the same passing side instead of weaving across the rival', () => {
     const driver = createAiField()[0];
     const ahead: RaceTrafficCar = {
