@@ -75,14 +75,7 @@ async function bootstrap(): Promise<void> {
   // Install before CoreRaceGame creates its RAF loop so P/Escape can freeze
   // simulation time and present the live timing tower as a proper pause screen.
   installRacePauseController(game, hud);
-  const race = new CoreRaceGame(game, hud, raceSetup);
-
-  // CoreRaceGame predates the long-race format and still carries a private
-  // 30-lap construction cap. TypeScript `private readonly` is a compile-time
-  // property here, so lift that legacy cap immediately after construction.
-  // Keeping the override in one visible bootstrap location makes it easy to
-  // remove when CoreRaceGame is next refactored without touching race logic.
-  Reflect.set(race, 'totalLaps', Math.max(20, Math.min(80, Math.round(raceSetup.totalLaps))));
+  new CoreRaceGame(game, hud, raceSetup);
 }
 
 bootstrap().catch((error) => {

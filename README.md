@@ -75,7 +75,7 @@ The test suite is split by feedback speed without changing the full-suite gate:
 npm run test:fast      # cheap unit/regression loop
 npm run test:playtest  # focused gameplay/physics regressions
 npm run test:long      # multi-lap, multi-circuit and endurance checks
-npm test               # all 66 test files; authoritative final gate
+npm test               # full suite; authoritative final gate
 npm run build
 ```
 

@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
-    "phaser": "4.2.1",
     "three": "0.185.1"
   },
   "devDependencies": {

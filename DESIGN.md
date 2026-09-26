@@ -40,19 +40,20 @@ Every proposed feature must pass one question: **does this make the race more fu
 
 ## Current race format
 
-The player gets a real setup screen before lights out.
+The setup screen supports three session paths:
 
-- choose one of multiple fictional circuits
-- choose the starting tyre
-- choose race distance: 10 / 12 / 16 laps
-- default distance: 12 laps
-- then run the normal start-light sequence
+- standalone **Time Trial** for empty-track hotlapping and PLAYER BEST updates;
+- **Race Weekend** with one-shot qualifying followed by the Grand Prix;
+- **Skip Qualifying** for a direct P8 Grand Prix start.
 
-The three initial circuit characters are:
+Grand Prix setup includes:
 
-- **Pitwall GP** — balanced mixed-layout reference track
-- **Velocity Park** — high-speed sweepers and heavy braking
-- **Switchback Ring** — technical direction changes that expose tyre grip
+- seven miniature circuits;
+- Soft / Medium / Hard starting tyre;
+- 40 / 50 / 60 lap distance, with 50 laps as the default;
+- AUTO or PLAYER BEST CPU racing-line source.
+
+The current circuit set is Pitwall GP, Velocity Park, Switchback Ring, Sakura Esses, Harbor Chicane, Serra Circuit and Baku Street.
 
 ## Balance gates
 
@@ -86,7 +87,7 @@ The simulation is independent from rendering. `simulation/` owns authoritative v
 - AI: physical throttle / brake / steering controller that reads the active spline and live traffic
 - Track: selectable closed Catmull–Rom circuit shared by projection, AI and presentation
 - Race truth: lap, compound legality, order, traffic state and strategy live outside rendering
-- Balance harness: deterministic tyre strategy model plus a 30-second physical-pack playtest
+- Balance harness: deterministic strategy tests plus fast, gameplay and long-running physical regression tiers
 
 ## Current playable controls
 
@@ -126,10 +127,14 @@ There are no live energy-mode keys in the current core-race build.
 - core handling and difficulty tuning ⏳ ongoing
 
 ### M3 — race structure — current priority
-- pre-race setup screen ✅ first model
+- pre-race setup screen ✅
+- standalone Time Trial ✅
+- one-shot qualifying / skip-qualifying flow ✅
 - starting tyre selection ✅
-- 10 / 12 / 16-lap distances ✅
-- multiple fictional circuits ✅ first three
+- 40 / 50 / 60-lap distances ✅
+- seven miniature circuits ✅
+- AUTO / PLAYER BEST CPU racing-line selection ✅
+- compact qualifying-derived starting grid ✅
 - unified road edge / runoff / barrier language ✅ first model
 - longer-race tyre strategy balance ⏳ ongoing
 - richer circuit-specific environment identity ⏳
@@ -142,10 +147,10 @@ There are no live energy-mode keys in the current core-race build.
 - energy management ⏸ parked until core race is fun
 
 ### M5 — spectacle
-- sound and speed-sensitive mix ⏳
+- sound and speed-sensitive mix ✅ first model
 - polished car art ⏳
 - richer environment art ⏳
-- more circuits ⏳
+- more circuit identity / presentation ⏳
 
 ## Explicitly deferred complexity
 
@@ -159,14 +164,14 @@ These are not priorities until the basic race is demonstrably fun:
 - safety car / VSC
 - rain and wet-weather tyre systems
 - damage simulation
-- qualifying systems
 - multiplayer
 
 ## Immediate design risks
 
 1. More speed is useful only if braking points and track readability remain understandable.
 2. AI must be hard because it drives well, not because it owns a different engine.
-3. Twelve-lap tyre life must create stints rather than simply making every old tyre unusable.
-4. Multiple circuits must remain valid for projection, pit, grid, AI and camera — not just render different shapes.
-5. The fixed camera must preserve GeneRally-style clarity while still selling 300+ km/h.
-6. Headless balance results must never replace actual playtesting; they only detect obvious regressions.
+3. Long 40-60 lap races must create meaningful stints without turning old tyres into undriveable switches.
+4. PLAYER BEST and AUTO lines must remain physically coherent across compounds and through the start/finish seam.
+5. All seven circuits must remain valid for projection, pits, compact grids, CPU driving and camera — not just render different shapes.
+6. The fixed camera must preserve GeneRally-style clarity while still selling 300+ km/h.
+7. Automated balance results must never replace actual playtesting; they only detect objective regressions.
