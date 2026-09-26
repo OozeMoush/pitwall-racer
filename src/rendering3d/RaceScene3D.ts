@@ -6,6 +6,21 @@ import { toWorld } from './WorldTransform';
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 
+export function createRaceRenderer(container: HTMLElement): THREE.WebGLRenderer {
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  container.appendChild(renderer.domElement);
+  return renderer;
+}
+
 export function createRaceCamera(): THREE.OrthographicCamera {
   return new THREE.OrthographicCamera(
     -40,
