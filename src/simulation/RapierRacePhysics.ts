@@ -44,6 +44,10 @@ export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
 // the physics step; this filters collider tolerance/contact-pair false alarms.
 export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
 export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
+// A contact pair alone is not a crash. Cars running nearly the same velocity
+// can overlap collider tolerances or brush side-by-side without meaningful
+// impact energy. Require a real relative-speed delta before classifying CAR.
+export const CAR_CONTACT_MIN_RELATIVE_SPEED = 3.0;
 const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
@@ -80,8 +84,10 @@ export class RapierRacePhysics {
   private readonly playerBody: RAPIER.RigidBody;
   private playerCollider?: RAPIER.Collider;
   private readonly aiColliderHandles = new Set<number>();
+  private readonly aiColliderIndexByHandle = new Map<number, number>();
   private readonly barrierColliderHeadings = new Map<number, number>();
   private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
+  private playerImpactSpeedValue = 0;
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
@@ -110,9 +116,9 @@ export class RapierRacePhysics {
       playerStart.heading,
       'PLAYER',
     );
-    this.aiBodies = ai.map((driver) => {
+    this.aiBodies = ai.map((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
-      return this.createDynamicCar(pose.x, pose.y, pose.heading, 'AI');
+      return this.createDynamicCar(pose.x, pose.y, pose.heading, 'AI', index);
     });
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
@@ -140,6 +146,10 @@ export class RapierRacePhysics {
 
   playerContactKind(): 'NONE' | 'CAR' | 'BARRIER' {
     return this.playerContactKindValue;
+  }
+
+  playerImpactSpeed(): number {
+    return this.playerImpactSpeedValue;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -230,6 +240,10 @@ export class RapierRacePhysics {
   step(dt: number): void {
     this.world.timestep = dt;
     const playerVelocityBeforeStep = this.playerBody.linvel();
+    const aiVelocitiesBeforeStep = this.aiBodies.map((body) => {
+      const velocity = body.linvel();
+      return { x: velocity.x, y: velocity.y };
+    });
     this.world.step();
     this.aiBodies.forEach((body, index) => {
       const before = this.aiPreDriveSpeeds[index];
@@ -243,6 +257,7 @@ export class RapierRacePhysics {
     this.updatePlayerContactKind(
       playerVelocityBeforeStep.x,
       playerVelocityBeforeStep.y,
+      aiVelocitiesBeforeStep,
     );
 
     this.limitSpin(this.playerBody, 1.45);
@@ -272,6 +287,7 @@ export class RapierRacePhysics {
     this.playerSlideSeverityValue = 0;
     this.playerLongitudinalAccelerationValue = 0;
     this.playerContactKindValue = 'NONE';
+    this.playerImpactSpeedValue = 0;
   }
 
   setAiState(index: number, state: VehicleState, velocityHeading?: number): void {
@@ -495,7 +511,13 @@ export class RapierRacePhysics {
     }
   }
 
-  private createDynamicCar(x: number, y: number, heading: number, role: CarRole): RAPIER.RigidBody {
+  private createDynamicCar(
+    x: number,
+    y: number,
+    heading: number,
+    role: CarRole,
+    aiIndex?: number,
+  ): RAPIER.RigidBody {
     const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(x, y)
       .setRotation(heading)
@@ -511,22 +533,44 @@ export class RapierRacePhysics {
       .setRestitution(0)
       .setCollisionGroups(role === 'PLAYER' ? PLAYER_COLLISION_GROUPS : AI_COLLISION_GROUPS);
     const createdCollider = this.world.createCollider(collider, body);
-    if (role === 'PLAYER') this.playerCollider = createdCollider;
-    else this.aiColliderHandles.add(createdCollider.handle);
+    if (role === 'PLAYER') {
+      this.playerCollider = createdCollider;
+    } else {
+      this.aiColliderHandles.add(createdCollider.handle);
+      if (aiIndex !== undefined) {
+        this.aiColliderIndexByHandle.set(createdCollider.handle, aiIndex);
+      }
+    }
     return body;
   }
 
   private updatePlayerContactKind(
     preStepVx: number,
     preStepVy: number,
+    aiVelocitiesBeforeStep: readonly { x: number; y: number }[],
   ): void {
     this.playerContactKindValue = 'NONE';
+    this.playerImpactSpeedValue = 0;
     const playerCollider = this.playerCollider;
     if (!playerCollider) return;
 
     this.world.contactPairsWith(playerCollider, (otherCollider) => {
-      if (this.aiColliderHandles.has(otherCollider.handle)) {
+      const aiIndex = this.aiColliderIndexByHandle.get(otherCollider.handle);
+      if (aiIndex !== undefined) {
+        const otherVelocity = aiVelocitiesBeforeStep[aiIndex];
+        if (!otherVelocity) return;
+        const relativeSpeed = carRelativeImpactSpeed(
+          preStepVx,
+          preStepVy,
+          otherVelocity.x,
+          otherVelocity.y,
+        );
+        if (relativeSpeed < CAR_CONTACT_MIN_RELATIVE_SPEED) return;
         this.playerContactKindValue = 'CAR';
+        this.playerImpactSpeedValue = Math.max(
+          this.playerImpactSpeedValue,
+          relativeSpeed,
+        );
         return;
       }
 
@@ -545,6 +589,10 @@ export class RapierRacePhysics {
         )
       ) {
         this.playerContactKindValue = 'BARRIER';
+        this.playerImpactSpeedValue = Math.max(
+          this.playerImpactSpeedValue,
+          barrierNormalSpeed(preStepVx, preStepVy, barrierHeading),
+        );
       }
     });
   }
@@ -628,4 +676,14 @@ export function isPhysicalBarrierImpact(
   const afterNormal = barrierNormalSpeed(postVx, postVy, barrierHeading);
   return beforeNormal >= WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED
     && beforeNormal - afterNormal >= WALL_CONTACT_MIN_NORMAL_SPEED_LOSS;
+}
+
+
+export function carRelativeImpactSpeed(
+  playerVx: number,
+  playerVy: number,
+  otherVx: number,
+  otherVy: number,
+): number {
+  return Math.hypot(playerVx - otherVx, playerVy - otherVy);
 }
