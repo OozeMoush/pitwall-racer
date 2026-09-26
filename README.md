@@ -15,7 +15,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - Soft red / Medium yellow / Hard white tyre compounds
 - physical pit-lane transit and tyre service for player and CPU
 - dry-race two-compound requirement
-- CLEAR / FOLLOW / SIDE_BY_SIDE CPU traffic states with opportunistic physical passing
+- line-locked CPU driving with longitudinal FOLLOW traffic control
 - dirty air and tow
 - five-light randomized race start with measured throttle reaction time
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
@@ -90,7 +90,7 @@ CI runs the full test suite and production build on pushes to `main` and can als
 
 - `RapierRacePhysics.ts` owns the live planar rigid-body world.
 - `ArcadeCarController.ts` supplies longitudinal/lateral arcade-formula behaviour.
-- `DynamicAiController.ts` supplies CPU throttle, brake, steering and line intent from the real track and physical traffic.
+- `DynamicAiController.ts` supplies CPU throttle, brake and reference-line steering; traffic may reduce longitudinal pace but never invents a lateral passing line.
 - `RacingLineRuntime.ts` and related racing-line modules execute AUTO / PLAYER BEST reference data.
 - `CoreRaceGame.ts` integrates the current Grand Prix loop.
 - `QualifyingGame.ts` runs qualifying and standalone Time Trial sessions.
