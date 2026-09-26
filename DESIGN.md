@@ -30,7 +30,7 @@ When choosing work, use this order:
 
 1. Driving must feel fast and satisfying within seconds.
 2. AI must be quick enough to create pressure without hidden rubber-banding.
-3. Overtaking and defending must create readable battles.
+3. CPU traffic must stay stable and readable without sacrificing the reference racing line.
 4. Tyre condition must be felt through braking and cornering, not only read from telemetry.
 5. Pit timing and compound choice must change the result of the race.
 6. Circuit variety and presentation must make repeated races worth playing.
@@ -84,7 +84,7 @@ The simulation is independent from rendering. `simulation/` owns authoritative v
 - HUD: HTML/CSS overlay
 - Physics: Rapier 2D dynamic rigid bodies for player and AI
 - Vehicle dynamics: purpose-built arcade-formula controller layered over Rapier velocity/contact solving
-- AI: physical throttle / brake / steering controller that reads the active spline and live traffic
+- AI: physical throttle / brake / steering controller locked to the active reference line; traffic only affects longitudinal following
 - Track: selectable closed Catmull–Rom circuit shared by projection, AI and presentation
 - Race truth: lap, compound legality, order, traffic state and strategy live outside rendering
 - Balance harness: deterministic strategy tests plus fast, gameplay and long-running physical regression tiers
@@ -120,7 +120,7 @@ There are no live energy-mode keys in the current core-race build.
 ### M2 — racing feel — current priority
 - fixed-isometric 3D presentation ✅
 - Rapier physical field ✅
-- AI follow / side-by-side traffic states with opportunistic physical passing ✅
+- AI reference-line driving with longitudinal FOLLOW traffic control ✅
 - high-speed braking and cornering skill requirement ✅ ongoing tuning
 - speed-perception telemetry ✅
 - stronger AI without straight-line compound cheats ✅
