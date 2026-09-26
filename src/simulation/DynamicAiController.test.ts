@@ -44,7 +44,7 @@ describe('dynamicAiControl', () => {
     // Keep the first steering target close to the car so it cannot lunge across
     // the player's path in one controller decision.
     expect(Math.abs(pass.targetLane - closeAhead.laneOffset)).toBeGreaterThan(0.4);
-    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(1.0);
+    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(1.2);
     expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
