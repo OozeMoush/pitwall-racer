@@ -121,6 +121,7 @@ There are no live energy-mode keys in the current core-race build.
 - fixed-isometric 3D presentation ✅
 - Rapier physical field ✅
 - AI reference-line driving with longitudinal FOLLOW traffic control ✅
+- driver pace / consistency / precision profiles with smooth live execution variation ✅
 - high-speed braking and cornering skill requirement ✅ ongoing tuning
 - speed-perception telemetry ✅
 - stronger AI without straight-line compound cheats ✅
