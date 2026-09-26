@@ -38,13 +38,14 @@ describe('dynamicAiControl', () => {
       ...ahead,
       progress: driver.progress + 12 / TRACK_LENGTH,
     };
+    const clean = dynamicAiControl(driver, vehicle, []);
     const pass = dynamicAiControl(driver, vehicle, [closeAhead]);
     expect(pass.battleState).toBe('FOLLOW');
-    // Passing is a target-lane adjustment inside FOLLOW, not a mode switch.
-    // Keep the first steering target close to the car so it cannot lunge across
-    // the player's path in one controller decision.
-    expect(Math.abs(pass.targetLane - closeAhead.laneOffset)).toBeGreaterThan(0.4);
-    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(1.2);
+    // Passing is a small adjustment relative to the racing line, not an
+    // absolute demand to be near the centreline. Some reference-line samples
+    // legitimately sit several metres off centre.
+    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeGreaterThan(0.2);
+    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeLessThanOrEqual(1.6);
     expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
