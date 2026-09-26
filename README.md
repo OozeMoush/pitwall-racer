@@ -16,6 +16,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - physical pit-lane transit and tyre service for player and CPU
 - dry-race two-compound requirement
 - line-locked CPU driving with longitudinal FOLLOW traffic control
+- driver-specific CPU pace, consistency and technical precision with smooth live form variation
 - dirty air and tow
 - five-light randomized race start with measured throttle reaction time
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
