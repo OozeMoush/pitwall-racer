@@ -31,4 +31,5 @@ export const OPTIMIZED_REFERENCE_LANES: Record<TrackId, readonly number[]> = {
   'sakura-esses': baked('sakura-esses'),
   'harbor-chicane': baked('harbor-chicane'),
   'serra-circuit': baked('serra-circuit'),
+  'baku-street': baked('baku-street'),
 };
