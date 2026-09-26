@@ -110,7 +110,7 @@ describe('RaceModel', () => {
     expect(stepAi(cornerCar, 0.2, 50).speed).toBeLessThan(95);
   });
 
-  it('settles into the tow when a weaker car cannot attack yet', () => {
+  it('follows a slower car longitudinally without changing its line', () => {
     const [leader, chaser] = createAiField();
     leader.progress = 0.5 + raceScaleDistance(68) / TRACK_LENGTH;
     chaser.progress = 0.5;
@@ -119,9 +119,10 @@ describe('RaceModel', () => {
     leader.laneOffset = 3;
     chaser.laneOffset = -3;
 
+    const [baseline] = stepAiField([{ ...chaser }], 0.1, 50);
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 50);
     expect(nextChaser.battleState).toBe('FOLLOW');
-    expect(nextChaser.laneOffset).toBeGreaterThan(-3);
+    expect(nextChaser.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
   });
 
   it('keeps a quicker close-range car in FOLLOW instead of inventing an attack lane', () => {
@@ -137,9 +138,8 @@ describe('RaceModel', () => {
 
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 50);
     expect(nextChaser.battleState).toBe('FOLLOW');
-    // RaceModel no longer synthesizes a passing lane. The physical controller
-    // decides whether there is safe lateral room on the real circuit.
-    expect(Math.abs(nextChaser.laneOffset)).toBeLessThan(1);
+    const [baseline] = stepAiField([{ ...chaser }], 0.1, 50);
+    expect(nextChaser.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
   });
 
   it('lets a car on a separate lane keep its own pace without an attack state', () => {
@@ -192,7 +192,7 @@ describe('RaceModel', () => {
     expect(next.laneOffset).toBeCloseTo(baseline.laneOffset, 6);
   });
 
-  it('leaves lateral space when the player is genuinely alongside', () => {
+  it('keeps its normal line when the player is alongside', () => {
     const [driver] = createAiField();
     driver.progress = 0.55;
     driver.laneOffset = 4;
@@ -201,9 +201,10 @@ describe('RaceModel', () => {
       laneOffset: -4, performance: 1, isPlayer: true,
     };
 
+    const [baseline] = stepAiField([{ ...driver }], 0.1, 50);
     const [next] = stepAiField([driver], 0.1, 50, [player]);
-    expect(next.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(next.laneOffset - player.laneOffset)).toBeGreaterThanOrEqual(5.4);
+    expect(next.battleState).toBe('CLEAR');
+    expect(next.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
   });
 
   it('undercuts two laps early when genuinely trapped in the same lane', () => {
