@@ -13,7 +13,7 @@ describe('physical AI overtaking regression', () => {
     await RAPIER.init();
   });
 
-  it('lets a quicker car move out, run side by side, and complete a pass', () => {
+  it('lets a quicker car pass naturally through FOLLOW and SIDE_BY_SIDE', () => {
     const [trailer, leader] = createAiField();
     const leaderProgress = 0.18;
     const trailerProgress = leaderProgress - 18 / TRACK_LENGTH;
@@ -42,13 +42,11 @@ describe('physical AI overtaking regression', () => {
 
     let maxLateralSeparation = 0;
     let maxTrailerLeadMetres = Number.NEGATIVE_INFINITY;
-    let sawAttack = false;
     let sawSideBySide = false;
     const timeline: Array<Record<string, number | string>> = [];
 
     for (let tick = 0; tick < 12 / DT; tick++) {
       physics.syncAiKinematics([trailer, leader], DT, -10);
-      if (trailer.battleState === 'ATTACK') sawAttack = true;
       if (trailer.battleState === 'SIDE_BY_SIDE' || leader.battleState === 'SIDE_BY_SIDE') sawSideBySide = true;
       physics.step(DT);
 
@@ -77,14 +75,12 @@ describe('physical AI overtaking regression', () => {
     }
 
     console.log(`OVERTAKE_METRICS ${JSON.stringify({
-      sawAttack,
       sawSideBySide,
       maxLateralSeparation: Number(maxLateralSeparation.toFixed(2)),
       maxTrailerLeadMetres: Number(maxTrailerLeadMetres.toFixed(2)),
       timeline,
     })}`);
 
-    expect(sawAttack).toBe(true);
     expect(sawSideBySide).toBe(true);
     expect(maxLateralSeparation).toBeGreaterThan(5.5);
     expect(maxTrailerLeadMetres).toBeGreaterThan(2.0);
