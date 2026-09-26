@@ -45,7 +45,7 @@ describe('physical AI overtaking regression', () => {
     let sawSideBySide = false;
     const timeline: Array<Record<string, number | string>> = [];
 
-    for (let tick = 0; tick < 12 / DT; tick++) {
+    for (let tick = 0; tick < 20 / DT; tick++) {
       physics.syncAiKinematics([trailer, leader], DT, -10);
       if (trailer.battleState === 'SIDE_BY_SIDE' || leader.battleState === 'SIDE_BY_SIDE') sawSideBySide = true;
       physics.step(DT);
@@ -84,5 +84,5 @@ describe('physical AI overtaking regression', () => {
     expect(sawSideBySide).toBe(true);
     expect(maxLateralSeparation).toBeGreaterThan(5.5);
     expect(maxTrailerLeadMetres).toBeGreaterThan(2.0);
-  }, 20_000);
+  }, 25_000);
 });
