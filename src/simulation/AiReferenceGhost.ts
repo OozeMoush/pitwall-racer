@@ -9,7 +9,7 @@ import {
 } from './RacingLineRuntime';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
-import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
+import { getActiveTrack, projectTrackNear, type TrackId } from './TrackModel';
 import { createVehicle, type VehicleState } from './VehicleModel';
 
 const CORE_POWER_BOOST = 0.22;
