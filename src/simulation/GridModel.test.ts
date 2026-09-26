@@ -6,42 +6,54 @@ import {
   gridSlotForPosition,
   PLAYER_GRID,
 } from './GridModel';
-import { TRACK_LENGTH } from './TrackModel';
+import { setActiveTrack } from './TrackModel';
 
 describe('GridModel', () => {
-  it('places every starter behind the start line in strict qualifying order', () => {
+  it('keeps all eight starters in a compact stagger immediately behind the line', () => {
+    setActiveTrack('pitwall-gp');
     const slots = Array.from({ length: 8 }, (_, index) => gridSlotForPosition(index + 1));
-    expect(slots[0].progress).toBeGreaterThan(0.98);
-    expect(PLAYER_GRID.progress).toBeGreaterThan(0.48);
-    expect(PLAYER_GRID.progress).toBeLessThan(0.53);
+    expect(slots[0].progress).toBeGreaterThan(0.99);
+    expect(PLAYER_GRID.progress).toBeGreaterThan(0.94);
     for (let index = 0; index < slots.length; index++) {
       expect(slots[index].progress).toBeLessThan(1);
       if (index > 0) expect(slots[index - 1].progress).toBeGreaterThan(slots[index].progress);
     }
   });
 
-  it('makes pole-to-P8 worth roughly half a lap', () => {
+  it('uses about twelve metres between consecutive grid positions instead of half a lap', () => {
+    setActiveTrack('pitwall-gp');
     for (let index = 0; index < 7; index++) {
-      expect(gridLongitudinalGap(aiGridSlot(index), gridSlotForPosition(index + 2))).toBeGreaterThan(120);
+      const gap = gridLongitudinalGap(
+        gridSlotForPosition(index + 1),
+        gridSlotForPosition(index + 2),
+      );
+      expect(gap).toBeGreaterThan(10.5);
+      expect(gap).toBeLessThan(13.5);
     }
-    const spread = gridLongitudinalGap(gridSlotForPosition(1), gridSlotForPosition(8));
-    expect(spread / TRACK_LENGTH).toBeGreaterThan(0.45);
-    expect(spread / TRACK_LENGTH).toBeLessThan(0.52);
+    const spread = gridLongitudinalGap(
+      gridSlotForPosition(1),
+      gridSlotForPosition(8),
+    );
+    expect(spread).toBeGreaterThan(75);
+    expect(spread).toBeLessThan(95);
   });
 
-  it('alternates grid lanes while preserving the large stagger', () => {
+  it('alternates two safe lanes while preserving qualifying order', () => {
+    setActiveTrack('pitwall-gp');
     for (let position = 1; position < 8; position++) {
       const front = gridSlotForPosition(position);
       const behind = gridSlotForPosition(position + 1);
       expect(Math.sign(front.laneOffset)).not.toBe(Math.sign(behind.laneOffset));
+      expect(Math.abs(front.laneOffset)).toBeLessThan(5);
       expect(front.progress).toBeGreaterThan(behind.progress);
     }
   });
 
-  it('keeps the legacy player fallback in the P8 physical slot', () => {
+  it('keeps the fallback player in the P8 physical slot', () => {
+    setActiveTrack('pitwall-gp');
     expect(PLAYER_GRID).toEqual(gridSlotForPosition(8));
     expect(aiGridSlot(6).progress).toBeGreaterThan(PLAYER_GRID.progress);
-    expect(gridLongitudinalGap(aiGridSlot(6), PLAYER_GRID)).toBeGreaterThan(120);
+    expect(gridLongitudinalGap(aiGridSlot(6), PLAYER_GRID)).toBeGreaterThan(10);
   });
 
   it('maps a qualifying order to the matching physical grid slot', () => {

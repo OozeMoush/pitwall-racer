@@ -5,6 +5,7 @@ import {
   TRACK_CONTROLS,
   TRACK_LENGTH,
   TRACKS,
+  crossedStartLine,
   nearestTrackProgress,
   projectTrack,
   projectTrackNear,
@@ -34,6 +35,14 @@ describe('TrackModel', () => {
     expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
   });
 
+  it('includes a Baku-style long street circuit with a dense city section', () => {
+    setActiveTrack('baku-street');
+    const circuit = TRACKS.find((entry) => entry.id === 'baku-street');
+    expect(circuit?.controls.length).toBeGreaterThanOrEqual(30);
+    expect(TRACK_LENGTH).toBeGreaterThan(2100);
+    expect(TRACK_LENGTH).toBeLessThan(2450);
+  });
+
   it('has no discontinuous heading jumps around every closed circuit', () => {
     for (const track of TRACKS) {
       setActiveTrack(track.id);
@@ -47,6 +56,13 @@ describe('TrackModel', () => {
       }
       expect(worst).toBeLessThan(1.05);
     }
+  });
+
+  it('detects a start-line wrap without requiring a narrow progress window', () => {
+    expect(crossedStartLine(0.97, 0.03)).toBe(true);
+    expect(crossedStartLine(0.86, 0.04)).toBe(true);
+    expect(crossedStartLine(0.61, 0.42)).toBe(false);
+    expect(crossedStartLine(0.12, 0.18)).toBe(false);
   });
 
   it('projects sampled points back close to their source progress', () => {
@@ -69,6 +85,31 @@ describe('TrackModel', () => {
     expect(Math.abs(globalProjection.progress - sourceProgress)).toBeGreaterThan(0.01);
     expect(Math.abs(localProjection.progress - sourceProgress)).toBeLessThan(0.006);
     expect(localProjection.laneOffset).toBeLessThan(-18);
+  });
+
+  it('keeps Sakura kerb attacks on the same progress branch', () => {
+    setActiveTrack('sakura-esses');
+    for (let index = 0; index < 80; index++) {
+      const progress = index / 80;
+      for (const laneOffset of [-19, 19]) {
+        const point = sampleTrack(progress, laneOffset);
+        const projected = projectTrackNear(point.x, point.y, progress, 1.35);
+        const delta = Math.abs(projected.progress - progress);
+        const circularDelta = Math.min(delta, 1 - delta);
+        expect(circularDelta).toBeLessThan(0.012);
+      }
+    }
+  });
+
+  it('abandons a stale continuity branch when the real road is clearly nearer', () => {
+    setActiveTrack('pitwall-gp');
+    const actualProgress = 0.31;
+    const point = sampleTrack(actualProgress, 0);
+    const projected = projectTrackNear(point.x, point.y, 0.92, 1.35);
+    const delta = Math.abs(projected.progress - actualProgress);
+    const circularDelta = Math.min(delta, 1 - delta);
+    expect(circularDelta).toBeLessThan(0.02);
+    expect(projected.distance).toBeLessThan(1);
   });
 
   it('preserves the signed lateral side of a car on the circuit', () => {

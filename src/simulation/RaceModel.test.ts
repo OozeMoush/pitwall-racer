@@ -13,6 +13,46 @@ import {
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
+  it('spreads AI strategies and includes an aggressive Soft-Medium-Soft two-stop', () => {
+    const field = createAiField(undefined, 50);
+    expect(field.filter((driver) => driver.nextCompound === 'HARD')).toHaveLength(2);
+    expect(field.filter((driver) => driver.nextCompound === 'SOFT')).toHaveLength(3);
+    expect(field.filter((driver) => driver.nextCompound === 'MEDIUM')).toHaveLength(2);
+    expect(field.find((driver) => driver.name === 'ORBIT')?.plannedPitLap).toBe(36);
+    expect(field.find((driver) => driver.name === 'RIFT')?.plannedPitLap).toBe(38);
+
+    const kite = field.find((driver) => driver.name === 'KITE')!;
+    expect(kite.pitPlan).toEqual([
+      { plannedLap: 12, compound: 'MEDIUM' },
+      { plannedLap: 36, compound: 'SOFT' },
+    ]);
+    expect(kite.pitStopIndex).toBe(0);
+  });
+
+  it('arms KITE second stop after completing the first scheduled stop', () => {
+    const kite = createAiField(undefined, 50).find((driver) => driver.name === 'KITE')!;
+    kite.lap = 12;
+    kite.progress = 0.999;
+    kite.speed = 90;
+    kite.strategyIntent = 'UNDERCUT';
+    const afterFirstStop = stepAi(kite, 0.1, 50);
+
+    expect(afterFirstStop.tire.compound).toBe('MEDIUM');
+    expect(afterFirstStop.pitStopIndex).toBe(1);
+    expect(afterFirstStop.nextCompound).toBe('SOFT');
+    expect(afterFirstStop.plannedPitLap).toBe(36);
+    expect(afterFirstStop.pitLap).toBe(36);
+    expect(afterFirstStop.strategyIntent).toBe('PLAN');
+  });
+
+  it('scales planned pit windows with the selected race length', () => {
+    const forty = createAiField(undefined, 40);
+    const sixty = createAiField(undefined, 60);
+    expect(forty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(16);
+    expect(sixty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(24);
+    expect(sixty.find((driver) => driver.name === 'ZEN')?.plannedPitLap).toBe(44);
+  });
+
   it('requires two distinct dry compounds', () => {
     expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM']))).toBe(false);
     expect(isTwoCompoundLegal(new Set<Compound>(['MEDIUM', 'HARD']))).toBe(true);

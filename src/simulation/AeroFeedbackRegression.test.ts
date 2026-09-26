@@ -9,7 +9,7 @@ function car(id: string, metres: number, laneOffset = 0): AeroCarPose {
 describe('racecraft aero feedback', () => {
   it('makes the close wake strong enough to matter on a miniature straight', () => {
     const tucked = aerodynamicEffect(car('you', 100), [car('ahead', 124)]);
-    expect(tucked.tow).toBeGreaterThan(0.15);
+    expect(tucked.tow).toBeGreaterThan(0.21);
     expect(tucked.dirtyAir).toBeGreaterThan(0.17);
   });
 

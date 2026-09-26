@@ -24,7 +24,8 @@ const SIDE_BY_SIDE_LATERAL = 7;
 // converts this coefficient into extra power, so 20-30 m behind another car
 // now produces a clearly visible straight-line gain without becoming a magic
 // overtake button. Player and AI consume the same value.
-const TOW_STRENGTH = 0.22;
+export const MAX_TOW_STRENGTH = 0.30;
+export const MAX_TOW_POWER_BOOST = 0.13;
 const DIRTY_AIR_STRENGTH = 0.28;
 
 /**
@@ -55,8 +56,16 @@ export function aerodynamicEffect(
     const longitudinalStrength = clamp01(
       (MAX_WAKE_DISTANCE - longitudinal) / (MAX_WAKE_DISTANCE - MIN_WAKE_DISTANCE),
     );
-    const towStrength = TOW_STRENGTH * longitudinalStrength * clamp01(1 - lateral / TOW_HALF_WIDTH);
-    const dirtyStrength = DIRTY_AIR_STRENGTH * longitudinalStrength * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
+    // Tow should be a racecraft tool the player can actually feel. Keep dirty
+    // air linear, but make the slipstream useful across more of the wake and
+    // reserve 100% for being close and properly aligned.
+    const towLongitudinalStrength = Math.pow(longitudinalStrength, 0.78);
+    const towStrength = MAX_TOW_STRENGTH
+      * towLongitudinalStrength
+      * clamp01(1 - lateral / TOW_HALF_WIDTH);
+    const dirtyStrength = DIRTY_AIR_STRENGTH
+      * longitudinalStrength
+      * clamp01(1 - lateral / DIRTY_HALF_WIDTH);
 
     tow = Math.max(tow, towStrength);
     dirtyAir = Math.max(dirtyAir, dirtyStrength);
@@ -68,6 +77,14 @@ export function aerodynamicEffect(
   }
 
   return { tow, dirtyAir, sourceId };
+}
+
+export function normalizedTowStrength(tow: number): number {
+  return clamp01(Math.max(0, tow) / MAX_TOW_STRENGTH);
+}
+
+export function towPowerBoost(tow: number): number {
+  return normalizedTowStrength(tow) * MAX_TOW_POWER_BOOST;
 }
 
 function forwardTrackDistance(fromProgress: number, toProgress: number): number {

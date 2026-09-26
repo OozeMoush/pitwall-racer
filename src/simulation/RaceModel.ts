@@ -8,6 +8,11 @@ import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 export type BattleState = 'CLEAR' | 'FOLLOW' | 'ATTACK' | 'DEFEND' | 'SIDE_BY_SIDE';
 export type StrategyIntent = 'PLAN' | 'UNDERCUT' | 'OVERCUT' | 'DONE';
 
+export interface AiPitPlanStop {
+  plannedLap: number;
+  compound: Compound;
+}
+
 export interface DriverState {
   id: string;
   name: string;
@@ -21,6 +26,8 @@ export interface DriverState {
   pitLap: number;
   strategyIntent: StrategyIntent;
   nextCompound: Compound;
+  pitPlan: readonly AiPitPlanStop[];
+  pitStopIndex: number;
   laneOffset: number;
   preferredLane: number;
   battleState: BattleState;
@@ -59,25 +66,42 @@ const EMPTY_TRAFFIC: TrafficContext = {
   gapBehindMetres: Number.POSITIVE_INFINITY,
 };
 
-export function createAiField(gridOrder?: readonly string[]): DriverState[] {
-  // Fifty-lap miniature races need genuine stint shapes. Soft starters attack
-  // early then move to Hard; Medium starters extend toward the middle; Hard
-  // starters run longest before switching to Medium. This stays one-stop for
-  // now so the first long-race pass remains readable and tuneable.
-  const plans: Array<[string, Compound, number, Compound, number, number]> = [
-    ['NOVA', 'SOFT', 11, 'HARD', -4, 1.130],
-    ['APEX', 'MEDIUM', 20, 'HARD', 4, 1.136],
-    ['VOLT', 'HARD', 31, 'MEDIUM', -3, 1.120],
-    ['ORBIT', 'MEDIUM', 18, 'HARD', 3, 1.131],
-    ['KITE', 'SOFT', 12, 'HARD', -4, 1.127],
-    ['RIFT', 'HARD', 29, 'MEDIUM', 3, 1.118],
-    ['ZEN', 'MEDIUM', 21, 'HARD', 0, 1.129],
+export function createAiField(
+  gridOrder?: readonly string[],
+  totalLaps = 50,
+): DriverState[] {
+  // Most cars run one stop, but one deliberately aggressive strategy adds a
+  // second stop. KITE attacks on Soft, uses Medium for the middle stint, then
+  // returns to Soft for the finish. Stop fractions scale across 40/50/60 laps.
+  const plans: Array<[
+    string,
+    Compound,
+    ReadonlyArray<readonly [number, Compound]>,
+    number,
+    number,
+  ]> = [
+    ['NOVA', 'SOFT', [[0.22, 'HARD']], -4, 1.130],
+    ['APEX', 'MEDIUM', [[0.40, 'HARD']], 4, 1.136],
+    ['VOLT', 'HARD', [[0.62, 'MEDIUM']], -3, 1.120],
+    ['ORBIT', 'MEDIUM', [[0.72, 'SOFT']], 3, 1.131],
+    ['KITE', 'SOFT', [[0.24, 'MEDIUM'], [0.72, 'SOFT']], -4, 1.127],
+    ['RIFT', 'HARD', [[0.76, 'SOFT']], 3, 1.118],
+    ['ZEN', 'MEDIUM', [[0.74, 'SOFT']], 0, 1.129],
   ];
 
-  return plans.map(([name, start, plannedPitLap, next, preferredLane, skill], index) => {
+  const safeRaceLaps = Math.max(6, Math.round(totalLaps));
+  return plans.map(([name, start, stopDefinitions, preferredLane, skill], index) => {
     const id = `ai-${index}`;
     const qualifiedPosition = gridPositionFor(id, gridOrder);
     const grid = qualifiedPosition === undefined ? aiGridSlot(index) : gridSlotForPosition(qualifiedPosition);
+    const pitPlan: AiPitPlanStop[] = stopDefinitions.map(([fraction, compound]) => ({
+      plannedLap: Math.max(
+        4,
+        Math.min(safeRaceLaps - 3, Math.round(safeRaceLaps * fraction)),
+      ),
+      compound,
+    }));
+    const firstStop = pitPlan[0];
     return {
       id,
       name,
@@ -87,10 +111,12 @@ export function createAiField(gridOrder?: readonly string[]): DriverState[] {
       tire: createTire(start),
       pace: 'BALANCED',
       usedCompounds: new Set<Compound>([start]),
-      plannedPitLap,
-      pitLap: plannedPitLap,
+      plannedPitLap: firstStop.plannedLap,
+      pitLap: firstStop.plannedLap,
       strategyIntent: 'PLAN',
-      nextCompound: next,
+      nextCompound: firstStop.compound,
+      pitPlan,
+      pitStopIndex: 0,
       laneOffset: grid.laneOffset,
       preferredLane,
       battleState: 'CLEAR',
@@ -167,6 +193,10 @@ export function stepAi(
   let lap = driver.lap;
   let progress = driver.progress;
   let usedCompounds = driver.usedCompounds;
+  let pitStopIndex = driver.pitStopIndex;
+  let plannedPitLap = driver.plannedPitLap;
+  let activePitLap = pitLap;
+  let nextCompound = driver.nextCompound;
 
   const profile = trackProfile(progress, driver.skill, tire.grip);
   const paceFactor = pace === 'PUSH' ? 1.035 : pace === 'CONSERVE' ? 0.968 : 1;
@@ -223,18 +253,43 @@ export function stepAi(
     if (progress >= 1) {
       progress -= 1;
       lap += 1;
-      if (lap === pitLap + 1 && !usedCompounds.has(driver.nextCompound)) {
-        tire = createTire(driver.nextCompound);
+      if (lap === activePitLap + 1 && pitStopIndex < driver.pitPlan.length) {
+        tire = createTire(nextCompound);
         usedCompounds = new Set(usedCompounds);
-        usedCompounds.add(driver.nextCompound);
+        usedCompounds.add(nextCompound);
         progress = Math.max(0, progress - 0.055);
-        strategyIntent = 'DONE';
+        pitStopIndex += 1;
+        const followingStop = driver.pitPlan[pitStopIndex];
+        if (followingStop) {
+          plannedPitLap = followingStop.plannedLap;
+          activePitLap = followingStop.plannedLap;
+          nextCompound = followingStop.compound;
+          strategyIntent = 'PLAN';
+        } else {
+          strategyIntent = 'DONE';
+        }
       }
     }
   }
 
   const finished = lap > totalLaps;
-  return { ...driver, progress, lap, speed, tire, pace, usedCompounds, pitLap, strategyIntent, laneOffset, battleState, finished };
+  return {
+    ...driver,
+    progress,
+    lap,
+    speed,
+    tire,
+    pace,
+    usedCompounds,
+    plannedPitLap,
+    pitLap: activePitLap,
+    strategyIntent,
+    nextCompound,
+    pitStopIndex,
+    laneOffset,
+    battleState,
+    finished,
+  };
 }
 
 function choosePitStrategy(
@@ -244,7 +299,17 @@ function choosePitStrategy(
   tireHealth: number,
   totalLaps: number,
 ): { pitLap: number; intent: StrategyIntent } {
-  if (driver.usedCompounds.has(driver.nextCompound)) return { pitLap: driver.pitLap, intent: 'DONE' };
+  if (driver.pitStopIndex >= driver.pitPlan.length) {
+    return { pitLap: driver.pitLap, intent: 'DONE' };
+  }
+
+  // Once an undercut/overcut has been committed, do not reverse that call on a
+  // later controller tick just because traffic cleared or the planned lap was
+  // reached. The physical pit-entry model reads driver.pitLap continuously, so
+  // changing it at the last moment can make a car drive past its intended stop.
+  if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
+    return { pitLap: driver.pitLap, intent: driver.strategyIntent };
+  }
 
   // Let long races breathe: a strategy can move two laps either way rather than
   // the old one-lap window that was designed around twelve-lap sprints.
@@ -257,10 +322,6 @@ function choosePitStrategy(
 
   if (driver.lap >= driver.plannedPitLap && driver.lap < latest && battleState === 'CLEAR' && tireHealth > 0.52) {
     return { pitLap: latest, intent: 'OVERCUT' };
-  }
-
-  if (driver.strategyIntent === 'UNDERCUT' || driver.strategyIntent === 'OVERCUT') {
-    return { pitLap: driver.pitLap, intent: driver.strategyIntent };
   }
 
   return { pitLap: driver.plannedPitLap, intent: 'PLAN' };

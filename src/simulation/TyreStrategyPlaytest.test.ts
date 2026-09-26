@@ -64,7 +64,11 @@ describe('tyre strategy playtest telemetry', () => {
 
     console.log(`TYRE_PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.pitBenefitSeconds).toBeGreaterThan(20);
+    // The physical 80 km/h pit lane costs more than the old abstract
+    // transit. A ~15s+ advantage over staying out for all 12 laps is already a
+    // decisive strategy signal; do not exaggerate tyre degradation merely to
+    // preserve the obsolete pre-physical-pit 20s threshold.
+    expect(metrics.pitBenefitSeconds).toBeGreaterThan(15);
     expect(metrics.pitBenefitSeconds).toBeLessThan(120);
     expect(metrics.noStopLap8Grip).toBeGreaterThan(metrics.noStopLap4Grip * 0.88);
     expect(metrics.noStopLap12Grip).toBeLessThan(metrics.noStopLap4Grip * 0.92);

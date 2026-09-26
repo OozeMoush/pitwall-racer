@@ -1,4 +1,5 @@
 import { controlArcadeCar } from './ArcadeCarController';
+import type { RacingLineAsset } from './RacingLineAsset';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 import { FREE_KERB_DISTANCE } from './TrackLimitsModel';
 import { getTrackDefinition, type TrackId, type TrackPoint } from './TrackModel';
@@ -69,11 +70,14 @@ interface EnvelopeResult {
  * Convert the old opaque skill number into an execution percentage of the
  * machine-limit reference. Nobody gets extra power or grip: the difference is
  * how closely the driver follows the same reference braking/line/speed plan.
- * The best drivers may now reach 100% of the shared reference, but never exceed
- * it; the back of the field remains close enough to keep the pack compressed.
+ * The best drivers may reach 100% of the shared reference, but never exceed
+ * it. The whole field is deliberately kept very close to the demonstrated
+ * reference: driver identity should now come mostly from tyre strategy,
+ * traffic/racecraft and small execution differences rather than leaving a
+ * large amount of clean-air lap time unused.
  */
 export function referenceExecutionForSkill(skill: number): number {
-  return clamp(0.992 + (skill - 1.127) * 0.60, 0.985, 1.0);
+  return clamp(0.997 + (skill - 1.127) * 0.35, 0.994, 1.0);
 }
 
 /**
@@ -125,6 +129,48 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   };
   cache.set(key, lap);
   return lap;
+}
+
+export function referenceRacingLineAsset(
+  trackId: TrackId,
+  tireGrip: number,
+): RacingLineAsset {
+  const lap = referenceLap(trackId, tireGrip);
+  const geometry = buildGeometry(getTrackDefinition(trackId).controls);
+  const points = lap.samples.map((sample, index) => {
+    const previous = lap.samples[(index - 1 + lap.samples.length) % lap.samples.length];
+    const next = lap.samples[(index + 1) % lap.samples.length];
+    const previousPoint = sampleGeometry(geometry, previous.progress, previous.laneOffset);
+    const currentPoint = sampleGeometry(geometry, sample.progress, sample.laneOffset);
+    const nextPoint = sampleGeometry(geometry, next.progress, next.laneOffset);
+    const pathHeading = Math.atan2(
+      nextPoint.y - previousPoint.y,
+      nextPoint.x - previousPoint.x,
+    );
+    const centreHeading = sampleGeometry(geometry, sample.progress, 0).heading;
+    const signedCurvature = signedPathCurvature(
+      previousPoint,
+      currentPoint,
+      nextPoint,
+    );
+
+    return {
+      progress: sample.progress,
+      laneOffset: sample.laneOffset,
+      targetSpeed: sample.targetSpeed,
+      headingOffset: wrapAngle(pathHeading - centreHeading),
+      yawRate: sample.targetSpeed * signedCurvature,
+    };
+  });
+
+  return {
+    version: 1,
+    trackId,
+    source: 'OPTIMIZER',
+    referenceGrip: lap.tireGrip,
+    lapSeconds: lap.lapSeconds,
+    points,
+  };
 }
 
 export function referenceTarget(
@@ -310,6 +356,16 @@ function maximumReferenceYaw(speed: number, tireGrip: number): number {
   return best;
 }
 
+export function referenceSteerForCurvature(
+  speed: number,
+  signedCurvature: number,
+  tireGrip: number,
+): number {
+  if (Math.abs(signedCurvature) < 0.0002 || speed < 1) return 0;
+  return Math.sign(signedCurvature)
+    * steeringDemand(speed, Math.abs(signedCurvature), tireGrip);
+}
+
 function steeringDemand(speed: number, curvature: number, tireGrip: number): number {
   if (curvature < 0.0002 || speed < 1) return 0;
   const available = Math.max(0.0001, maximumReferenceYaw(speed, tireGrip));
@@ -385,6 +441,22 @@ function sampleGeometry(geometry: Geometry, progress: number, laneOffset = 0): T
   };
 }
 
+function signedPathCurvature(
+  previous: TrackPoint,
+  current: TrackPoint,
+  next: TrackPoint,
+): number {
+  const ab = Math.hypot(current.x - previous.x, current.y - previous.y);
+  const bc = Math.hypot(next.x - current.x, next.y - current.y);
+  const ac = Math.hypot(next.x - previous.x, next.y - previous.y);
+  const denominator = ab * bc * ac;
+  if (denominator < 0.0001) return 0;
+  const cross =
+    (current.x - previous.x) * (next.y - previous.y)
+    - (current.y - previous.y) * (next.x - previous.x);
+  return (2 * cross) / denominator;
+}
+
 function pathCurvature(points: readonly TrackPoint[], index: number): number {
   const previous = points[(index - 1 + points.length) % points.length];
   const current = points[index];
@@ -419,6 +491,13 @@ function buildClosedCatmullRom(points: readonly TrackPoint[], samplesPerControl:
       });
     }
   }
+  return result;
+}
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
   return result;
 }
 

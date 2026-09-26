@@ -3,6 +3,7 @@ import {
   REFERENCE_LANE_LIMIT,
   referenceExecutionForSkill,
   referenceLap,
+  referenceRacingLineAsset,
 } from './ReferenceDriverModel';
 import { compoundPeakGrip } from './TireModel';
 import { TRACKS } from './TrackModel';
@@ -31,6 +32,17 @@ describe('machine-limit reference driver', () => {
     console.log(`REFERENCE_DRIVER ${JSON.stringify(telemetry)}`);
   }, 20_000);
 
+  it('exposes the current optimized CPU reference through the shared racing-line asset contract', () => {
+    const asset = referenceRacingLineAsset(
+      'pitwall-gp',
+      compoundPeakGrip('SOFT', 'PUSH'),
+    );
+
+    expect(asset.source).toBe('OPTIMIZER');
+    expect(asset.points).toHaveLength(320);
+    expect(asset.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
+  });
+
   it('makes tyre grip change the physical reference instead of changing engine power', () => {
     const soft = referenceLap('pitwall-gp', compoundPeakGrip('SOFT', 'PUSH'));
     const hard = referenceLap('pitwall-gp', compoundPeakGrip('HARD', 'PUSH'));
@@ -39,9 +51,12 @@ describe('machine-limit reference driver', () => {
     expect(Math.abs(soft.straightLimit - hard.straightLimit)).toBeLessThan(0.01);
   });
 
-  it('keeps the professional field in a narrow execution band capped by the shared reference', () => {
-    expect(referenceExecutionForSkill(1.118)).toBeGreaterThanOrEqual(0.985);
-    expect(referenceExecutionForSkill(1.136)).toBeLessThanOrEqual(1.0);
+  it('keeps the professional field very close to the shared reference', () => {
+    expect(referenceExecutionForSkill(1.118)).toBe(0.994);
+    expect(referenceExecutionForSkill(1.120)).toBeCloseTo(0.99455, 5);
+    expect(referenceExecutionForSkill(1.127)).toBe(0.997);
+    expect(referenceExecutionForSkill(1.130)).toBeCloseTo(0.99805, 5);
+    expect(referenceExecutionForSkill(1.136)).toBe(1.0);
     expect(referenceExecutionForSkill(1.136)).toBeGreaterThan(referenceExecutionForSkill(1.118));
     expect(referenceExecutionForSkill(1.155)).toBe(1.0);
   });

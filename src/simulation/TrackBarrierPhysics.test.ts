@@ -1,8 +1,18 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { CAR_COLLIDER_HALF_LENGTH, RapierRacePhysics } from './RapierRacePhysics';
 import {
+  barrierNormalSpeed,
+  CAR_COLLIDER_HALF_LENGTH,
+  isPhysicalBarrierImpact,
+  isSignificantBarrierImpact,
+  RapierRacePhysics,
+  WALL_CONTACT_MIN_INCIDENCE_SIN,
+  WALL_CONTACT_MIN_NORMAL_SPEED,
+} from './RapierRacePhysics';
+import {
+  TRACK_BARRIER_HALF_THICKNESS,
   TRACK_BARRIER_OFFSET,
+  TRACK_KERB_OUTER_OFFSET,
   hasSafetyBarrier,
   shouldPlaceSafetyBarrier,
 } from './TrackLimitsModel';
@@ -25,6 +35,68 @@ describe('physical safety barriers', () => {
     expect(hasSafetyBarrier(0.95, 1)).toBe(true);
     expect(hasSafetyBarrier(0.02, 1)).toBe(true);
     expect(hasSafetyBarrier(0.91, -1)).toBe(true);
+  });
+
+  it('does not classify a shallow wall/kerb brush as a wall-impact trace failure', () => {
+    const speed = 80;
+    const shallowAngle = 0.04;
+    const vx = Math.cos(shallowAngle) * speed;
+    const vy = Math.sin(shallowAngle) * speed;
+
+    expect(barrierNormalSpeed(vx, vy, 0)).toBeLessThan(
+      WALL_CONTACT_MIN_NORMAL_SPEED,
+    );
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(false);
+  });
+
+  it('allows a high-speed shallow wall brush even when lateral speed is non-trivial', () => {
+    const speed = 100;
+    const shallowAngle = 0.10;
+    const vx = Math.cos(shallowAngle) * speed;
+    const vy = Math.sin(shallowAngle) * speed;
+    const normalSpeed = barrierNormalSpeed(vx, vy, 0);
+
+    expect(normalSpeed).toBeGreaterThan(WALL_CONTACT_MIN_NORMAL_SPEED);
+    expect(normalSpeed / speed).toBeLessThan(WALL_CONTACT_MIN_INCIDENCE_SIN);
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(false);
+  });
+
+  it('classifies a real lateral wall hit as a wall-impact trace failure', () => {
+    const speed = 60;
+    const impactAngle = 0.24;
+    const vx = Math.cos(impactAngle) * speed;
+    const vy = Math.sin(impactAngle) * speed;
+
+    expect(barrierNormalSpeed(vx, vy, 0)).toBeGreaterThan(
+      WALL_CONTACT_MIN_NORMAL_SPEED,
+    );
+    expect(isSignificantBarrierImpact(vx, vy, 0)).toBe(true);
+  });
+
+  it('does not call a mere touching/contact-pair state a wall hit', () => {
+    expect(isPhysicalBarrierImpact(
+      80,
+      0.8,
+      79.9,
+      0.7,
+      0,
+    )).toBe(false);
+  });
+
+  it('requires an actual solver-resolved impact response for WALL CONTACT', () => {
+    expect(isPhysicalBarrierImpact(
+      72,
+      5,
+      71.8,
+      0.4,
+      0,
+    )).toBe(true);
+  });
+
+  it('leaves clear physical room outside the usable kerb', () => {
+    expect(
+      TRACK_BARRIER_OFFSET - TRACK_BARRIER_HALF_THICKNESS - TRACK_KERB_OUTER_OFFSET,
+    ).toBeGreaterThan(4);
   });
 
   it('stops a high-speed car from crossing the outside wall', () => {

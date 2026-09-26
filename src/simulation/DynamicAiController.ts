@@ -1,10 +1,50 @@
+import { sampleRacingLineAsset } from './RacingLineAsset';
+import { explicitLineFollower } from './ExplicitLineFollower';
 import { predictiveAiSteer } from './PredictiveAiSteering';
+import { predictiveExplicitLineSteer } from './PredictiveExplicitLineSteering';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
-import { referenceExecutionForSkill, referenceTarget } from './ReferenceDriverModel';
-import { AI_SAFE_LANE_LIMIT, TRACK_ROAD_HALF_WIDTH, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
+import { referenceExecutionForSkill } from './ReferenceDriverModel';
+import {
+  activeReferenceTarget,
+  racingLineBrakeIntent,
+  racingLineLocalBrakeIntent,
+  racingLineThrottleIntent,
+  runtimeRacingLine,
+} from './RacingLineRuntime';
+import {
+  AI_SAFE_LANE_LIMIT,
+  TRACK_KERB_OUTER_OFFSET,
+  TRACK_ROAD_HALF_WIDTH,
+  TRACK_RUNOFF_HALF_WIDTH,
+} from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
 import type { VehicleState } from './VehicleModel';
+
+export interface DynamicAiDebug {
+  lineSource: 'AUTO' | 'PLAYER' | 'EDITOR' | 'OPTIMIZER';
+  progress: number;
+  centerProgress: number;
+  referenceLane: number;
+  laneError: number;
+  pathError: number;
+  lookAheadMetres: number;
+  steeringProgress: number;
+  predictionWeight: number;
+  feedbackBrake: number;
+  profileBrake: number;
+  profileThrottle: number;
+  demonstratedDynamics: boolean;
+  demonstratedAcceleration: boolean;
+  demonstratedGripTrace: boolean;
+  demonstratedForwardAcceleration: boolean;
+  sourceGrip?: number;
+  sourceForwardAcceleration?: number;
+  sourceNetSpeedAcceleration?: number;
+  targetYawRate?: number;
+  pathHeadingError: number;
+  bearingError: number;
+}
 
 export interface DynamicAiControl {
   throttle: number;
@@ -13,6 +53,7 @@ export interface DynamicAiControl {
   targetSpeed: number;
   targetLane: number;
   battleState: BattleState;
+  debug: DynamicAiDebug;
 }
 
 const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
@@ -21,6 +62,48 @@ const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const ALONGSIDE_ENTRY_RANGE = 10.5;
 const ALONGSIDE_EXIT_RANGE = 13.0;
+const AI_PACE_CHEAT_MIN = 1.055;
+const AI_PACE_CHEAT_MAX = 1.085;
+const AI_EXPLICIT_PACE_MIN = 1.000;
+const AI_EXPLICIT_PACE_MAX = 1.000;
+const AI_SKILL_GRIP_MAX = 1.010;
+const AI_POWER_BONUS_MIN = 0.065;
+const AI_POWER_BONUS_MAX = 0.115;
+
+export function aiPaceCheatForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_PACE_CHEAT_MIN
+    + (AI_PACE_CHEAT_MAX - AI_PACE_CHEAT_MIN) * t;
+}
+
+export function aiExplicitPaceForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_EXPLICIT_PACE_MIN
+    + (AI_EXPLICIT_PACE_MAX - AI_EXPLICIT_PACE_MIN) * t;
+}
+
+export function aiGripMultiplier(compound: DriverState['tire']['compound']): number {
+  if (compound === 'SOFT') return 1.075;
+  if (compound === 'MEDIUM') return 1.055;
+  return 1.045;
+}
+
+export function aiSkillGripMultiplier(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return 1 + (AI_SKILL_GRIP_MAX - 1) * t;
+}
+
+export function aiPowerBoostForSkill(skill: number): number {
+  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
+  return AI_POWER_BONUS_MIN
+    + (AI_POWER_BONUS_MAX - AI_POWER_BONUS_MIN) * t;
+}
+
+export function aiEffectiveGrip(driver: DriverState): number {
+  return driver.tire.grip
+    * aiGripMultiplier(driver.tire.compound)
+    * aiSkillGripMultiplier(driver.skill);
+}
 
 /**
  * Physical AI for the race weekend.
@@ -44,11 +127,16 @@ export function dynamicAiControl(
   traffic: readonly RaceTrafficCar[],
 ): DynamicAiControl {
   const projection = projectTrackNear(vehicle.x, vehicle.y, driver.progress);
-  const profile = trackProfile(projection.progress, 1, driver.tire.grip);
+  const referenceGhost = driver.id === 'debug-reference-ghost';
+  const controlGrip = referenceGhost ? driver.tire.grip : aiEffectiveGrip(driver);
+  const paceCheat = referenceGhost
+    ? 1
+    : aiPaceCheatForSkill(driver.skill);
+  const profile = trackProfile(projection.progress, 1, controlGrip);
   const battlePreview = trackProfile(
     projection.progress + 72 / TRACK_LENGTH,
     1,
-    driver.tire.grip,
+    controlGrip,
   );
   const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
   const battleCommitted = driver.battleState === 'ATTACK' || driver.battleState === 'SIDE_BY_SIDE';
@@ -129,19 +217,25 @@ export function dynamicAiControl(
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
+  const lineAsset = runtimeRacingLine(trackId);
+  const highFidelityLine = lineAsset?.source === 'PLAYER' || lineAsset?.source === 'EDITOR';
 
   const technicalLookahead = 1 - clamp((profile.severity - 0.58) / 0.42, 0, 1) * 0.22;
-  const lookAheadMetres = clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
+  const lookAheadMetres = highFidelityLine
+    ? clamp(16 + speed * 0.22, 24, 46) * technicalLookahead
+    : clamp(18 + speed * 0.32, 28, 60) * technicalLookahead;
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
-  const lineReference = referenceTarget(trackId, targetProgress, driver.tire.grip);
-  const currentLineReference = referenceTarget(trackId, projection.progress, driver.tire.grip);
+  const lineReference = activeReferenceTarget(trackId, targetProgress, controlGrip);
+  const currentLineReference = activeReferenceTarget(trackId, projection.progress, controlGrip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   // Keep the proven closed-loop reference follower for clean-air pace. The
   // visible weaving was primarily tactical side switching, not the reference
   // path itself; replacing this loop made the car miss the final complex and
   // lose the qualifying lap entirely.
-  let targetLane = approachLane(projection.laneOffset, baseLane, 2.6);
+  let targetLane = highFidelityLine
+    ? baseLane
+    : approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (battleState === 'ATTACK' && ahead) {
     const passOffset = ahead.isPlayer === true ? 7.6 : 7.0;
@@ -179,37 +273,57 @@ export function dynamicAiControl(
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
   }
 
-  const offRoad = projection.distance > TRACK_ROAD_HALF_WIDTH + 0.25;
+  const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
   if (offRoad) {
-    targetLane = 0;
+    // AUTO recovers toward the centreline, but an explicit line should not
+    // suddenly be replaced by a completely different path the moment one tyre
+    // runs wide. Keep PLAYER/EDITOR recovery locked to the demonstrated path;
+    // the speed caps below provide the safety margin while the same follower
+    // brings the car back.
+    targetLane = highFidelityLine
+      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      : 0;
     battleState = 'CLEAR';
   }
 
   const battleActive = battleState === 'ATTACK' || battleState === 'SIDE_BY_SIDE';
-  const steeringLookAheadMetres = battleActive
-    ? Math.min(32, lookAheadMetres)
-    : lookAheadMetres;
-  const steeringProgress = offRoad
-    ? projection.progress + 18 / TRACK_LENGTH
-    : projection.progress + steeringLookAheadMetres / TRACK_LENGTH;
+  const explicitFollower = highFidelityLine && !battleActive
+    ? explicitLineFollower(
+        trackId,
+        vehicle,
+        projection.progress,
+        controlGrip,
+      )
+    : undefined;
+  if (explicitFollower) {
+    targetLane = clamp(explicitFollower.targetLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  }
+  const steeringLookAheadMetres = explicitFollower?.lookAheadMetres
+    ?? (battleActive ? Math.min(32, lookAheadMetres) : lookAheadMetres);
+  const steeringProgress = explicitFollower?.steeringProgress
+    ?? (offRoad
+      ? projection.progress + 18 / TRACK_LENGTH
+      : projection.progress + steeringLookAheadMetres / TRACK_LENGTH);
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentDistance = battleActive ? 6 : 8;
+  const tangentDistance = battleActive ? 6 : highFidelityLine ? 5 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
   const tangentLane = offRoad
     ? 0
     : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(referenceTarget(trackId, tangentProgress, driver.tire.grip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      ? clamp(activeReferenceTarget(trackId, tangentProgress, controlGrip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
       : targetLane;
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
   const bearingHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
-  const referenceLaneNow = offRoad
-    ? 0
-    : battleState === 'CLEAR' || battleState === 'FOLLOW'
-      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
-      : targetLane;
+  const referenceLaneNow = explicitFollower
+    ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+    : offRoad
+      ? 0
+      : battleState === 'CLEAR' || battleState === 'FOLLOW'
+        ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+        : targetLane;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
   const battleOverflow = battleActive
     ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
@@ -225,33 +339,137 @@ export function dynamicAiControl(
         + lateralError * 0.78
         - vehicle.yawRate * 0.40
         + overflowCorrection
-      : headingError * 2.15
-        + bearingError * 0.82
-        + lateralError * 0.52
-        - vehicle.yawRate * 0.38;
-  const baselineSteer = clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
-  const predictionWeight = !offRoad && !battleActive && trackId === 'pitwall-gp'
+      : highFidelityLine
+        ? headingError * 2.45
+          + bearingError * 1.05
+          + lateralError * 0.82
+          - vehicle.yawRate * 0.42
+        : headingError * 2.15
+          + bearingError * 0.82
+          + lateralError * 0.52
+          - vehicle.yawRate * 0.38;
+  const baselineSteer = explicitFollower
+    ? explicitFollower.steer
+    : clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
+  const pitwallPrediction = !offRoad && !battleActive && !highFidelityLine && trackId === 'pitwall-gp'
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
-  const steer = predictiveAiSteer(
-    vehicle,
-    driver.tire.grip,
-    target,
-    tangent,
-    baselineSteer,
-    predictionWeight,
-  );
+  const predictionWeight = pitwallPrediction;
+  const explicitPredictedSteer = explicitFollower && !explicitFollower.demonstratedDynamics
+    ? predictiveExplicitLineSteer(
+        trackId,
+        vehicle,
+        driver.tire.grip,
+        explicitFollower.pathProgress,
+        baselineSteer,
+      )
+    : undefined;
+  const steer = explicitFollower
+    ? explicitFollower.demonstratedDynamics
+      ? baselineSteer
+      : constrainedExplicitPrediction(
+          explicitFollower.laneError,
+          baselineSteer,
+          explicitPredictedSteer ?? baselineSteer,
+        )
+    : predictiveAiSteer(
+        vehicle,
+        driver.tire.grip,
+        target,
+        tangent,
+        baselineSteer,
+        predictionWeight,
+      );
 
-  const speedReference = currentLineReference;
-  let targetSpeed = speedReference.targetSpeed * execution;
+  // Legacy explicit traces were stored only against centreline progress, so
+  // longitudinal control had to stay on that axis. Q5 PLAYER traces carry an
+  // absolute world-space trajectory; their explicit-path projection is now the
+  // physically correct phase for speed/AXF samples as well as steering. Keeping
+  // speed on centreline progress while steering follows path progress can shift
+  // the brake phase by several metres in compact corners and create the large
+  // overspeed/full-brake oscillation seen in replay diagnostics.
+  const absolutePoseTrace = lineAsset?.points.length
+    ? lineAsset.points.every((point) =>
+        point.worldX !== undefined
+        && point.worldY !== undefined
+        && point.bodyHeading !== undefined
+      )
+    : false;
+  const longitudinalProgress = highFidelityLine && absolutePoseTrace && explicitFollower
+    ? explicitFollower.pathProgress
+    : projection.progress;
+  const speedReference = highFidelityLine
+    ? activeReferenceTarget(trackId, longitudinalProgress, controlGrip)
+    : currentLineReference;
+  const longitudinalSample = highFidelityLine && lineAsset
+    ? sampleRacingLineAsset(lineAsset, longitudinalProgress)
+    : undefined;
+  const longitudinalSourceGrip = longitudinalSample?.tireGrip
+    ?? lineAsset?.referenceGrip
+    ?? driver.tire.grip;
+  const hasForwardAccelerationTrace =
+    longitudinalSample?.forwardAcceleration !== undefined;
+  // PLAYER/EDITOR targetSpeed is the demonstrated plan. Race CPUs may ask for
+  // a small >=100% pace uplift, but the meaningful constructor hierarchy lives
+  // in their fixed grip/power advantages; pushing the speed trace itself too
+  // far makes the controller miss the demonstrated path rather than look fast.
+  const nominalTargetSpeed = speedReference.targetSpeed
+    * (
+      referenceGhost
+        ? 1
+        : highFidelityLine
+          ? aiExplicitPaceForSkill(driver.skill)
+          : execution * paceCheat
+    );
+  let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
 
-  // The generated reference is intentionally conservative about transient
-  // rotation. Once the real car is demonstrably on the line, allow a small
+  if (highFidelityLine && (battleState === 'CLEAR' || battleState === 'FOLLOW')) {
+    // Preserve the normal signed-lane recovery that keeps small tracking errors
+    // damped, but add a second physical-distance guard for true departures.
+    // Far from the path, the nearest segment can rotate enough that signed lane
+    // error looks deceptively small (the human report showed ~30 m PATH ERROR
+    // with only ~1.6 m lane error), so either signal may demand a slowdown.
+    const laneError = explicitFollower
+      ? Math.abs(explicitFollower.laneError)
+      : Math.abs(referenceLaneNow - projection.laneOffset);
+    const pathError = explicitFollower?.pathError ?? laneError;
+    // A demonstrated Q5/AXF trace is already a physically proven path. Small
+    // spatial replay error should be corrected primarily by steering, not by
+    // deleting 10-20% of the demonstrated speed. The old 2.4/3.0 m thresholds
+    // made a ~3.5 m miss at the lap seam trigger immediate feedback braking,
+    // turning a positive source AXF into a large negative acceleration.
+    // Keep strong slowdown for genuine departures, but let ordinary Q5
+    // convergence happen at the demonstrated longitudinal pace.
+    const gripTransferred =
+      Math.abs(driver.tire.grip - longitudinalSourceGrip) > 0.08;
+    // A demonstrated body/yaw trace is already a physically observed path.
+    // Small replay error should be corrected by steering rather than deleting
+    // longitudinal pace. Reserve the aggressive speed cap for legacy lines
+    // that do not carry demonstrated dynamics, or for a genuine departure.
+    const demonstratedPathDynamics =
+      explicitFollower?.demonstratedDynamics ?? false;
+    const normalRecoveryScale = demonstratedPathDynamics
+      ? 1 - clamp((laneError - 5.0) / 5.0, 0, 1) * 0.30
+      : gripTransferred
+        ? 1 - clamp((laneError - 2.6) / 5.4, 0, 1) * 0.38
+        : 1 - clamp((laneError - 0.9) / 4.8, 0, 1) * 0.62;
+    const emergencyPathScale = demonstratedPathDynamics
+      ? 1 - clamp((pathError - 8.0) / 6.0, 0, 1) * 0.55
+      : gripTransferred
+        ? 1 - clamp((pathError - 5.5) / 5.5, 0, 1) * 0.48
+        : 1 - clamp((pathError - 3.0) / 2.5, 0, 1) * 0.62;
+    targetSpeed *= Math.min(normalRecoveryScale, emergencyPathScale);
+  }
+
+  // The generated AUTO reference is intentionally conservative about transient
+  // rotation. Once the real car is demonstrably on that machine line, allow a small
   // speed carry through the same two complexes. The better predictive follower
   // now has enough line margin to use more of the physical chassis while poor
-  // tracking still removes the allowance before it can become a cut.
-  if (battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
+  // tracking still removes the allowance before it can become a cut. A
+  // PLAYER/EDITOR line is already physically demonstrated and must not receive
+  // this extra speed injection.
+  if (!highFidelityLine && battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
     const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
     const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
     const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);
@@ -261,16 +479,22 @@ export function dynamicAiControl(
   }
 
   if (battleState === 'ATTACK' && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed * Math.min(1, execution + 0.010);
+    targetSpeed = speedReference.targetSpeed
+      * Math.min(1.012, execution + 0.010)
+      * paceCheat;
   }
   if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
     if (performanceDelta > 0.002 && profile.severity < 0.48) {
       const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
-      targetSpeed = speedReference.targetSpeed * Math.min(1, execution + advantage);
+      targetSpeed = speedReference.targetSpeed
+        * Math.min(1.012, execution + advantage)
+        * paceCheat;
     } else if (performanceDelta < -0.002) {
       const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
-      targetSpeed = speedReference.targetSpeed * Math.max(0.972, execution - compromise);
+      targetSpeed = speedReference.targetSpeed
+        * Math.max(0.972, execution - compromise)
+        * paceCheat;
     }
   }
 
@@ -286,27 +510,101 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (projection.distance > TRACK_ROAD_HALF_WIDTH + 1.0) targetSpeed = Math.min(targetSpeed, 58);
+  if (projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
-  targetSpeed = clamp(targetSpeed, 26, 136);
+  targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
   const speedError = targetSpeed - speed;
-  const overspeed = -speedError;
+  const recoverySpeedLimited = targetSpeed < nominalTargetSpeed - 0.1;
+  const feedbackSpeedTarget = hasForwardAccelerationTrace && !recoverySpeedLimited
+    ? nominalTargetSpeed
+    : targetSpeed;
+  const overspeed = speed - feedbackSpeedTarget;
   // When the predictive follower is securely on the line, do not immediately
   // erase a few km/h of legitimate chicane carry with the generic speed-loop
   // deadband. This only changes braking decisions; grip and propulsion remain
   // the shared physical car. Any growing lane error collapses the allowance.
-  const feedbackBrakeThreshold = 0.65 + cornerAttackConfidence * 1.5;
+  const demonstratedSpeedTrace = explicitFollower?.demonstratedDynamics ?? false;
+  const feedbackBrakeThreshold = hasForwardAccelerationTrace
+    ? 4.0
+    : demonstratedSpeedTrace
+      ? 0.22
+      : 0.65 + cornerAttackConfidence * 1.5;
+  const feedbackBrakeDivisor = hasForwardAccelerationTrace
+    ? 9.5
+    : demonstratedSpeedTrace
+      ? 5.1
+      : 9.4;
+  const feedbackBrakeBias = hasForwardAccelerationTrace
+    ? 0
+    : demonstratedSpeedTrace
+      ? 0.22
+      : 0.45;
   const feedbackBrake = overspeed > feedbackBrakeThreshold
-    ? clamp((overspeed - feedbackBrakeThreshold + 0.45) / 9.4, 0.05, 1)
+    ? clamp(
+        (overspeed - feedbackBrakeThreshold + feedbackBrakeBias)
+          / feedbackBrakeDivisor,
+        0.05,
+        1,
+      )
     : 0;
-  const plannedBrakeWeight = clamp((1.15 - speedError) / 2.3, 0, 1);
+  // Measured forward acceleration is an authoritative braking phase and must
+  // remain anchored to path position even when replay arrives underspeed.
+  // A legacy speed-derived brake phase is only an estimate, so let it yield
+  // when the car is already below the demonstrated target instead of compounding
+  // the deficit for the rest of the lap.
+  const plannedBrakeWeight = hasForwardAccelerationTrace
+    ? 1
+    : highFidelityLine && !(explicitFollower?.demonstratedDynamics ?? false)
+      ? 1
+      : clamp((1.15 - speedError) / 2.3, 0, 1);
   const plannedBrakeScale = 0.82 - cornerAttackConfidence * 0.16;
-  let brake = Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
+  const explicitProfileBrake = highFidelityLine
+    ? explicitFollower?.demonstratedDynamics
+      ? racingLineLocalBrakeIntent(
+          trackId,
+          longitudinalProgress,
+          controlGrip,
+          speed,
+          steer,
+        )
+      : racingLineBrakeIntent(
+          trackId,
+          longitudinalProgress,
+          controlGrip,
+          speed,
+        )
+    : 0;
+  let brake = highFidelityLine
+    ? Math.max(
+        feedbackBrake,
+        explicitProfileBrake * plannedBrakeWeight,
+      )
+    : Math.max(feedbackBrake, speedReference.brake * plannedBrakeScale * plannedBrakeWeight);
+
+  const explicitProfileThrottle = highFidelityLine
+    ? racingLineThrottleIntent(
+        trackId,
+        longitudinalProgress,
+        controlGrip,
+        speed,
+        steer,
+      )
+    : 0;
 
   let throttle: number;
   if (brake > 0.06) {
     throttle = 0;
+  } else if (highFidelityLine) {
+    if (speedError > 2.0) {
+      throttle = 1;
+    } else {
+      throttle = clamp(
+        explicitProfileThrottle + speedError * 0.20,
+        0,
+        1,
+      );
+    }
   } else if (speedError > 0.45) {
     throttle = 1;
   } else if (speedError > -0.55) {
@@ -320,7 +618,98 @@ export function dynamicAiControl(
     throttle = brake > 0.08 ? 0 : Math.max(throttle, 0.58);
   }
 
-  return { throttle, brake, steer, targetSpeed, targetLane, battleState };
+  // A demonstrated racing line can legitimately contain full-brake samples at
+  // this phase. If a CPU has been knocked almost to a halt, replaying that
+  // sample forever creates a deadlock: progress no longer advances, therefore
+  // the controller never leaves the braking phase. At very low speed, when the
+  // requested pace is clearly much faster, temporarily prioritise getting the
+  // car rolling and steering back toward the path. Normal recorded braking
+  // resumes once it is moving fast enough to advance through the phase.
+  const lowSpeedRecovery =
+    speed < 14
+    && targetSpeed - speed > 12
+    && !referenceGhost;
+  if (lowSpeedRecovery) {
+    brake = 0;
+    const alignment = 1 - clamp(Math.abs(bearingError) / (Math.PI * 0.75), 0, 1);
+    throttle = Math.max(
+      throttle,
+      0.44 + alignment * 0.34,
+    );
+  }
+
+  return {
+    throttle,
+    brake,
+    steer,
+    targetSpeed,
+    targetLane,
+    battleState,
+    debug: {
+      lineSource: lineAsset?.source ?? 'AUTO',
+      progress: explicitFollower?.pathProgress ?? projection.progress,
+      centerProgress: projection.progress,
+      referenceLane: referenceLaneNow,
+      laneError: explicitFollower
+        ? -explicitFollower.laneError
+        : projection.laneOffset - referenceLaneNow,
+      pathError: explicitFollower?.pathError
+        ?? Math.abs(projection.laneOffset - referenceLaneNow),
+      lookAheadMetres: steeringLookAheadMetres,
+      steeringProgress: wrap01(steeringProgress),
+      predictionWeight,
+      feedbackBrake,
+      profileBrake: explicitProfileBrake,
+      profileThrottle: explicitProfileThrottle,
+      demonstratedDynamics: explicitFollower?.demonstratedDynamics ?? false,
+      demonstratedAcceleration: lineAsset?.points.some(
+        (point) => point.longitudinalAcceleration !== undefined,
+      ) ?? false,
+      demonstratedGripTrace: lineAsset?.points.some(
+        (point) => point.tireGrip !== undefined,
+      ) ?? false,
+      demonstratedForwardAcceleration: lineAsset?.points.some(
+        (point) => point.forwardAcceleration !== undefined,
+      ) ?? false,
+      sourceGrip: lineAsset
+        ? longitudinalSourceGrip
+        : undefined,
+      sourceForwardAcceleration: longitudinalSample?.forwardAcceleration,
+      sourceNetSpeedAcceleration: longitudinalSample?.longitudinalAcceleration,
+      targetYawRate: explicitFollower?.targetYawRate,
+      pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
+      bearingError: explicitFollower?.bearingError ?? bearingError,
+    },
+  };
+}
+
+function constrainedExplicitPrediction(
+  laneError: number,
+  baselineSteer: number,
+  predictedSteer: number,
+): number {
+  const magnitude = Math.abs(laneError);
+  if (magnitude < 1.8) return predictedSteer;
+
+  const recoveryDirection = Math.sign(laneError);
+  const predictedOpposesRecovery = predictedSteer * recoveryDirection < -0.015;
+  if (predictedOpposesRecovery) {
+    // Once the car is materially displaced, do not sacrifice the current path
+    // in order to prepare an even later apex. That was the remaining failure
+    // mode in compact S-bends: MPC could choose the next turn while the car was
+    // still several metres on the wrong side of the present line.
+    return baselineSteer;
+  }
+
+  if (magnitude >= 4.5) return baselineSteer;
+
+  const predictionWeight = 1 - clamp((magnitude - 1.8) / 2.7, 0, 1);
+  return clamp(
+    baselineSteer * (1 - predictionWeight)
+      + predictedSteer * predictionWeight,
+    -1,
+    1,
+  );
 }
 
 function pitwallPredictionWeight(progress: number, severity: number): number {

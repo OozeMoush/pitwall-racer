@@ -1,7 +1,11 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { CoreRaceGame } from './game/CoreRaceGame';
-import { runQualifyingSession } from './game/QualifyingGame';
+import {
+  runQualifyingSession,
+  runTimeTrialSession,
+} from './game/QualifyingGame';
 import { installReferenceLineCalibration } from './simulation/ReferenceLineCalibration';
+import { activateStoredRacingLine } from './simulation/RacingLineActivation';
 import { setActiveTrack } from './simulation/TrackModel';
 import { installHudEnhancer } from './ui/HudEnhancer';
 import { installRacePauseController } from './ui/RacePauseController';
@@ -26,15 +30,45 @@ async function bootstrap(): Promise<void> {
   // power, grip or tyre behaviour.
   installReferenceLineCalibration();
 
-  const setup = await showPreRaceMenu(hud);
-  setActiveTrack(setup.trackId);
+  let menuDefaults: import('./game/RaceSetup').RaceSetup | undefined;
+  let raceSetup: import('./game/RaceSetup').RaceSetup | undefined;
 
-  const qualifying = await runQualifyingSession(game, hud, setup);
-  const raceSetup = {
-    ...setup,
-    qualifyingTime: qualifying.playerTime,
-    gridOrder: qualifying.gridOrder,
-  };
+  while (!raceSetup) {
+    const setup = await showPreRaceMenu(hud, menuDefaults);
+    setActiveTrack(setup.trackId);
+    activateStoredRacingLine(window.localStorage, setup.trackId);
+
+    if (setup.timeTrial) {
+      await runTimeTrialSession(game, hud, setup);
+      // Time Trial is its own mode. Keep the newly recorded PLAYER BEST, then
+      // return to session selection instead of silently launching a Grand Prix.
+      menuDefaults = {
+        ...setup,
+        timeTrial: false,
+        skipQualifying: false,
+      };
+      continue;
+    }
+
+    if (setup.skipQualifying) {
+      raceSetup = {
+        ...setup,
+        qualifyingTime: undefined,
+        gridOrder: undefined,
+      };
+      continue;
+    }
+
+    const qualifying = await runQualifyingSession(game, hud, setup);
+    // A clean qualifying lap can become the PLAYER racing-line source for the
+    // race immediately in the same weekend. Re-read storage after qualifying.
+    activateStoredRacingLine(window.localStorage, setup.trackId);
+    raceSetup = {
+      ...setup,
+      qualifyingTime: qualifying.playerTime,
+      gridOrder: qualifying.gridOrder,
+    };
+  }
 
   hud.innerHTML = '';
   installHudEnhancer(hud);

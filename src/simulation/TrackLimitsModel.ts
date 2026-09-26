@@ -22,8 +22,8 @@ export const AI_SAFE_LANE_LIMIT = TRACK_ROAD_HALF_WIDTH - 3.15;
 // part of a tight bend, creating invisible snag points. Six-metre pieces track
 // the curve much more closely while still forming an impassable wall for a car
 // wider than the tiny seams between segments.
-export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 6.5;
-export const TRACK_BARRIER_SEGMENT_LENGTH = 6;
+export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 8.5;
+export const TRACK_BARRIER_SEGMENT_LENGTH = 5.4;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
 // Keep only two door-sized openings around the actual pit entry and exit.

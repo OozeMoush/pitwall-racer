@@ -1,12 +1,18 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { aerodynamicEffect } from './AeroModel';
+import { aerodynamicEffect, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
-import { dynamicAiControl } from './DynamicAiController';
+import {
+  aiEffectiveGrip,
+  aiPowerBoostForSkill,
+  dynamicAiControl,
+  type DynamicAiControl,
+} from './DynamicAiController';
 import {
   PIT_SPEED,
   beginPitStop,
   createPitStopState,
   isPitActive,
+  pitBoxTForSlot,
   pitLanePose,
   shouldEnterPit,
   stepPitStop,
@@ -26,6 +32,18 @@ import type { VehicleState } from './VehicleModel';
 // which made wheel-to-wheel racing register contact through empty space.
 export const CAR_COLLIDER_HALF_LENGTH = 4.65;
 export const CAR_COLLIDER_HALF_WIDTH = 2.15;
+// A tyre/sidepod brushing the wall while the car is travelling almost parallel
+// to it must not invalidate a racing-line trace. Normal speed alone is too
+// strict at racing speed: at 300 km/h even a ~4° graze exceeds 6 m/s laterally.
+// Require both a meaningful lateral hit and a meaningful incidence angle.
+// Physical wall collision is unchanged; this only controls trace invalidation.
+export const WALL_CONTACT_MIN_NORMAL_SPEED = 8;
+export const WALL_CONTACT_MIN_INCIDENCE_SIN = 0.12;
+// WALL CONTACT for lap validity requires more than geometric overlap. Rapier
+// must have removed a noticeable component of velocity into the wall during
+// the physics step; this filters collider tolerance/contact-pair false alarms.
+export const WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED = 1.5;
+export const WALL_CONTACT_MIN_NORMAL_SPEED_LOSS = 0.35;
 const CORE_POWER_BASELINE = 0.22;
 
 // Arcade contact policy: the player can still make physical contact with an AI
@@ -60,14 +78,23 @@ type CarRole = 'PLAYER' | 'AI';
 export class RapierRacePhysics {
   readonly world: RAPIER.World;
   private readonly playerBody: RAPIER.RigidBody;
+  private playerCollider?: RAPIER.Collider;
+  private readonly aiColliderHandles = new Set<number>();
+  private readonly barrierColliderHeadings = new Map<number, number>();
+  private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
   private readonly aiPitStops: PitStopState[];
   private playerSlideState = createTyreSlideState(0.37);
   private playerSlideSeverityValue = 0;
+  private playerLongitudinalAccelerationValue = 0;
   private aiSlideStates: TyreSlideState[];
+  private aiLongitudinalAccelerationValues: number[];
+  private aiNetSpeedAccelerationValues: number[];
+  private aiPreDriveSpeeds: Array<number | undefined>;
   private latestAi: DriverState[] = [];
+  private latestAiControls: Array<DynamicAiControl | undefined> = [];
   private playerLap = 0;
 
   constructor(playerStart: VehicleState, ai: readonly DriverState[]) {
@@ -91,16 +118,28 @@ export class RapierRacePhysics {
     this.lastAiProgress = ai.map((driver) => driver.progress);
     this.aiPitStops = ai.map(() => createPitStopState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiLongitudinalAccelerationValues = ai.map(() => 0);
+    this.aiNetSpeedAccelerationValues = ai.map(() => 0);
+    this.aiPreDriveSpeeds = ai.map(() => undefined);
   }
 
   drivePlayer(input: PhysicalCarInput, dt: number): void {
     const step = this.driveBody(this.playerBody, input, dt, 1, this.playerSlideState);
     this.playerSlideState = step.state;
     this.playerSlideSeverityValue = step.severity;
+    this.playerLongitudinalAccelerationValue = step.longitudinalAcceleration;
   }
 
   playerSlideSeverity(): number {
     return this.playerSlideSeverityValue;
+  }
+
+  playerLongitudinalAcceleration(): number {
+    return this.playerLongitudinalAccelerationValue;
+  }
+
+  playerContactKind(): 'NONE' | 'CAR' | 'BARRIER' {
+    return this.playerContactKindValue;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -122,9 +161,11 @@ export class RapierRacePhysics {
       }
 
       const control = dynamicAiControl(driver, state, traffic);
+      this.latestAiControls[index] = control;
       driver.battleState = control.battleState;
       const projection = projectTrackNear(state.x, state.y, driver.progress);
-      const surface = surfaceEffect(projection.distance);
+      const physicalSurfaceProjection = projectTrack(state.x, state.y);
+      const surface = surfaceEffect(physicalSurfaceProjection.distance);
       const aero = aerodynamicEffect(
         {
           id: driver.id,
@@ -135,16 +176,20 @@ export class RapierRacePhysics {
         traffic,
       );
 
-      // AI and player have the same physical chassis baseline. Skill changes
-      // only how accurately the controller executes the reference lap.
+      // Race CPUs deliberately carry a fixed constructor advantage over the
+      // player's car. Stronger drivers also get stronger hardware; this is
+      // stable performance, never rubber-banding to the player's position.
       this.driveAi(index, {
         throttle: control.throttle,
         brake: control.brake,
         steer: control.steer,
-        tireGrip: driver.tire.grip * (1 - aero.dirtyAir * 0.42),
+        tireGrip: aiEffectiveGrip(driver)
+          * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
         surfaceGrip: surface.gripMultiplier,
-        powerBoost: CORE_POWER_BASELINE + aero.tow * 0.22,
+        powerBoost: CORE_POWER_BASELINE
+          + aiPowerBoostForSkill(driver.skill)
+          + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
         rollingResistance: surface.rollingResistance,
       }, dt);
@@ -154,14 +199,51 @@ export class RapierRacePhysics {
   driveAi(index: number, input: PhysicalCarInput, dt: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
+    const velocityBeforeDrive = body.linvel();
+    this.aiPreDriveSpeeds[index] = Math.hypot(
+      velocityBeforeDrive.x,
+      velocityBeforeDrive.y,
+    );
     const state = this.aiSlideStates[index] ?? createTyreSlideState(index + 1.13);
     const step = this.driveBody(body, input, dt, 1, state);
     this.aiSlideStates[index] = step.state;
+    this.aiLongitudinalAccelerationValues[index] = step.longitudinalAcceleration;
+  }
+
+  aiLongitudinalAcceleration(index: number): number | undefined {
+    return this.aiLongitudinalAccelerationValues[index];
+  }
+
+  aiNetSpeedAcceleration(index: number): number | undefined {
+    return this.aiNetSpeedAccelerationValues[index];
+  }
+
+  playerVelocityHeading(): number | undefined {
+    return this.velocityHeading(this.playerBody);
+  }
+
+  aiVelocityHeading(index: number): number | undefined {
+    const body = this.aiBodies[index];
+    return body ? this.velocityHeading(body) : undefined;
   }
 
   step(dt: number): void {
     this.world.timestep = dt;
+    const playerVelocityBeforeStep = this.playerBody.linvel();
     this.world.step();
+    this.aiBodies.forEach((body, index) => {
+      const before = this.aiPreDriveSpeeds[index];
+      if (before === undefined || dt <= 0) return;
+      const velocity = body.linvel();
+      this.aiNetSpeedAccelerationValues[index] = (
+        Math.hypot(velocity.x, velocity.y) - before
+      ) / dt;
+      this.aiPreDriveSpeeds[index] = undefined;
+    });
+    this.updatePlayerContactKind(
+      playerVelocityBeforeStep.x,
+      playerVelocityBeforeStep.y,
+    );
 
     this.limitSpin(this.playerBody, 1.45);
     for (const body of this.aiBodies) this.limitSpin(body, 1.45);
@@ -176,6 +258,10 @@ export class RapierRacePhysics {
     return this.aiBodies.map((body) => this.bodyState(body));
   }
 
+  aiControls(): ReadonlyArray<DynamicAiControl | undefined> {
+    return this.latestAiControls;
+  }
+
   isAiPitting(index: number): boolean {
     return isPitActive(this.aiPitStops[index] ?? createPitStopState());
   }
@@ -184,13 +270,18 @@ export class RapierRacePhysics {
     this.setBodyState(this.playerBody, state);
     this.playerSlideState = createTyreSlideState(0.37);
     this.playerSlideSeverityValue = 0;
+    this.playerLongitudinalAccelerationValue = 0;
+    this.playerContactKindValue = 'NONE';
   }
 
-  setAiState(index: number, state: VehicleState): void {
+  setAiState(index: number, state: VehicleState, velocityHeading?: number): void {
     const body = this.aiBodies[index];
     if (!body) return;
-    this.setBodyState(body, state);
+    this.setBodyState(body, state, velocityHeading);
     this.aiSlideStates[index] = createTyreSlideState(index + 1.13);
+    this.aiLongitudinalAccelerationValues[index] = 0;
+    this.aiNetSpeedAccelerationValues[index] = 0;
+    this.aiPreDriveSpeeds[index] = undefined;
   }
 
   stopPlayer(): void {
@@ -207,7 +298,11 @@ export class RapierRacePhysics {
   reset(playerStart: VehicleState, ai: readonly DriverState[]): void {
     this.setPlayerState(playerStart);
     this.playerLap = 0;
+    this.latestAiControls = [];
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiLongitudinalAccelerationValues = ai.map(() => 0);
+    this.aiNetSpeedAccelerationValues = ai.map(() => 0);
+    this.aiPreDriveSpeeds = ai.map(() => undefined);
     ai.forEach((driver, index) => {
       const pose = sampleTrack(driver.progress, driver.laneOffset);
       this.setAiState(index, {
@@ -232,7 +327,16 @@ export class RapierRacePhysics {
       driver.tire = createTire(driver.nextCompound);
       driver.usedCompounds = new Set(driver.usedCompounds);
       driver.usedCompounds.add(driver.nextCompound);
-      driver.strategyIntent = 'DONE';
+      driver.pitStopIndex += 1;
+      const followingStop = driver.pitPlan[driver.pitStopIndex];
+      if (followingStop) {
+        driver.plannedPitLap = followingStop.plannedLap;
+        driver.pitLap = followingStop.plannedLap;
+        driver.nextCompound = followingStop.compound;
+        driver.strategyIntent = 'PLAN';
+      } else {
+        driver.strategyIntent = 'DONE';
+      }
     }
 
     const pose = pitLanePose(next.t);
@@ -313,10 +417,10 @@ export class RapierRacePhysics {
       const currentLap = this.aiLaps[index] ?? driver.lap;
       const wantsPit = currentLap > 0
         && currentLap >= driver.pitLap
-        && !driver.usedCompounds.has(driver.nextCompound);
+        && driver.pitStopIndex < driver.pitPlan.length;
       if (!isPitActive(this.aiPitStops[index])
         && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit)) {
-        this.aiPitStops[index] = beginPitStop();
+        this.aiPitStops[index] = beginPitStop(pitBoxTForSlot(index + 1));
         driver.battleState = 'CLEAR';
       }
 
@@ -334,7 +438,7 @@ export class RapierRacePhysics {
     dt: number,
     response: number,
     slideState: TyreSlideState,
-  ): { state: TyreSlideState; severity: number } {
+  ): { state: TyreSlideState; severity: number; longitudinalAcceleration: number } {
     const velocity = body.linvel();
     const speed = Math.hypot(velocity.x, velocity.y);
     const slide = stepTyreSlide(slideState, {
@@ -363,7 +467,11 @@ export class RapierRacePhysics {
       y: velocity.y + (controlled.vy - velocity.y) * response,
     }, true);
     body.setAngvel(body.angvel() + (controlled.angularVelocity - body.angvel()) * response, true);
-    return { state: slide.state, severity: slide.severity };
+    return {
+      state: slide.state,
+      severity: slide.severity,
+      longitudinalAcceleration: controlled.acceleration,
+    };
   }
 
   private createSafetyBarriers(): void {
@@ -373,7 +481,7 @@ export class RapierRacePhysics {
           .setTranslation(segment.x, segment.y)
           .setRotation(segment.heading),
       );
-      this.world.createCollider(
+      const collider = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(segment.length * 0.495, TRACK_BARRIER_HALF_THICKNESS)
           // Wall contact should scrub speed but let the car slide along it. A
           // high-friction corner at a hairpin is what made a harmless brush feel
@@ -383,6 +491,7 @@ export class RapierRacePhysics {
           .setCollisionGroups(BARRIER_COLLISION_GROUPS),
         body,
       );
+      this.barrierColliderHeadings.set(collider.handle, segment.heading);
     }
   }
 
@@ -401,8 +510,43 @@ export class RapierRacePhysics {
       .setFriction(0.018)
       .setRestitution(0)
       .setCollisionGroups(role === 'PLAYER' ? PLAYER_COLLISION_GROUPS : AI_COLLISION_GROUPS);
-    this.world.createCollider(collider, body);
+    const createdCollider = this.world.createCollider(collider, body);
+    if (role === 'PLAYER') this.playerCollider = createdCollider;
+    else this.aiColliderHandles.add(createdCollider.handle);
     return body;
+  }
+
+  private updatePlayerContactKind(
+    preStepVx: number,
+    preStepVy: number,
+  ): void {
+    this.playerContactKindValue = 'NONE';
+    const playerCollider = this.playerCollider;
+    if (!playerCollider) return;
+
+    this.world.contactPairsWith(playerCollider, (otherCollider) => {
+      if (this.aiColliderHandles.has(otherCollider.handle)) {
+        this.playerContactKindValue = 'CAR';
+        return;
+      }
+
+      if (this.playerContactKindValue === 'CAR') return;
+      const barrierHeading = this.barrierColliderHeadings.get(otherCollider.handle);
+      if (barrierHeading === undefined) return;
+
+      const postStepVelocity = this.playerBody.linvel();
+      if (
+        isPhysicalBarrierImpact(
+          preStepVx,
+          preStepVy,
+          postStepVelocity.x,
+          postStepVelocity.y,
+          barrierHeading,
+        )
+      ) {
+        this.playerContactKindValue = 'BARRIER';
+      }
+    });
   }
 
   private bodyState(body: RAPIER.RigidBody): VehicleState {
@@ -417,14 +561,24 @@ export class RapierRacePhysics {
     };
   }
 
-  private setBodyState(body: RAPIER.RigidBody, state: VehicleState): void {
+  private setBodyState(
+    body: RAPIER.RigidBody,
+    state: VehicleState,
+    velocityHeading = state.heading,
+  ): void {
     body.setTranslation({ x: state.x, y: state.y }, true);
     body.setRotation(state.heading, true);
     body.setLinvel({
-      x: Math.cos(state.heading) * state.speed,
-      y: Math.sin(state.heading) * state.speed,
+      x: Math.cos(velocityHeading) * state.speed,
+      y: Math.sin(velocityHeading) * state.speed,
     }, true);
     body.setAngvel(state.yawRate, true);
+  }
+
+  private velocityHeading(body: RAPIER.RigidBody): number | undefined {
+    const velocity = body.linvel();
+    if (Math.hypot(velocity.x, velocity.y) < 0.05) return undefined;
+    return Math.atan2(velocity.y, velocity.x);
   }
 
   private stopBody(body: RAPIER.RigidBody | undefined): void {
@@ -437,4 +591,41 @@ export class RapierRacePhysics {
     const yaw = body.angvel();
     if (Math.abs(yaw) > maximum) body.setAngvel(Math.sign(yaw) * maximum, true);
   }
+}
+
+export function barrierNormalSpeed(
+  vx: number,
+  vy: number,
+  barrierHeading: number,
+): number {
+  const nx = -Math.sin(barrierHeading);
+  const ny = Math.cos(barrierHeading);
+  return Math.abs(vx * nx + vy * ny);
+}
+
+export function isSignificantBarrierImpact(
+  vx: number,
+  vy: number,
+  barrierHeading: number,
+): boolean {
+  const speed = Math.hypot(vx, vy);
+  if (speed < 0.001) return false;
+  const normalSpeed = barrierNormalSpeed(vx, vy, barrierHeading);
+  const incidenceSin = normalSpeed / speed;
+  return normalSpeed >= WALL_CONTACT_MIN_NORMAL_SPEED
+    && incidenceSin >= WALL_CONTACT_MIN_INCIDENCE_SIN;
+}
+
+
+export function isPhysicalBarrierImpact(
+  preVx: number,
+  preVy: number,
+  postVx: number,
+  postVy: number,
+  barrierHeading: number,
+): boolean {
+  const beforeNormal = barrierNormalSpeed(preVx, preVy, barrierHeading);
+  const afterNormal = barrierNormalSpeed(postVx, postVy, barrierHeading);
+  return beforeNormal >= WALL_CONTACT_MIN_RESPONSE_NORMAL_SPEED
+    && beforeNormal - afterNormal >= WALL_CONTACT_MIN_NORMAL_SPEED_LOSS;
 }

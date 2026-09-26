@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { CAR_MODEL_SCALE, WHEEL_RADIUS, WHEEL_WIDTH, WHEEL_RING_RADIUS, WHEEL_RING_TUBE, WHEEL_RING_OFFSET, WHEEL_CENTRES } from '../simulation/CarGeometry';
+import { WORLD_SCALE } from './WorldTransform';
 import type { Compound } from '../simulation/TireModel';
 
 const TYRE_COLORS: Record<Compound, number> = {
@@ -64,22 +66,20 @@ export function createFormulaCar(color: number, compound: Compound, player = fal
 
   const tyreMaterial = new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.92, metalness: 0.02 });
   const ringMaterials: THREE.MeshStandardMaterial[] = [];
-  const wheelGeometry = new THREE.CylinderGeometry(0.48, 0.48, 0.34, 18);
-  const ringGeometry = new THREE.TorusGeometry(0.49, 0.035, 8, 28);
-  const wheelPositions: Array<[number, number, number]> = [
-    [1.72, 0.53, 0.95],
-    [1.72, 0.53, -0.95],
-    [-1.45, 0.53, 1.0],
-    [-1.45, 0.53, -1.0],
-  ];
+  const modelUnits = WORLD_SCALE / CAR_MODEL_SCALE;
+  const wheelGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS * modelUnits, WHEEL_RADIUS * modelUnits, WHEEL_WIDTH * modelUnits, 18);
+  const ringGeometry = new THREE.TorusGeometry(WHEEL_RING_RADIUS * modelUnits, WHEEL_RING_TUBE * modelUnits, 8, 28);
 
-  for (const [x, y, z] of wheelPositions) {
+  for (const wheel of WHEEL_CENTRES) {
+    const x = wheel.x * modelUnits;
+    const y = 0.53;
+    const z = wheel.y * modelUnits;
     const tyre = mesh(wheelGeometry, tyreMaterial, x, y, z);
     tyre.rotation.x = Math.PI / 2;
     const ringMat = new THREE.MeshStandardMaterial({ color: TYRE_COLORS[compound], roughness: 0.65, metalness: 0.05 });
     ringMaterials.push(ringMat);
-    const ring = mesh(ringGeometry, ringMat, x, y, z + Math.sign(z) * 0.18);
-    ring.rotation.x = Math.PI / 2;
+    const ring = mesh(ringGeometry, ringMat, x, y, z + Math.sign(z) * WHEEL_RING_OFFSET * modelUnits);
+    // Torus already lies in the wheel face (XY), with its axle along Z.
     root.add(tyre, ring);
   }
 
@@ -96,7 +96,7 @@ export function createFormulaCar(color: number, compound: Compound, player = fal
   // The original 3D car was visually larger than its new Rapier collider. A
   // smaller car both matches physical contact and gives the fixed top-down view
   // more speed in visible car-lengths per second.
-  root.scale.setScalar(0.68);
+  root.scale.setScalar(CAR_MODEL_SCALE);
 
   return {
     root,

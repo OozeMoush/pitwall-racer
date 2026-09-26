@@ -1,4 +1,15 @@
-# Pitwall Racer — Manual Playtest Gate
+# Pitwall Racer — Playtest Gate
+
+For gameplay/AI debugging with Codex, the repository includes the repo-scoped
+`$pitwall-playtest` skill and an initial task at
+`.codex/prompts/pitwall-autoplay.md`. The skill requires deterministic
+regressions and autonomous playtest evidence before asking for human feel.
+
+Human play remains the final judge for subjective fun, but lap counting, pit
+entry, AI stalls, path errors, line seams, penalties, and pace regressions
+should be automated wherever practical.
+
+## Manual feel pass
 
 Automated tests protect rules and obvious balance regressions. They cannot tell us whether the car is fun to drive. Before adding another major system, a human should be able to answer **yes** to most of the questions below after a few short races.
 

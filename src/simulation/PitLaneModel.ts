@@ -2,25 +2,32 @@ import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 
 export const PIT_ENTRY_PROGRESS = 0.91;
 export const PIT_EXIT_PROGRESS = 0.075;
-export const PIT_BOX_T = 0.47;
+export const PIT_ENTRY_MIN_LANE_OFFSET = 8;
 export const PIT_SERVICE_SECONDS = 2.5;
-// Still faster than a literal modern-F1 80 km/h limiter because the circuit is
-// intentionally miniature, but no longer a ~200 km/h drive-through. This keeps
-// an extra stop meaningful without making a two-stop strategy automatically
-// hopeless on a 25-30 second lap.
-export const PIT_SPEED = 40;
+
+// The limiter is now a real pit-lane rule instead of the old kinematic
+// conveyor speed. 80 km/h is close to modern F1 and still feels readable on
+// the miniature circuit.
+export const PIT_SPEED = 80 / 3.6;
+export const PIT_LIMIT_START_T = 0.10;
+export const PIT_LIMIT_END_T = 0.90;
 
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
-// Approximate the time the same section would consume at racing speed. Strategy
-// tools care about *time lost versus staying out*, not the full clock time spent
-// traversing the pit lane.
 const MAINLINE_REFERENCE_SPEED = 80;
+const PIT_ENTRY_OFFSET = 11;
+const PIT_LANE_OFFSET = 34;
+const PIT_ENTRY_RAMP_T = 0.08;
+const PIT_EXIT_RAMP_T = 0.10;
+const PIT_BOX_SLOT_START = 0.30;
+const PIT_BOX_SLOT_SPACING = 0.028;
+const PIT_PROJECTION_SAMPLES = 128;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
 export interface PitStopState {
   phase: PitPhase;
   t: number;
+  boxT: number;
   serviceRemaining: number;
   tyreChanged: boolean;
 }
@@ -33,25 +40,64 @@ export interface PitLanePose {
   laneOffset: number;
 }
 
-export function createPitStopState(): PitStopState {
-  return { phase: 'IDLE', t: 0, serviceRemaining: 0, tyreChanged: false };
+export interface PitLaneProjection {
+  t: number;
+  distance: number;
+  lateralOffset: number;
+  pose: PitLanePose;
 }
 
-export function beginPitStop(): PitStopState {
-  return { phase: 'TRANSIT_IN', t: 0, serviceRemaining: 0, tyreChanged: false };
+export function pitBoxTForSlot(slot: number): number {
+  return clamp(
+    PIT_BOX_SLOT_START + Math.max(0, Math.floor(slot)) * PIT_BOX_SLOT_SPACING,
+    PIT_BOX_SLOT_START,
+    0.50,
+  );
+}
+
+export const PIT_BOX_T = pitBoxTForSlot(0);
+
+export function createPitStopState(): PitStopState {
+  return {
+    phase: 'IDLE',
+    t: 0,
+    boxT: PIT_BOX_T,
+    serviceRemaining: 0,
+    tyreChanged: false,
+  };
+}
+
+export function beginPitStop(
+  boxT = PIT_BOX_T,
+  initialT = 0,
+): PitStopState {
+  return {
+    phase: 'TRANSIT_IN',
+    t: clamp(initialT, 0, boxT),
+    boxT,
+    serviceRemaining: 0,
+    tyreChanged: false,
+  };
 }
 
 export function isPitActive(state: PitStopState): boolean {
   return state.phase !== 'IDLE' && state.phase !== 'DONE';
 }
 
+/**
+ * A pit request is only committed when the car takes the physical pit-entry
+ * side of the road. laneOffset is optional so the AI/autoplay model can still
+ * use the same crossing gate while it is being migrated to physical entry.
+ */
 export function shouldEnterPit(
   previousProgress: number,
   currentProgress: number,
   distanceFromLine: number,
   requested: boolean,
+  laneOffset?: number,
 ): boolean {
   if (!requested || distanceFromLine > 48) return false;
+  if (laneOffset !== undefined && laneOffset < PIT_ENTRY_MIN_LANE_OFFSET) return false;
   return previousProgress < PIT_ENTRY_PROGRESS && currentProgress >= PIT_ENTRY_PROGRESS;
 }
 
@@ -64,6 +110,10 @@ export function pitStopTimeLossEstimateSeconds(): number {
   return Math.max(PIT_SERVICE_SECONDS, pitStopDurationSeconds() - mainlineSeconds);
 }
 
+/**
+ * Time-based pit progression retained for AI cars. Their pose still follows
+ * the exact same pit path and box allocation as the player.
+ */
 export function stepPitStop(state: PitStopState, dt: number): PitStopState {
   if (state.phase === 'IDLE' || state.phase === 'DONE') return state;
 
@@ -71,24 +121,21 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
     const serviceRemaining = Math.max(0, state.serviceRemaining - dt);
     if (serviceRemaining > 0) return { ...state, serviceRemaining };
     return {
+      ...state,
       phase: 'TRANSIT_OUT',
-      t: state.t,
       serviceRemaining: 0,
       tyreChanged: true,
     };
   }
 
-  // TRACK_LENGTH is a live binding because the circuit can be selected before
-  // race construction. Player and AI both step this exact same state machine,
-  // so neither side receives a hidden pit-lane timing advantage.
   const pitTRate = PIT_SPEED / Math.max(1, PIT_SPAN * TRACK_LENGTH);
   const t = Math.min(1, state.t + pitTRate * dt);
-  if (state.phase === 'TRANSIT_IN' && t >= PIT_BOX_T) {
+  if (state.phase === 'TRANSIT_IN' && t >= state.boxT) {
     return {
+      ...state,
       phase: 'SERVICE',
-      t: PIT_BOX_T,
+      t: state.boxT,
       serviceRemaining: PIT_SERVICE_SECONDS,
-      tyreChanged: state.tyreChanged,
     };
   }
 
@@ -99,22 +146,163 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
   return { ...state, t };
 }
 
+/**
+ * Player pit progression is spatial, not clock-driven. The car only advances
+ * through the state machine when it physically advances along the pit path.
+ */
+export function stepPlayerPitStop(
+  state: PitStopState,
+  dt: number,
+  observedT: number,
+): PitStopState {
+  if (state.phase === 'IDLE' || state.phase === 'DONE') return state;
+
+  if (state.phase === 'SERVICE') {
+    return stepPitStop(state, dt);
+  }
+
+  const t = Math.max(state.t, clamp01(observedT));
+  if (state.phase === 'TRANSIT_IN' && t >= state.boxT - 0.006) {
+    return {
+      ...state,
+      phase: 'SERVICE',
+      t: state.boxT,
+      serviceRemaining: PIT_SERVICE_SECONDS,
+    };
+  }
+
+  if (state.phase === 'TRANSIT_OUT' && t >= 0.995) {
+    return { ...state, phase: 'DONE', t: 1 };
+  }
+
+  return { ...state, t };
+}
+
+export function pitLaneSpeedLimitActive(tInput: number): boolean {
+  const t = clamp01(tInput);
+  return t >= PIT_LIMIT_START_T && t <= PIT_LIMIT_END_T;
+}
+
+/**
+ * Target used by the player's limiter/box assist. Entry and exit are allowed a
+ * little more speed, but the regulated section is capped at 80 km/h. The final
+ * metres into the box are progressively slowed so the only snap is the tiny
+ * final docking correction.
+ */
+export function pitLaneTargetSpeed(state: PitStopState, tInput: number): number {
+  if (state.phase === 'SERVICE') return 0;
+  const t = clamp01(tInput);
+  let target = pitLaneSpeedLimitActive(t) ? PIT_SPEED : 38;
+
+  if (state.phase === 'TRANSIT_IN') {
+    const remaining = state.boxT - t;
+    if (remaining < 0.065) {
+      const ratio = clamp(remaining / 0.065, 0, 1);
+      target = Math.min(target, 3.5 + (PIT_SPEED - 3.5) * ratio);
+    }
+  }
+  return Math.max(0, target);
+}
+
 export function pitLanePose(tInput: number): PitLanePose {
+  const t = clamp01(tInput);
+  const centre = pitLaneCentre(t);
+  const epsilon = 0.0015;
+  const before = pitLaneCentre(Math.max(0, t - epsilon));
+  const after = pitLaneCentre(Math.min(1, t + epsilon));
+  const dx = after.x - before.x;
+  const dy = after.y - before.y;
+  const heading = Math.hypot(dx, dy) > 0.0001
+    ? Math.atan2(dy, dx)
+    : centre.trackHeading;
+
+  return {
+    x: centre.x,
+    y: centre.y,
+    heading,
+    raceProgress: centre.raceProgress,
+    laneOffset: centre.laneOffset,
+  };
+}
+
+export function pitLaneOffset(tInput: number): number {
+  const t = clamp01(tInput);
+  const inRamp = smoothstep(clamp01(t / PIT_ENTRY_RAMP_T));
+  const outRamp = smoothstep(clamp01((1 - t) / PIT_EXIT_RAMP_T));
+  return PIT_ENTRY_OFFSET
+    + (PIT_LANE_OFFSET - PIT_ENTRY_OFFSET) * Math.min(inRamp, outRamp);
+}
+
+export function projectPitLane(
+  x: number,
+  y: number,
+  referenceT = 0,
+): PitLaneProjection {
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestT = clamp01(referenceT);
+  let bestX = x;
+  let bestY = y;
+
+  const reference = clamp01(referenceT);
+  const minT = Math.max(0, reference - 0.12);
+  const maxT = Math.min(1, reference + 0.18);
+  const range = Math.max(0.001, maxT - minT);
+  const samples = Math.max(24, Math.ceil(PIT_PROJECTION_SAMPLES * range));
+
+  let previousT = minT;
+  let previous = pitLaneCentre(previousT);
+  for (let i = 1; i <= samples; i++) {
+    const nextT = minT + range * (i / samples);
+    const next = pitLaneCentre(nextT);
+    const dx = next.x - previous.x;
+    const dy = next.y - previous.y;
+    const lenSq = dx * dx + dy * dy;
+    const segmentT = lenSq <= 0.000001
+      ? 0
+      : clamp(((x - previous.x) * dx + (y - previous.y) * dy) / lenSq, 0, 1);
+    const px = previous.x + dx * segmentT;
+    const py = previous.y + dy * segmentT;
+    const distance = Math.hypot(x - px, y - py);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestT = previousT + (nextT - previousT) * segmentT;
+      bestX = px;
+      bestY = py;
+    }
+    previousT = nextT;
+    previous = next;
+  }
+
+  const pose = pitLanePose(bestT);
+  const nx = -Math.sin(pose.heading);
+  const ny = Math.cos(pose.heading);
+  return {
+    t: bestT,
+    distance: bestDistance,
+    lateralOffset: (x - bestX) * nx + (y - bestY) * ny,
+    pose,
+  };
+}
+
+function pitLaneCentre(tInput: number): {
+  x: number;
+  y: number;
+  raceProgress: number;
+  laneOffset: number;
+  trackHeading: number;
+} {
   const t = clamp01(tInput);
   const unwrapped = PIT_ENTRY_PROGRESS + PIT_SPAN * t;
   const raceProgress = unwrapped >= 1 ? unwrapped - 1 : unwrapped;
   const laneOffset = pitLaneOffset(t);
   const point = sampleTrack(raceProgress, laneOffset);
-  return { ...point, raceProgress, laneOffset };
-}
-
-export function pitLaneOffset(tInput: number): number {
-  const t = clamp01(tInput);
-  const minOffset = 15;
-  const maxOffset = 42;
-  const inRamp = smoothstep(clamp01(t / 0.2));
-  const outRamp = smoothstep(clamp01((1 - t) / 0.22));
-  return minOffset + (maxOffset - minOffset) * Math.min(inRamp, outRamp);
+  return {
+    x: point.x,
+    y: point.y,
+    raceProgress,
+    laneOffset,
+    trackHeading: point.heading,
+  };
 }
 
 function smoothstep(t: number): number {
@@ -122,5 +310,9 @@ function smoothstep(t: number): number {
 }
 
 function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
+  return clamp(value, 0, 1);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTire, stepTire } from './TireModel';
+import { applyImpactTireDamage, createTire, stepTire } from './TireModel';
 
 function run(mode: 'CONSERVE' | 'BALANCED' | 'PUSH', seconds = 120) {
   let tire = createTire('MEDIUM');
@@ -21,4 +21,21 @@ describe('TireModel', () => {
     expect(tire.grip).toBeLessThan(fresh.grip * 0.91);
     expect(tire.grip).toBeGreaterThan(fresh.grip * 0.74);
   });
+
+  it('turns a high-speed wall hit into meaningful persistent tyre wear', () => {
+    const fresh = createTire('SOFT');
+    const hit = applyImpactTireDamage(fresh, 'BARRIER', 82);
+    expect(hit.wearAdded).toBeGreaterThan(0.10);
+    expect(hit.tire.wear).toBeGreaterThan(0.10);
+    expect(hit.tire.grip).toBeLessThan(fresh.grip);
+  });
+
+  it('makes car contact costly but less destructive than a wall hit', () => {
+    const fresh = createTire('MEDIUM');
+    const car = applyImpactTireDamage(fresh, 'CAR', 82);
+    const wall = applyImpactTireDamage(fresh, 'BARRIER', 82);
+    expect(car.wearAdded).toBeGreaterThan(0.02);
+    expect(car.wearAdded).toBeLessThan(wall.wearAdded);
+  });
+
 });

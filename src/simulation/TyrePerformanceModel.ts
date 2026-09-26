@@ -116,8 +116,15 @@ export function stepTyreSlide(state: TyreSlideState, input: TyreSlideInput, dt: 
 
   const steerSign: -1 | 1 = input.steer >= 0 ? 1 : -1;
   const direction: -1 | 1 = steerSign === 1 ? -1 : 1;
-  const intensity = 0.84 + risk * 0.16;
-  const remaining = 0.38 + risk * 0.12;
+
+  // Past ~60% wear, a rear step is no longer just a warning. The late-stint
+  // cliff makes the event both stronger and longer so "one lap too far" can
+  // cost tens of km/h and a position. This creates the intended strategic
+  // choice: nurse an old tyre through fast corners or pit before the risk turns
+  // a small pace gain into an unrecoverable race-time loss.
+  const cliff = clamp01((input.wear - 0.58) / 0.34);
+  const intensity = 0.72 + risk * 0.18 + cliff * 0.56;
+  const remaining = 0.30 + risk * 0.10 + cliff * 0.46;
   const next: TyreSlideState = {
     ...state,
     stress: 0,

@@ -1,17 +1,30 @@
 import { DEFAULT_RACE_SETUP, LAP_OPTIONS, type RaceSetup } from '../game/RaceSetup';
+import { loadPlayerRacingLineCandidate } from '../simulation/PlayerRacingLineCandidate';
+import {
+  saveSelectedRacingLineSource,
+  selectedRacingLineSource,
+  type SelectableRacingLineSource,
+} from '../simulation/RacingLineSelectionStore';
 import { TRACKS, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
 import type { Compound } from '../simulation/TireModel';
 
-export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
-  let selectedTrack: TrackId = DEFAULT_RACE_SETUP.trackId;
-  let selectedCompound: Compound = DEFAULT_RACE_SETUP.startCompound;
-  let selectedLaps = DEFAULT_RACE_SETUP.totalLaps;
+export function showPreRaceMenu(
+  root: HTMLElement,
+  initial: RaceSetup = DEFAULT_RACE_SETUP,
+): Promise<RaceSetup> {
+  let selectedTrack: TrackId = initial.trackId;
+  let selectedCpuLine: SelectableRacingLineSource = selectedRacingLineSource(
+    window.localStorage,
+    selectedTrack,
+  );
+  let selectedCompound: Compound = initial.startCompound;
+  let selectedLaps = initial.totalLaps;
 
   root.innerHTML = `<div class="pre-race-shell">
     <div class="pre-race-panel">
       <header class="pre-race-header">
         <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
-        <p>One-shot qualifying sets the grid. Then manage the start, tyres and race pace over the full distance.</p>
+        <p>Choose a Grand Prix session or enter the independent empty-track Time Trial to update PLAYER BEST.</p>
       </header>
 
       <section class="setup-section">
@@ -21,9 +34,23 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
         </div>
       </section>
 
+      <section class="setup-section">
+        <div class="setup-title"><b>02 · CPU RACING LINE</b><span>Choose the baseline CPU line. Player best improves from clean qualifying or race laps.</span></div>
+        <div class="track-choice-grid cpu-line-choice-grid">
+          <button class="track-choice cpu-line-choice" data-cpu-line="AUTO">
+            <strong>AUTO</strong>
+            <span>Current machine-generated baseline</span>
+          </button>
+          <button class="track-choice cpu-line-choice" data-cpu-line="PLAYER">
+            <strong>PLAYER BEST</strong>
+            <span data-player-line-status>No clean lap captured yet</span>
+          </button>
+        </div>
+      </section>
+
       <section class="setup-split">
         <div class="setup-section">
-          <div class="setup-title"><b>02 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
+          <div class="setup-title"><b>03 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
           <div class="tyre-choice-row">
             ${tyreButton('SOFT', 'FAST / SHORT', selectedCompound === 'SOFT')}
             ${tyreButton('MEDIUM', 'BALANCED', selectedCompound === 'MEDIUM')}
@@ -31,7 +58,7 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
           </div>
         </div>
         <div class="setup-section">
-          <div class="setup-title"><b>03 · DISTANCE</b><span>Long enough for tyre strategy to matter.</span></div>
+          <div class="setup-title"><b>04 · DISTANCE</b><span>Long enough for tyre strategy to matter.</span></div>
           <div class="lap-choice-row">
             ${LAP_OPTIONS.map((laps) => `<button class="lap-choice ${laps === selectedLaps ? 'selected' : ''}" data-laps="${laps}"><strong>${laps}</strong><span>LAPS</span></button>`).join('')}
           </div>
@@ -39,8 +66,12 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       </section>
 
       <footer class="pre-race-footer">
-        <div><b>QUALIFYING → RACE</b><span>1 FLYING LAP · GRID START · TWO-COMPOUND RACE</span></div>
-        <button class="start-race-button" data-start-race>START WEEKEND</button>
+        <div><b>SESSION</b><span>TIME TRIAL RETURNS HERE · GRAND PRIX STARTS SEPARATELY</span></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          <button class="start-race-button" data-time-trial>TIME TRIAL · UPDATE LINE</button>
+          <button class="start-race-button" data-skip-qualifying>SKIP QUALIFYING · P8</button>
+          <button class="start-race-button" data-start-race>START WEEKEND</button>
+        </div>
       </footer>
     </div>
   </div>`;
@@ -50,11 +81,41 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
       root.querySelectorAll<HTMLElement>('[data-track]').forEach((node) => node.classList.toggle('selected', node.dataset.track === selectedTrack));
       root.querySelectorAll<HTMLElement>('[data-compound]').forEach((node) => node.classList.toggle('selected', node.dataset.compound === selectedCompound));
       root.querySelectorAll<HTMLElement>('[data-laps]').forEach((node) => node.classList.toggle('selected', Number(node.dataset.laps) === selectedLaps));
+      root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
+        node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
+      });
+
+      const playerCandidate = loadPlayerRacingLineCandidate(
+        window.localStorage,
+        selectedTrack,
+      );
+      const status = root.querySelector<HTMLElement>('[data-player-line-status]');
+      if (status) {
+        status.textContent = playerCandidate?.lapSeconds !== undefined
+          ? `Clean player lap · ${playerCandidate.lapSeconds.toFixed(3)} s`
+          : 'Uses the next clean qualifying/race lap';
+      }
     };
 
     root.querySelectorAll<HTMLButtonElement>('[data-track]').forEach((button) => {
       button.addEventListener('click', () => {
         selectedTrack = button.dataset.track as TrackId;
+        selectedCpuLine = selectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+        );
+        refreshSelected();
+      });
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-cpu-line]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        selectedCpuLine = button.dataset.cpuLine as SelectableRacingLineSource;
+        saveSelectedRacingLineSource(
+          window.localStorage,
+          selectedTrack,
+          selectedCpuLine,
+        );
         refreshSelected();
       });
     });
@@ -70,10 +131,37 @@ export function showPreRaceMenu(root: HTMLElement): Promise<RaceSetup> {
         refreshSelected();
       });
     });
-    root.querySelector<HTMLButtonElement>('[data-start-race]')?.addEventListener('click', () => {
+    refreshSelected();
+
+    const finishSetup = (
+      skipQualifying: boolean,
+      timeTrial = false,
+    ): void => {
       root.innerHTML = '';
-      resolve({ trackId: selectedTrack, startCompound: selectedCompound, totalLaps: selectedLaps });
-    }, { once: true });
+      resolve({
+        trackId: selectedTrack,
+        startCompound: selectedCompound,
+        totalLaps: selectedLaps,
+        skipQualifying,
+        timeTrial,
+      });
+    };
+
+    root.querySelector<HTMLButtonElement>('[data-start-race]')?.addEventListener(
+      'click',
+      () => finishSetup(false, false),
+      { once: true },
+    );
+    root.querySelector<HTMLButtonElement>('[data-skip-qualifying]')?.addEventListener(
+      'click',
+      () => finishSetup(true, false),
+      { once: true },
+    );
+    root.querySelector<HTMLButtonElement>('[data-time-trial]')?.addEventListener(
+      'click',
+      () => finishSetup(false, true),
+      { once: true },
+    );
   });
 }
 
