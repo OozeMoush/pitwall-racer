@@ -124,7 +124,7 @@ describe('RaceModel', () => {
     expect(nextChaser.laneOffset).toBeGreaterThan(-3);
   });
 
-  it('moves a fresh Soft off line to attack a slower Hard at close range', () => {
+  it('keeps a quicker close-range car in FOLLOW instead of inventing an attack lane', () => {
     const [leader, chaser] = createAiField();
     leader.tire = createTire('HARD');
     chaser.tire = createTire('SOFT');
@@ -136,11 +136,13 @@ describe('RaceModel', () => {
     chaser.laneOffset = 0;
 
     const [, nextChaser] = stepAiField([leader, chaser], 0.1, 50);
-    expect(nextChaser.battleState).toBe('ATTACK');
-    expect(Math.abs(nextChaser.laneOffset)).toBeGreaterThan(0);
+    expect(nextChaser.battleState).toBe('FOLLOW');
+    // RaceModel no longer synthesizes a passing lane. The physical controller
+    // decides whether there is safe lateral room on the real circuit.
+    expect(Math.abs(nextChaser.laneOffset)).toBeLessThan(1);
   });
 
-  it('lets an attacker use its own pace after moving to another lane', () => {
+  it('lets a car on a separate lane keep its own pace without an attack state', () => {
     const [leader, chaser] = createAiField();
     leader.progress = 0.25 + raceScaleDistance(50) / TRACK_LENGTH;
     chaser.progress = 0.25;
@@ -152,11 +154,11 @@ describe('RaceModel', () => {
     chaser.laneOffset = 10;
 
     const [, nextChaser] = stepAiField([leader, chaser], 0.15, 50);
-    expect(nextChaser.battleState).toBe('ATTACK');
+    expect(nextChaser.battleState).toBe('CLEAR');
     expect(nextChaser.speed).toBeGreaterThan(leader.speed);
   });
 
-  it('treats the player ahead as real traffic and can attack them', () => {
+  it('treats the player ahead as real traffic without forcing a lateral attack', () => {
     const [driver] = createAiField();
     driver.progress = 0.4;
     driver.laneOffset = 0;
@@ -168,11 +170,11 @@ describe('RaceModel', () => {
     };
 
     const [next] = stepAiField([driver], 0.1, 50, [player]);
-    expect(next.battleState).toBe('ATTACK');
-    expect(Math.abs(next.laneOffset)).toBeGreaterThan(0);
+    expect(next.battleState).toBe('FOLLOW');
+    expect(Math.abs(next.laneOffset)).toBeLessThan(1);
   });
 
-  it('makes one modest defensive move when the player is threatening from behind', () => {
+  it('does not weave defensively just because the player is approaching from behind', () => {
     const [driver] = createAiField();
     driver.progress = 0.5;
     driver.laneOffset = 0;
@@ -183,8 +185,8 @@ describe('RaceModel', () => {
     };
 
     const [next] = stepAiField([driver], 0.1, 50, [player]);
-    expect(next.battleState).toBe('DEFEND');
-    expect(Math.abs(next.laneOffset)).toBeLessThanOrEqual(5.3);
+    expect(next.battleState).toBe('CLEAR');
+    expect(Math.abs(next.laneOffset)).toBeLessThan(1);
   });
 
   it('leaves lateral space when the player is genuinely alongside', () => {
