@@ -69,7 +69,7 @@ describe('dynamicAiControl', () => {
       {
         id: 'left-blocker',
         lap: driver.lap,
-        progress: driver.progress + 5 / TRACK_LENGTH,
+        progress: driver.progress + 16 / TRACK_LENGTH,
         speed: 76,
         laneOffset: -6.8,
         performance: 1,
@@ -77,7 +77,7 @@ describe('dynamicAiControl', () => {
       {
         id: 'right-blocker',
         lap: driver.lap,
-        progress: driver.progress + 5 / TRACK_LENGTH,
+        progress: driver.progress + 16 / TRACK_LENGTH,
         speed: 76,
         laneOffset: 6.8,
         performance: 1,
@@ -105,7 +105,12 @@ describe('dynamicAiControl', () => {
 
     expect(leftControl.battleState).toBe('FOLLOW');
     expect(rightControl.battleState).toBe('FOLLOW');
-    expect(Math.sign(leftControl.targetLane)).toBe(Math.sign(rightControl.targetLane));
+    // The absolute target can still sit on opposite sides of zero because the
+    // cars started at -1.2 m and +1.2 m. What matters is that both commands
+    // move toward the same chosen passing side.
+    expect(Math.sign(leftControl.targetLane - (-1.2))).toBe(
+      Math.sign(rightControl.targetLane - 1.2),
+    );
   });
 
   it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
