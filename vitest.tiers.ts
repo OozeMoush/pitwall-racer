@@ -11,6 +11,7 @@ export const PLAYTEST_TEST_FILES = [
   'src/game/GrandPrixPlaytest.test.ts',
   'src/rendering3d/PitLane3D.test.ts',
   'src/simulation/AeroFeedbackRegression.test.ts',
+  'src/simulation/AiStuckRecoveryPhysics.test.ts',
   'src/simulation/CarImpactPhysics.test.ts',
   'src/simulation/AiOvertakeRegression.test.ts',
   'src/simulation/AiPhysicalPit.test.ts',
