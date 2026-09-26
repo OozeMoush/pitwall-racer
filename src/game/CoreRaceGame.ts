@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
 import { AiReferenceGhost } from '../simulation/AiReferenceGhost';
-import { normalizedTowStrength, towPowerBoost } from '../simulation/AeroModel';
+import {
+  normalizedTowStrength,
+  towDragMultiplier,
+  towPowerBoost,
+} from '../simulation/AeroModel';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import { createPitLane3D } from '../rendering3d/PitLane3D';
 import { createTrack3D } from '../rendering3d/Track3D';
@@ -475,6 +479,7 @@ export class CoreRaceGame {
         * (this.launchPerformanceRemaining > 0
           ? this.launchAccelerationMultiplier
           : 1),
+      aeroDragMultiplier: towDragMultiplier(aero.tow),
       rollingResistance: surface.rollingResistance,
     }, dt);
     this.physics.step(dt);
