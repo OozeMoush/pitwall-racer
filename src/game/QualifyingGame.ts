@@ -3,6 +3,7 @@ import { RaceAudio } from '../audio/RaceAudio';
 import { createFormulaCar } from '../rendering3d/Car3D';
 import {
   createRaceCamera,
+  createRaceRenderer,
   followRaceCamera,
   resizeRaceViewport,
   setupRaceWorld,
@@ -165,14 +166,7 @@ class QualifyingGame {
     this.physics = new RapierRacePhysics(this.vehicle, []);
     this.physics.setPlayerState(this.vehicle);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    container.appendChild(this.renderer.domElement);
+    this.renderer = createRaceRenderer(container);
 
     setupRaceWorld(this.scene);
     this.scene.add(this.car.root);
