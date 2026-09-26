@@ -44,6 +44,7 @@ export interface DynamicAiDebug {
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
+  driverExecutionFactor: number;
 }
 
 export interface DynamicAiControl {
@@ -537,6 +538,7 @@ export function dynamicAiControl(
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,
+      driverExecutionFactor: liveExecution,
     },
   };
 }
