@@ -17,11 +17,14 @@ afterEach(() => { setRuntimeRacingLine('pitwall-gp', undefined); });
 it('executes a demonstrated PLAYER line for multiple laps on every race compound', () => {
   setActiveTrack('pitwall-gp');
   setRuntimeRacingLine('pitwall-gp', undefined);
-  // Record from the stored/reference lap-start state directly. The dedicated
-  // AiReferenceGhost regression already proves that this initial physical state
-  // can produce and replay a valid demonstrated lap, so two extra untimed
-  // warmup laps here only duplicate coverage.
-  const source = new AiReferenceGhost(0, 'pitwall-gp', true);
+  // Let the physical reference settle onto its periodic lap before recording.
+  // Starting directly from the stored lap-start state is valid, but the first
+  // lap still contains convergence transients large enough to produce a PLAYER
+  // asset with materially worse replay path error.
+  const source = new AiReferenceGhost(0, 'pitwall-gp');
+  for (let tick = 0; tick < 100 / DT && source.warmupLapsRemaining() > 0; tick++) {
+    source.step(DT);
+  }
   const recorder = new PlayerRacingLineCandidateRecorder();
   recorder.begin('pitwall-gp', source.driver.tire.grip);
   let time = 0;
