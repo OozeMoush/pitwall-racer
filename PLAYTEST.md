@@ -6,15 +6,22 @@ Human play remains the final judge for subjective fun, but lap counting, qualify
 
 ## Automated gate
 
-Before finishing a gameplay change:
+Use the tiers according to feedback cost:
 
 ```bash
-npm run test:playtest
+npm run test:fast      # normal edit loop
+npm run test:playtest  # gameplay and short physical regressions
+npm run test:long      # multi-lap / multi-circuit / endurance regressions
+```
+
+The tiers partition the suite by purpose and runtime; the authoritative final gate is still:
+
+```bash
 npm test
 npm run build
 ```
 
-Do not weaken a guardrail merely because the current build misses it. If intended behaviour changed, explain the new invariant and then update the test.
+Run `test:long` explicitly when changing PLAYER-line replay, the reference ghost, long-run CPU behaviour, multi-circuit physics or the machine reference. Do not weaken a guardrail merely because the current build misses it. If intended behaviour changed, explain the new invariant and then update the test.
 
 ## 1. Session flow
 
