@@ -1,88 +1,104 @@
 # Pitwall Racer — Playtest Gate
 
-For gameplay/AI debugging with Codex, the repository includes the repo-scoped
-`$pitwall-playtest` skill and an initial task at
-`.codex/prompts/pitwall-autoplay.md`. The skill requires deterministic
-regressions and autonomous playtest evidence before asking for human feel.
+For gameplay/CPU debugging with Codex, use the repo-scoped `$pitwall-playtest` skill. Deterministic regressions and autonomous playtest evidence should come before asking for human feel.
 
-Human play remains the final judge for subjective fun, but lap counting, pit
-entry, AI stalls, path errors, line seams, penalties, and pace regressions
-should be automated wherever practical.
+Human play remains the final judge for subjective fun, but lap counting, qualifying, grid launches, pit entry, CPU stalls, path errors, racing-line seams, penalties and pace regressions should be automated wherever practical.
 
-## Manual feel pass
+## Automated gate
 
-Automated tests protect rules and obvious balance regressions. They cannot tell us whether the car is fun to drive. Before adding another major system, a human should be able to answer **yes** to most of the questions below after a few short races.
+Before finishing a gameplay change:
 
-## 1. First 30 seconds
+```bash
+npm run test:playtest
+npm test
+npm run build
+```
+
+Do not weaken a guardrail merely because the current build misses it. If intended behaviour changed, explain the new invariant and then update the test.
+
+## 1. Session flow
+
+Verify all three entry paths:
+
+- **TIME TRIAL** — empty-track hotlapping; returns to the setup menu and may update PLAYER BEST.
+- **START WEEKEND** — one-shot qualifying followed by the Grand Prix.
+- **SKIP QUALIFYING** — starts the Grand Prix from P8.
+
+Check that qualifying order maps to the compact starting grid, every car launches cleanly, and the first start-line crossing begins Lap 1 timing.
+
+## 2. First 30 seconds
 
 - Can a new player keep the car roughly on the circuit with WASD?
 - Does steering feel immediate at low speed but require real braking at high speed?
 - Does going wide cost time without making recovery miserable?
+- Is the compact grid close enough to feel like a race without causing wall snags or launch pile-ups?
 - Can every race action be reached comfortably with the left hand?
-- Is it obvious that `1/2/3` are HARVEST / NORMAL / DEPLOY and `Q/E/R` are Soft / Medium / Hard?
 
 If basic driving is frustrating, do not add more race systems. Fix handling first.
 
-## 2. Racing another car
+## 3. Racing another car
 
-- Can the player deliberately place the car beside an AI rival?
+- Can the player deliberately place the car beside a CPU rival?
 - Does contact cost time without visible buzzing or repeated positional snapping?
 - Does following feel different from clean air?
-- Do AI cars actually leave the train and complete passes?
-- Is the AI quick enough that NORMAL alone cannot simply drive away from the field?
+- Do CPU cars actually leave the train and complete passes?
+- Can the fastest CPUs punish a player mistake without player-position rubber-banding?
 
 The desired emotion is **“I can try that move again”**, not “the collision model cheated me”.
 
-## 3. Tyres without staring at telemetry
+## 4. Racing-line execution
 
-Run one stint cleanly and one stint with repeated late braking / high-speed steering / wheel-to-wheel fighting.
+Compare AUTO, PLAYER BEST and the isolated REFERENCE GHOST.
+
+- Does PLAYER BEST remain smooth through start/finish with no closing chord?
+- Does the REFERENCE GHOST reproduce a clean demonstrated line without race-CPU difficulty assists?
+- Do clear-running CPUs stay near their selected line rather than accumulating persistent path error?
+- Does normal kerb use avoid triggering an emergency recovery response?
+
+Use fresh telemetry rather than preserving an old lap-time target as a permanent specification.
+
+## 5. Tyres
+
+Run one clean stint and one harder stint with repeated late braking, high-speed steering or wheel-to-wheel fighting.
 
 - Does the harder-driven stint wear the tyre materially faster?
-- Can the player feel weaker turn-in or longer braking before reading the wear number?
 - Does Soft create obvious early pace while asking for an earlier stop?
 - Does Hard sacrifice enough immediate grip to make its life advantage a real choice?
-- Is the late-life cliff noticeable but recoverable?
+- Is late-life slide risk noticeable but recoverable?
+- Does one continuous wall/car contact avoid re-applying damage every physics frame?
 
-If the tyre HUD can be hidden and the player still notices tyre state, the model is doing its job.
+## 6. Strategy and pits
 
-## 4. Strategy
-
-Try at least these races:
-
-- Soft → Medium
-- Medium → Soft
-- Medium → Hard
-- an early stop
-- a late stop
-
-Ask:
+Try different compound sequences and both early and late stops.
 
 - Did at least two approaches feel plausible before the result was known?
 - Did traffic ever change the preferred pit timing?
 - Did the two-compound obligation create a decision rather than paperwork?
-- Was the late-race warning early enough to prevent a surprise DQ?
+- Does an undercut or overcut decision remain committed instead of reversing on the next controller tick?
+- Can player and CPU cars enter, service and leave the physical pit lane reliably?
+- Is the 80 km/h regulated section readable without making an extra stop automatically hopeless?
 
 There should be no obvious “always choose this tyre and pit on this lap” answer.
 
-## 5. Hybrid energy
+## 7. Multi-circuit sanity
 
-- Does HARVEST visibly charge even while W remains held?
-- Is HARVEST slow enough that leaving it on forever loses race time?
-- Does NORMAL preserve energy well enough for ordinary keyboard driving?
-- Does DEPLOY produce an obvious pass/defence opportunity?
-- Does leaving DEPLOY on drain the battery quickly enough to be a bad default?
-- At 0% charge, is the player clearly vulnerable to the AI on a straight?
+Run the automated multi-circuit checks after track changes. In human play, sample at least one fast layout and one technical/street layout in addition to Pitwall GP.
 
-If one of the three modes can be left on permanently with no meaningful downside, rebalance before adding more energy features.
+Pay particular attention to:
 
-## 6. One-more-race test
+- projection jumps between nearby pieces of miniature track;
+- barrier geometry on tight corners;
+- launch/grid placement near start/finish;
+- Baku Street's long straight and tight city sequence.
+
+## 8. One-more-race test
 
 At the finish, the most important question is simple:
 
-> Do I want to press C and try a different tyre, pit lap, hybrid plan, attack or driving line?
+> Do I want to press C and try a different tyre, pit lap, attack, CPU line or circuit?
 
 If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre feedback or decision quality** before adding realism.
 
 ## Current non-goals
 
-Do not use this playtest to request realism for its own sake. Fuel strategy, four-wheel tyre telemetry, full FIA penalties, safety cars, rain, damage, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun.
+Do not request realism for its own sake. Fuel strategy, full FIA stewarding, safety cars, rain, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun. Hybrid energy is also parked outside the current playable core.
