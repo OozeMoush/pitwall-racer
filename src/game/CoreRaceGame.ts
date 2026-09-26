@@ -428,7 +428,7 @@ export class CoreRaceGame {
       const impact = applyImpactTireDamage(
         this.tire,
         playerContact,
-        this.vehicle.speed,
+        this.physics.playerImpactSpeed(),
       );
       this.tire = impact.tire;
       if (impact.wearAdded > 0.0005) {
