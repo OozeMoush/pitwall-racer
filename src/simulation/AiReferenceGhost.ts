@@ -1,5 +1,6 @@
 import { dynamicAiControl, type DynamicAiControl } from './DynamicAiController';
 import { createAiField, type DriverState } from './RaceModel';
+import { REFERENCE_POWER_BOOST } from './ReferenceDriverModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { sampleRacingLineAsset } from './RacingLineAsset';
 import {
@@ -11,8 +12,6 @@ import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 import { createVehicle, type VehicleState } from './VehicleModel';
-
-const CORE_POWER_BOOST = 0.22;
 
 export interface AiReferenceGhostLossEvent {
   progress: number;
@@ -143,7 +142,7 @@ export class AiReferenceGhost {
       tireGrip: this.driver.tire.grip,
       tireWear: 0,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST,
+      powerBoost: REFERENCE_POWER_BOOST,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
