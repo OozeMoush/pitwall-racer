@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { benchmarkStrategies, pushAlways, simulateStrategy, type StrategyPlan } from './StrategySimulator';
+import { balancedPace, benchmarkStrategies, pushAlways, simulateStrategy, type StrategyPlan } from './StrategySimulator';
 
 const balanced: StrategyPlan = {
   name: 'balanced M→H',
@@ -62,7 +62,10 @@ describe('StrategySimulator', () => {
   it('keeps the cached benchmark numerically identical to direct simulation', () => {
     const snapshot = benchmarkStrategies(50);
     const cached = snapshot.legalResults.find((result) => result.name === 'M→H lap18');
-    const direct = simulateStrategy(balanced, 50);
+    const direct = simulateStrategy({
+      ...balanced,
+      paceForLap: balancedPace,
+    }, 50);
 
     expect(cached).toBeDefined();
     expect(cached!.totalTime).toBeCloseTo(direct.totalTime, 9);
