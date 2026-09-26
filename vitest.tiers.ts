@@ -13,7 +13,7 @@ export const PLAYTEST_TEST_FILES = [
   'src/simulation/AeroFeedbackRegression.test.ts',
   'src/simulation/AiStuckRecoveryPhysics.test.ts',
   'src/simulation/CarImpactPhysics.test.ts',
-  'src/simulation/AiOvertakeRegression.test.ts',
+  'src/simulation/AiTrafficLineRegression.test.ts',
   'src/simulation/AiPhysicalPit.test.ts',
   'src/simulation/DynamicAiController.test.ts',
   'src/simulation/GridLaunchRegression.test.ts',

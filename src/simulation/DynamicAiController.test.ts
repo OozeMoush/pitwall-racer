@@ -9,7 +9,7 @@ import {
 } from './DynamicAiController';
 import { createAiField, type RaceTrafficCar } from './RaceModel';
 import { setRuntimeRacingLine } from './RacingLineRuntime';
-import { AI_SAFE_LANE_LIMIT, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
+import { TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
 import { sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
@@ -18,139 +18,68 @@ afterEach(() => {
 });
 
 describe('dynamicAiControl', () => {
-  it('uses the tow first, then begins a gentle pass while remaining in FOLLOW', () => {
+  it('slows for traffic ahead without changing the racing-line target', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
-    const ahead: RaceTrafficCar = {
-      id: 'leader',
-      lap: driver.lap,
-      progress: driver.progress + 26 / TRACK_LENGTH,
-      speed: 68,
-      laneOffset: 0,
-      performance: 1,
-    };
-
-    const follow = dynamicAiControl(driver, vehicle, [ahead]);
-    expect(follow.battleState).toBe('FOLLOW');
-
-    const closeAhead = {
-      ...ahead,
-      progress: driver.progress + 12 / TRACK_LENGTH,
-    };
-    const clean = dynamicAiControl(driver, vehicle, []);
-    const pass = dynamicAiControl(driver, vehicle, [closeAhead]);
-    expect(pass.battleState).toBe('FOLLOW');
-    // Passing is a small adjustment relative to the racing line, not an
-    // absolute demand to be near the centreline. Some reference-line samples
-    // legitimately sit several metres off centre.
-    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeGreaterThan(0.2);
-    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeLessThanOrEqual(1.6);
-    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
-  });
-
-  it('stays in the wake when both passing corridors are occupied', () => {
-    const driver = createAiField()[0];
-    const p = sampleTrack(driver.progress, 0);
-    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
-    const ahead: RaceTrafficCar = {
-      id: 'leader',
-      lap: driver.lap,
-      progress: driver.progress + 12 / TRACK_LENGTH,
-      speed: 68,
-      laneOffset: 0,
-      performance: 1,
-    };
-    const ordinaryFollow = dynamicAiControl(driver, vehicle, [{
-      ...ahead,
-      progress: driver.progress + 26 / TRACK_LENGTH,
-    }]);
-    const blocked = dynamicAiControl(driver, vehicle, [
-      ahead,
-      {
-        id: 'left-blocker',
-        lap: driver.lap,
-        progress: driver.progress + 16 / TRACK_LENGTH,
-        speed: 76,
-        laneOffset: -6.8,
-        performance: 1,
-      },
-      {
-        id: 'right-blocker',
-        lap: driver.lap,
-        progress: driver.progress + 16 / TRACK_LENGTH,
-        speed: 76,
-        laneOffset: 6.8,
-        performance: 1,
-      },
-    ]);
-
-    expect(blocked.battleState).toBe('FOLLOW');
-    expect(blocked.targetLane).toBeCloseTo(ordinaryFollow.targetLane, 6);
-  });
-
-  it('chooses the same passing side instead of weaving across the rival', () => {
-    const driver = createAiField()[0];
     const ahead: RaceTrafficCar = {
       id: 'leader',
       lap: driver.lap,
       progress: driver.progress + 10 / TRACK_LENGTH,
-      speed: 68,
+      speed: 66,
       laneOffset: 0,
       performance: 1,
     };
-    const left = sampleTrack(driver.progress, -1.2);
-    const right = sampleTrack(driver.progress, 1.2);
-    const leftControl = dynamicAiControl(driver, { ...createVehicle(left.x, left.y, left.heading), speed: 78 }, [ahead]);
-    const rightControl = dynamicAiControl(driver, { ...createVehicle(right.x, right.y, right.heading), speed: 78 }, [ahead]);
 
-    expect(leftControl.battleState).toBe('FOLLOW');
-    expect(rightControl.battleState).toBe('FOLLOW');
-    // The absolute target can still sit on opposite sides of zero because the
-    // cars started at -1.2 m and +1.2 m. What matters is that both commands
-    // move toward the same chosen passing side.
-    expect(Math.sign(leftControl.targetLane - (-1.2))).toBe(
-      Math.sign(rightControl.targetLane - 1.2),
-    );
+    const clean = dynamicAiControl(driver, vehicle, []);
+    const blocked = dynamicAiControl(driver, vehicle, [ahead]);
+
+    expect(blocked.battleState).toBe('FOLLOW');
+    expect(blocked.targetLane).toBeCloseTo(clean.targetLane, 8);
+    expect(blocked.targetSpeed).toBeLessThan(clean.targetSpeed);
   });
 
-  it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
+  it('ignores lateral traffic for steering and stays on the same reference line', () => {
     const driver = createAiField()[1];
-    const p = sampleTrack(driver.progress, 5.5);
-    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 76 };
-    const other: RaceTrafficCar = {
-      id: 'ai-rival',
-      lap: driver.lap,
-      progress: driver.progress + 4 / TRACK_LENGTH,
-      speed: 75,
-      laneOffset: -1.0,
-      performance: driver.skill * driver.tire.grip,
+    const pose = sampleTrack(driver.progress, 4.5);
+    const vehicle = {
+      ...createVehicle(pose.x, pose.y, pose.heading),
+      speed: 74,
     };
+    const traffic: RaceTrafficCar[] = [
+      {
+        id: 'left',
+        lap: driver.lap,
+        progress: driver.progress,
+        speed: 74,
+        laneOffset: -6,
+        performance: 1,
+      },
+      {
+        id: 'right',
+        lap: driver.lap,
+        progress: driver.progress + 3 / TRACK_LENGTH,
+        speed: 74,
+        laneOffset: 10,
+        performance: 1,
+      },
+      {
+        id: 'player',
+        lap: driver.lap,
+        progress: driver.progress,
+        speed: 76,
+        laneOffset: -3,
+        performance: 1,
+        isPlayer: true,
+      },
+    ];
 
-    const control = dynamicAiControl(driver, vehicle, [other]);
-    expect(control.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.0);
-    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
-  });
+    const clean = dynamicAiControl(driver, vehicle, []);
+    const crowded = dynamicAiControl(driver, vehicle, traffic);
 
-  it('leaves usable lateral room when the player is alongside', () => {
-    const driver = createAiField()[1];
-    const p = sampleTrack(driver.progress, 5);
-    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 72 };
-    const other: RaceTrafficCar = {
-      id: 'player',
-      lap: driver.lap,
-      progress: driver.progress + 5 / TRACK_LENGTH,
-      speed: 72,
-      laneOffset: -5,
-      performance: 1,
-      isPlayer: true,
-    };
-
-    const control = dynamicAiControl(driver, vehicle, [other]);
-    expect(control.battleState).toBe('SIDE_BY_SIDE');
-    expect(Math.abs(control.targetLane - other.laneOffset)).toBeGreaterThanOrEqual(6.0);
-    expect(Math.abs(control.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+    expect(crowded.battleState).toBe('CLEAR');
+    expect(crowded.targetLane).toBeCloseTo(clean.targetLane, 8);
+    expect(crowded.steer).toBeCloseTo(clean.steer, 8);
   });
 
   it('locks directly onto an explicit player lane instead of soft-clamping the target', () => {
