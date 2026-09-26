@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier2d-compat';
-import { aerodynamicEffect, towPowerBoost } from './AeroModel';
+import { aerodynamicEffect, towDragMultiplier, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import {
   createAiStuckRecoveryState,
@@ -240,6 +240,7 @@ export class RapierRacePhysics {
           + aiPowerBoostForSkill(driver.skill)
           + towPowerBoost(aero.tow),
         powerMultiplier: surface.powerMultiplier,
+        aeroDragMultiplier: towDragMultiplier(aero.tow),
         rollingResistance: surface.rollingResistance,
       }, dt);
     });
