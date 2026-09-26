@@ -17,8 +17,14 @@ afterEach(() => { setRuntimeRacingLine('pitwall-gp', undefined); });
 it('executes a demonstrated PLAYER line for multiple laps on every race compound', () => {
   setActiveTrack('pitwall-gp');
   setRuntimeRacingLine('pitwall-gp', undefined);
+  // Let the physical reference settle onto its periodic lap before recording.
+  // Starting directly from the stored lap-start state is valid, but the first
+  // lap still contains convergence transients large enough to produce a PLAYER
+  // asset with materially worse replay path error.
   const source = new AiReferenceGhost(0, 'pitwall-gp');
-  for (let tick = 0; tick < 100 / DT && source.warmupLapsRemaining() > 0; tick++) source.step(DT);
+  for (let tick = 0; tick < 100 / DT && source.warmupLapsRemaining() > 0; tick++) {
+    source.step(DT);
+  }
   const recorder = new PlayerRacingLineCandidateRecorder();
   recorder.begin('pitwall-gp', source.driver.tire.grip);
   let time = 0;
@@ -118,7 +124,11 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
   const physics = new RapierRacePhysics(createVehicle(-10000, -10000, 0), pack);
   const telemetry = pack.map(d => ({ name: d.name, laps: 0, stall: 0, maxStall: 0, departure: 0, maxDeparture: 0, maxPath: 0 }));
   try {
-    for (let tick = 0; tick < 120 / DT; tick++) {
+    // The regression only needs every CPU identity to survive multiple laps on
+    // the PLAYER line. The old fixed 120-second window kept simulating long
+    // after all seven cars had already satisfied the Lap 3 assertion.
+    const packTimeoutTicks = 90 / DT;
+    for (let tick = 0; tick < packTimeoutTicks; tick++) {
       pack = stepAiField(pack, DT, 20, [], false);
       physics.syncAiKinematics(pack, DT, -10);
       physics.step(DT);
@@ -133,6 +143,7 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
         row.maxDeparture = Math.max(row.maxDeparture, row.departure);
         row.maxPath = Math.max(row.maxPath, control.debug.pathError);
       });
+      if (telemetry.every((row) => row.laps >= 3)) break;
     }
     console.info('PLAYER_LINE_PACK', JSON.stringify(telemetry));
     for (const row of telemetry) {
