@@ -120,7 +120,7 @@ There are no live energy-mode keys in the current core-race build.
 ### M2 — racing feel — current priority
 - fixed-isometric 3D presentation ✅
 - Rapier physical field ✅
-- AI follow / attack / defend / side-by-side ✅ first model
+- AI follow / side-by-side traffic states with opportunistic physical passing ✅
 - high-speed braking and cornering skill requirement ✅ ongoing tuning
 - speed-perception telemetry ✅
 - stronger AI without straight-line compound cheats ✅

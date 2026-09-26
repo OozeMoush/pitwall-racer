@@ -976,7 +976,7 @@ export class CoreRaceGame {
       const car = this.aiCars[index];
       car.root.position.copy(world);
       car.root.rotation.y = headingToYaw(state.heading);
-      car.root.rotation.z = driver.battleState === 'ATTACK' ? 0.018 : driver.battleState === 'DEFEND' ? -0.012 : driver.battleState === 'SIDE_BY_SIDE' ? 0.009 : 0;
+      car.root.rotation.z = driver.battleState === 'SIDE_BY_SIDE' ? 0.009 : 0;
       car.setCompound(driver.tire.compound);
     });
 

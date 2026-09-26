@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('dynamicAiControl', () => {
-  it('uses the tow first, then moves off line smoothly to attack without crossing the road', () => {
+  it('uses the tow first, then begins a gentle pass while remaining in FOLLOW', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
@@ -38,17 +38,58 @@ describe('dynamicAiControl', () => {
       ...ahead,
       progress: driver.progress + 12 / TRACK_LENGTH,
     };
-    const attack = dynamicAiControl(driver, vehicle, [closeAhead]);
-    expect(attack.battleState).toBe('ATTACK');
-    expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.2);
-    // A 3.2 m first move is deliberate enough to clear the wake without the
-    // old full-lane jump; the separate stable-side regression prevents it from
-    // oscillating back across the rival on the next controller tick.
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(3.3);
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+    const clean = dynamicAiControl(driver, vehicle, []);
+    const pass = dynamicAiControl(driver, vehicle, [closeAhead]);
+    expect(pass.battleState).toBe('FOLLOW');
+    // Passing is a small adjustment relative to the racing line, not an
+    // absolute demand to be near the centreline. Some reference-line samples
+    // legitimately sit several metres off centre.
+    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeGreaterThan(0.2);
+    expect(Math.abs(pass.targetLane - clean.targetLane)).toBeLessThanOrEqual(1.6);
+    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
-  it('commits to the same passing side instead of weaving across the rival', () => {
+  it('stays in the wake when both passing corridors are occupied', () => {
+    const driver = createAiField()[0];
+    const p = sampleTrack(driver.progress, 0);
+    const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
+    const ahead: RaceTrafficCar = {
+      id: 'leader',
+      lap: driver.lap,
+      progress: driver.progress + 12 / TRACK_LENGTH,
+      speed: 68,
+      laneOffset: 0,
+      performance: 1,
+    };
+    const ordinaryFollow = dynamicAiControl(driver, vehicle, [{
+      ...ahead,
+      progress: driver.progress + 26 / TRACK_LENGTH,
+    }]);
+    const blocked = dynamicAiControl(driver, vehicle, [
+      ahead,
+      {
+        id: 'left-blocker',
+        lap: driver.lap,
+        progress: driver.progress + 16 / TRACK_LENGTH,
+        speed: 76,
+        laneOffset: -6.8,
+        performance: 1,
+      },
+      {
+        id: 'right-blocker',
+        lap: driver.lap,
+        progress: driver.progress + 16 / TRACK_LENGTH,
+        speed: 76,
+        laneOffset: 6.8,
+        performance: 1,
+      },
+    ]);
+
+    expect(blocked.battleState).toBe('FOLLOW');
+    expect(blocked.targetLane).toBeCloseTo(ordinaryFollow.targetLane, 6);
+  });
+
+  it('chooses the same passing side instead of weaving across the rival', () => {
     const driver = createAiField()[0];
     const ahead: RaceTrafficCar = {
       id: 'leader',
@@ -63,9 +104,14 @@ describe('dynamicAiControl', () => {
     const leftControl = dynamicAiControl(driver, { ...createVehicle(left.x, left.y, left.heading), speed: 78 }, [ahead]);
     const rightControl = dynamicAiControl(driver, { ...createVehicle(right.x, right.y, right.heading), speed: 78 }, [ahead]);
 
-    expect(leftControl.battleState).toBe('ATTACK');
-    expect(rightControl.battleState).toBe('ATTACK');
-    expect(Math.sign(leftControl.targetLane)).toBe(Math.sign(rightControl.targetLane));
+    expect(leftControl.battleState).toBe('FOLLOW');
+    expect(rightControl.battleState).toBe('FOLLOW');
+    // The absolute target can still sit on opposite sides of zero because the
+    // cars started at -1.2 m and +1.2 m. What matters is that both commands
+    // move toward the same chosen passing side.
+    expect(Math.sign(leftControl.targetLane - (-1.2))).toBe(
+      Math.sign(rightControl.targetLane - 1.2),
+    );
   });
 
   it('holds a real side-by-side lane against another AI instead of reforming a train', () => {
