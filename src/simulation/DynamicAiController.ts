@@ -14,7 +14,6 @@ import {
 import {
   AI_SAFE_LANE_LIMIT,
   TRACK_KERB_OUTER_OFFSET,
-  TRACK_ROAD_HALF_WIDTH,
   TRACK_RUNOFF_HALF_WIDTH,
 } from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
@@ -56,12 +55,8 @@ export interface DynamicAiControl {
   debug: DynamicAiDebug;
 }
 
-const BATTLE_LANE_LIMIT = Math.min(AI_SAFE_LANE_LIMIT, 11.8);
-const SAFE_SIDE_BY_SIDE_GAP = 6.4;
 const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
-const ALONGSIDE_ENTRY_RANGE = 10.5;
-const ALONGSIDE_EXIT_RANGE = 13.0;
 const AI_PACE_CHEAT_MIN = 1.055;
 const AI_PACE_CHEAT_MAX = 1.085;
 const AI_EXPLICIT_PACE_MIN = 1.000;
@@ -111,8 +106,8 @@ export function aiEffectiveGrip(driver: DriverState): number {
  * Clean-air pace is defined by the generated machine-limit reference lap.
  * Driver skill is only an execution percentage of that reference; it never
  * becomes extra engine power, hidden tyre grip, or a hand-authored lap-time
- * target. Traffic can move the car off the reference line, but once clear it
- * returns to the same trajectory a perfect reference driver would use.
+ * target. Traffic is longitudinal only: a blocked CPU may reduce speed, but
+ * every CPU keeps steering toward the same reference line.
  *
  * Pitwall's two tight direction-change complexes get a small predictive
  * steering assist. It uses the shared arcade-car equations to begin rotation
@@ -133,89 +128,29 @@ export function dynamicAiControl(
     ? 1
     : aiPaceCheatForSkill(driver.skill);
   const profile = trackProfile(projection.progress, 1, controlGrip);
-  const battlePreview = trackProfile(
-    projection.progress + 72 / TRACK_LENGTH,
-    1,
-    controlGrip,
-  );
-  const battleSeverity = Math.max(profile.severity, battlePreview.severity * 0.92);
-  const trafficCommitted = driver.battleState !== 'CLEAR';
-
-  // Passing is no longer a persistent ATTACK mode. The car stays in FOLLOW
-  // until physics actually establishes a side-by-side overlap. A wider search
-  // is retained while interacting with traffic so a car already moving around
-  // a rival does not instantly forget that rival just because lateral gap grew.
-  const passSafe = battleSeverity < 0.40
-    && projection.distance < Math.min(TRACK_ROAD_HALF_WIDTH + 0.5, BATTLE_LANE_LIMIT + 1.0);
-  const battleContinuationSafe = projection.distance < TRACK_ROAD_HALF_WIDTH + 0.5;
-  const canRecognizeBattle = battleContinuationSafe;
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
-  const alongsideRange = driver.battleState === 'SIDE_BY_SIDE'
-    ? ALONGSIDE_EXIT_RANGE
-    : ALONGSIDE_ENTRY_RANGE;
-  const committedLateralSearch = trafficCommitted ? 13.5 : AHEAD_SEARCH_LATERAL;
-  const alongsideLateralLimit = trafficCommitted ? 13.5 : 11.8;
 
   let ahead: RaceTrafficCar | undefined;
   let aheadGap = Number.POSITIVE_INFINITY;
   let aheadLateral = Number.POSITIVE_INFINITY;
-  let alongside: RaceTrafficCar | undefined;
-  let alongsideGap = Number.POSITIVE_INFINITY;
-  let alongsideSignedGap = 0;
 
   for (const other of traffic) {
     if (other.id === driver.id) continue;
     const otherDistance = raceDistance(other.lap, other.progress) * TRACK_LENGTH;
     const gap = otherDistance - driverDistance;
     const lateral = Math.abs(other.laneOffset - projection.laneOffset);
-
-    if (gap > 0 && lateral < committedLateralSearch && gap < aheadGap) {
+    if (gap > 0 && lateral < AHEAD_SEARCH_LATERAL && gap < aheadGap) {
       ahead = other;
       aheadGap = gap;
       aheadLateral = lateral;
     }
-
-    if (canRecognizeBattle
-      && Math.abs(gap) < alongsideRange
-      && lateral >= 3.4
-      && lateral < alongsideLateralLimit
-      && Math.abs(gap) < alongsideGap) {
-      alongside = other;
-      alongsideGap = Math.abs(gap);
-      alongsideSignedGap = gap;
-    }
   }
 
-  const laneBlockedRange = 34;
-  const passRange = 13;
-  const followRange = 40;
   const laneBlocked = ahead !== undefined
-    && aheadGap < laneBlockedRange
+    && aheadGap < 34
     && aheadLateral < BLOCKING_LANE_WIDTH;
-  const ownPerformance = driver.skill * driver.tire.grip;
-  const hasPassingPace = ahead !== undefined
-    && (ownPerformance > ahead.performance * 0.997 || vehicle.speed > ahead.speed + 1.2);
-  const passOpportunity = passSafe
-    && ahead !== undefined
-    && aheadGap < (driver.battleState === 'FOLLOW' ? 24 : passRange)
-    && aheadLateral < committedLateralSearch
-    && driver.tire.wear < 0.94
-    && hasPassingPace;
-  const passLane = passOpportunity && ahead
-    ? chooseClearPassLane(
-        driver.id,
-        ahead,
-        traffic,
-        driverDistance,
-      )
-    : undefined;
-  const movingToPass = passLane !== undefined && alongside === undefined;
-
-  let battleState: BattleState = 'CLEAR';
-  if (alongside) battleState = 'SIDE_BY_SIDE';
-  else if ((laneBlocked || movingToPass) && aheadGap < followRange) {
-    battleState = 'FOLLOW';
-  }
+  let battleState: BattleState =
+    laneBlocked && aheadGap < 40 ? 'FOLLOW' : 'CLEAR';
 
   const trackId = getActiveTrack().id;
   const execution = referenceExecutionForSkill(driver.skill);
@@ -232,46 +167,11 @@ export function dynamicAiControl(
   const currentLineReference = activeReferenceTarget(trackId, projection.progress, controlGrip);
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
-  // Keep the proven closed-loop reference follower for clean-air pace. The
-  // visible weaving was primarily tactical side switching, not the reference
-  // path itself; replacing this loop made the car miss the final complex and
-  // lose the qualifying lap entirely.
+  // Traffic must never create a lateral target. CPU cars always steer toward
+  // the shared reference line; FOLLOW only changes longitudinal pace.
   let targetLane = highFidelityLine
     ? baseLane
     : approachLane(projection.laneOffset, baseLane, 2.6);
-
-  if (movingToPass && passLane !== undefined) {
-    // Blend toward the pass corridor from longitudinal gap, not "metres per
-    // controller tick". A per-tick lane delta at 120 Hz effectively creates an
-    // extremely fast moving target and can fling the car across the circuit.
-    // The requested lane now progresses smoothly from the racing line as the
-    // follower closes from ~14 m to genuine overlap.
-    const passBlend = smoothstep(clamp((14.2 - aheadGap) / 10.0, 0, 1));
-    targetLane = baseLane + (passLane - baseLane) * passBlend;
-  } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
-    const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
-
-    if (alongsideSignedGap < -0.75) {
-      targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    } else if (currentSeparation >= SAFE_SIDE_BY_SIDE_GAP) {
-      targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
-    } else {
-      const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-      const separationDeficit = SAFE_SIDE_BY_SIDE_GAP - currentSeparation;
-      // Keep the current lane as the anchor. The old controller moved its
-      // target by up to 3.2 m on every 120 Hz tick, which could throw both cars
-      // toward the runoff as soon as SIDE_BY_SIDE was detected. Ask only for a
-      // small local correction proportional to the missing clearance.
-      const correction = clamp(separationDeficit * 0.32, 0.10, 0.65);
-      targetLane = clamp(
-        projection.laneOffset + side * correction,
-        -BATTLE_LANE_LIMIT,
-        BATTLE_LANE_LIMIT,
-      );
-    }
-  } else if (battleState === 'FOLLOW') {
-    targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
-  }
 
   const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
   if (offRoad) {
@@ -286,9 +186,7 @@ export function dynamicAiControl(
     battleState = 'CLEAR';
   }
 
-  const passManeuverActive = movingToPass && !offRoad;
-  const battleActive = passManeuverActive || battleState === 'SIDE_BY_SIDE';
-  const explicitFollower = highFidelityLine && !battleActive
+  const explicitFollower = highFidelityLine
     ? explicitLineFollower(
         trackId,
         vehicle,
@@ -299,20 +197,21 @@ export function dynamicAiControl(
   if (explicitFollower) {
     targetLane = clamp(explicitFollower.targetLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
   }
-  const steeringLookAheadMetres = explicitFollower?.lookAheadMetres
-    ?? (battleActive ? Math.min(32, lookAheadMetres) : lookAheadMetres);
+  const steeringLookAheadMetres = explicitFollower?.lookAheadMetres ?? lookAheadMetres;
   const steeringProgress = explicitFollower?.steeringProgress
     ?? (offRoad
       ? projection.progress + 18 / TRACK_LENGTH
       : projection.progress + steeringLookAheadMetres / TRACK_LENGTH);
   const target = sampleTrack(steeringProgress, targetLane);
-  const tangentDistance = battleActive ? 6 : highFidelityLine ? 5 : 8;
+  const tangentDistance = highFidelityLine ? 5 : 8;
   const tangentProgress = steeringProgress + tangentDistance / TRACK_LENGTH;
   const tangentLane = offRoad
     ? 0
-    : passManeuverActive || battleState === 'SIDE_BY_SIDE'
-      ? targetLane
-      : clamp(activeReferenceTarget(trackId, tangentProgress, controlGrip).laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    : clamp(
+        activeReferenceTarget(trackId, tangentProgress, controlGrip).laneOffset,
+        -AI_SAFE_LANE_LIMIT,
+        AI_SAFE_LANE_LIMIT,
+      );
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
   const bearingHeading = Math.atan2(target.y - vehicle.y, target.x - vehicle.x);
@@ -322,37 +221,27 @@ export function dynamicAiControl(
     ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
     : offRoad
       ? 0
-      : passManeuverActive || battleState === 'SIDE_BY_SIDE'
-        ? targetLane
-        : clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+      : clamp(
+          currentLineReference.laneOffset,
+          -AI_SAFE_LANE_LIMIT,
+          AI_SAFE_LANE_LIMIT,
+        );
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
-  const battleOverflow = battleActive
-    ? clamp((Math.abs(projection.laneOffset) - BATTLE_LANE_LIMIT) / 4.0, 0, 1)
-    : 0;
-  const overflowCorrection = battleOverflow > 0
-    ? -Math.sign(projection.laneOffset) * battleOverflow * 0.65
-    : 0;
   const steerCommand = offRoad
     ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
-    : battleActive
-      ? headingError * 2.10
-        + bearingError * 1.02
-        + lateralError * 0.78
-        - vehicle.yawRate * 0.40
-        + overflowCorrection
-      : highFidelityLine
-        ? headingError * 2.45
-          + bearingError * 1.05
-          + lateralError * 0.82
-          - vehicle.yawRate * 0.42
-        : headingError * 2.15
-          + bearingError * 0.82
-          + lateralError * 0.52
-          - vehicle.yawRate * 0.38;
+    : highFidelityLine
+      ? headingError * 2.45
+        + bearingError * 1.05
+        + lateralError * 0.82
+        - vehicle.yawRate * 0.42
+      : headingError * 2.15
+        + bearingError * 0.82
+        + lateralError * 0.52
+        - vehicle.yawRate * 0.38;
   const baselineSteer = explicitFollower
     ? explicitFollower.steer
     : clamp(steerCommand, offRoad ? -1 : -0.98, offRoad ? 1 : 0.98);
-  const pitwallPrediction = !offRoad && !battleActive && !highFidelityLine && trackId === 'pitwall-gp'
+  const pitwallPrediction = !offRoad && !highFidelityLine && trackId === 'pitwall-gp'
     ? pitwallPredictionWeight(projection.progress, profile.severity)
     : 0;
   const predictionWeight = pitwallPrediction;
@@ -382,13 +271,6 @@ export function dynamicAiControl(
         predictionWeight,
       );
 
-  // Legacy explicit traces were stored only against centreline progress, so
-  // longitudinal control had to stay on that axis. Q5 PLAYER traces carry an
-  // absolute world-space trajectory; their explicit-path projection is now the
-  // physically correct phase for speed/AXF samples as well as steering. Keeping
-  // speed on centreline progress while steering follows path progress can shift
-  // the brake phase by several metres in compact corners and create the large
-  // overspeed/full-brake oscillation seen in replay diagnostics.
   const absolutePoseTrace = lineAsset?.points.length
     ? lineAsset.points.every((point) =>
         point.worldX !== undefined
@@ -479,27 +361,7 @@ export function dynamicAiControl(
     targetSpeed *= 1 + cornerAttackConfidence * 0.09;
   }
 
-  if (passManeuverActive && profile.severity < 0.42) {
-    targetSpeed = speedReference.targetSpeed
-      * Math.min(1.012, execution + 0.010)
-      * paceCheat;
-  }
-  if (battleState === 'SIDE_BY_SIDE' && alongside) {
-    const performanceDelta = driver.skill * driver.tire.grip - alongside.performance;
-    if (performanceDelta > 0.002 && profile.severity < 0.48) {
-      const advantage = clamp(performanceDelta * 0.24, 0.004, 0.012);
-      targetSpeed = speedReference.targetSpeed
-        * Math.min(1.012, execution + advantage)
-        * paceCheat;
-    } else if (performanceDelta < -0.002) {
-      const compromise = clamp(-performanceDelta * 0.18, 0.003, 0.010);
-      targetSpeed = speedReference.targetSpeed
-        * Math.max(0.972, execution - compromise)
-        * paceCheat;
-    }
-  }
-
-  if (laneBlocked && ahead && !passManeuverActive) {
+  if (laneBlocked && ahead) {
     const desiredGap = 8.8;
     const buffer = 4.8;
     if (aheadGap < desiredGap + buffer) {
@@ -757,48 +619,6 @@ function wrap01(value: number): number {
 
 function approachLane(current: number, desired: number, maximumDelta: number): number {
   return clamp(desired, current - maximumDelta, current + maximumDelta);
-}
-
-function chooseClearPassLane(
-  driverId: string,
-  ahead: RaceTrafficCar,
-  traffic: readonly RaceTrafficCar[],
-  driverDistance: number,
-): number | undefined {
-  const passOffset = 6.8;
-  const positive = clamp(
-    ahead.laneOffset + passOffset,
-    -BATTLE_LANE_LIMIT,
-    BATTLE_LANE_LIMIT,
-  );
-  const negative = clamp(
-    ahead.laneOffset - passOffset,
-    -BATTLE_LANE_LIMIT,
-    BATTLE_LANE_LIMIT,
-  );
-
-  const corridorClear = (candidateLane: number): boolean => traffic.every((other) => {
-    if (other.id === driverId || other.id === ahead.id) return true;
-    const longitudinalGap =
-      raceDistance(other.lap, other.progress) * TRACK_LENGTH - driverDistance;
-    if (longitudinalGap < -10 || longitudinalGap > 24) return true;
-    return Math.abs(other.laneOffset - candidateLane) >= SAFE_SIDE_BY_SIDE_GAP;
-  });
-
-  const options = stableSide(driverId) > 0
-    ? [positive, negative]
-    : [negative, positive];
-
-  return options.find((candidate) =>
-    Math.abs(candidate - ahead.laneOffset) >= passOffset * 0.82
-    && corridorClear(candidate)
-  );
-}
-
-function stableSide(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  return hash % 2 === 0 ? 1 : -1;
 }
 
 function wrapAngle(angle: number): number {
