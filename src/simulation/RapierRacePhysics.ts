@@ -83,7 +83,6 @@ export class RapierRacePhysics {
   readonly world: RAPIER.World;
   private readonly playerBody: RAPIER.RigidBody;
   private playerCollider?: RAPIER.Collider;
-  private readonly aiColliderHandles = new Set<number>();
   private readonly aiColliderIndexByHandle = new Map<number, number>();
   private readonly barrierColliderHeadings = new Map<number, number>();
   private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
@@ -536,7 +535,6 @@ export class RapierRacePhysics {
     if (role === 'PLAYER') {
       this.playerCollider = createdCollider;
     } else {
-      this.aiColliderHandles.add(createdCollider.handle);
       if (aiIndex !== undefined) {
         this.aiColliderIndexByHandle.set(createdCollider.handle, aiIndex);
       }
