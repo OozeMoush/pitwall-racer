@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:playtest": "vitest run src/simulation/DynamicPackPlaytest.test.ts src/simulation/MultiCircuitPlaytest.test.ts src/simulation/AiReferenceGhost.test.ts src/simulation/DynamicAiController.test.ts src/simulation/RaceStartRegression.test.ts src/simulation/TyreStrategyPlaytest.test.ts src/simulation/TrackModel.test.ts src/simulation/LapValidityModel.test.ts src/simulation/TrackBarrierPhysics.test.ts src/simulation/RacingLineRuntime.test.ts"
+    "test:playtest": "vitest run src/game/GrandPrixPlaytest.test.ts src/rendering3d/PitLane3D.test.ts src/simulation/DynamicPackPlaytest.test.ts src/simulation/MultiCircuitPlaytest.test.ts src/simulation/AiReferenceGhost.test.ts src/simulation/DynamicAiController.test.ts src/simulation/GridLaunchRegression.test.ts src/simulation/QualifyingModel.test.ts src/simulation/RaceStartRegression.test.ts src/simulation/TyreStrategyPlaytest.test.ts src/simulation/TrackModel.test.ts src/simulation/LapValidityModel.test.ts src/simulation/TrackBarrierPhysics.test.ts src/simulation/RacingLineRuntime.test.ts"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "0.20.0",
