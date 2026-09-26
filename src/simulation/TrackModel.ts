@@ -6,7 +6,8 @@ export type TrackId =
   | 'switchback-ring'
   | 'sakura-esses'
   | 'harbor-chicane'
-  | 'serra-circuit';
+  | 'serra-circuit'
+  | 'baku-street';
 
 export interface TrackDefinition {
   id: TrackId;
@@ -101,6 +102,22 @@ const SERRA_CIRCUIT_SOURCE: readonly TrackPoint[] = [
   { x: 365, y: 470 }, { x: 310, y: 595 }, { x: 350, y: 720 }, { x: 445, y: 825 },
 ];
 
+// Baku-inspired street layout. The official circuit is a 6.003 km, 20-turn
+// street track; this miniature preserves the defining rhythm rather than
+// literal scale: huge waterfront straight, square city blocks, a tight castle
+// sequence, then the fast descent back toward the sea.
+const BAKU_STREET_SOURCE: readonly TrackPoint[] = [
+  { x: 480, y: 900 }, { x: 900, y: 910 }, { x: 1400, y: 910 }, { x: 1900, y: 900 },
+  { x: 2070, y: 850 }, { x: 2120, y: 740 }, { x: 2080, y: 650 }, { x: 1940, y: 610 },
+  { x: 1810, y: 610 }, { x: 1740, y: 540 }, { x: 1810, y: 475 }, { x: 1980, y: 455 },
+  { x: 2050, y: 365 }, { x: 1980, y: 285 }, { x: 1810, y: 260 }, { x: 1640, y: 300 },
+  { x: 1510, y: 380 }, { x: 1400, y: 360 }, { x: 1350, y: 285 }, { x: 1270, y: 235 },
+  { x: 1180, y: 250 }, { x: 1130, y: 330 }, { x: 1030, y: 380 }, { x: 900, y: 365 },
+  { x: 790, y: 315 }, { x: 660, y: 300 }, { x: 555, y: 350 }, { x: 500, y: 445 },
+  { x: 520, y: 555 }, { x: 610, y: 635 }, { x: 735, y: 675 }, { x: 830, y: 735 },
+  { x: 785, y: 805 }, { x: 650, y: 845 }, { x: 520, y: 870 },
+];
+
 function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
   return points.map((point) => ({
     x: TRACK_CENTRE_X + (point.x - TRACK_CENTRE_X) * MINIATURE_TRACK_SCALE,
@@ -114,6 +131,7 @@ const SWITCHBACK_RING = miniature(SWITCHBACK_RING_SOURCE);
 const SAKURA_ESSES = miniature(SAKURA_ESSES_SOURCE);
 const HARBOR_CHICANE = miniature([...HARBOR_CHICANE_SOURCE].reverse());
 const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
+const BAKU_STREET = miniature(BAKU_STREET_SOURCE);
 
 export const TRACKS: readonly TrackDefinition[] = [
   { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP },
@@ -122,6 +140,7 @@ export const TRACKS: readonly TrackDefinition[] = [
   { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES },
   { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE },
   { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT },
+  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'AZERBAIJAN-STYLE · CITY WALLS · LONG STRAIGHT', controls: BAKU_STREET },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;
