@@ -5,6 +5,7 @@ import { normalizedTowStrength, towPowerBoost } from '../simulation/AeroModel';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
 import {
   createRaceCamera,
+  createRaceRenderer,
   followRaceCamera,
   resizeRaceViewport,
   setupRaceWorld,
@@ -217,14 +218,7 @@ export class CoreRaceGame {
     this.usedCompounds = new Set([selection.startCompound]);
     this.lapStartCompound = selection.startCompound;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    container.appendChild(this.renderer.domElement);
+    this.renderer = createRaceRenderer(container);
 
     setupRaceWorld(this.scene);
     this.playerCar = createFormulaCar(0x31b9ef, this.tire.compound, true);
