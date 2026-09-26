@@ -257,12 +257,17 @@ export function dynamicAiControl(
       targetLane = clamp(projection.laneOffset, -BATTLE_LANE_LIMIT, BATTLE_LANE_LIMIT);
     } else {
       const side = projection.laneOffset >= alongside.laneOffset ? 1 : -1;
-      const desired = clamp(
-        alongside.laneOffset + side * SAFE_SIDE_BY_SIDE_GAP,
+      const separationDeficit = SAFE_SIDE_BY_SIDE_GAP - currentSeparation;
+      // Keep the current lane as the anchor. The old controller moved its
+      // target by up to 3.2 m on every 120 Hz tick, which could throw both cars
+      // toward the runoff as soon as SIDE_BY_SIDE was detected. Ask only for a
+      // small local correction proportional to the missing clearance.
+      const correction = clamp(separationDeficit * 0.32, 0.10, 0.65);
+      targetLane = clamp(
+        projection.laneOffset + side * correction,
         -BATTLE_LANE_LIMIT,
         BATTLE_LANE_LIMIT,
       );
-      targetLane = approachLane(projection.laneOffset, desired, 3.2);
     }
   } else if (battleState === 'FOLLOW') {
     targetLane = approachLane(projection.laneOffset, baseLane, 1.5);
