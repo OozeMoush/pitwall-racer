@@ -59,6 +59,18 @@ describe('StrategySimulator', () => {
     expect(snapshot.fastest.usedCompounds.has('MEDIUM')).toBe(true);
   });
 
+  it('keeps the cached benchmark numerically identical to direct simulation', () => {
+    const snapshot = benchmarkStrategies(50);
+    const cached = snapshot.legalResults.find((result) => result.name === 'M→H lap18');
+    const direct = simulateStrategy(balanced, 50);
+
+    expect(cached).toBeDefined();
+    expect(cached!.totalTime).toBeCloseTo(direct.totalTime, 9);
+    expect(cached!.laps).toHaveLength(direct.laps.length);
+    expect(cached!.laps[17].wearAtEnd).toBeCloseTo(direct.laps[17].wearAtEnd, 9);
+    expect(cached!.laps[49].wearAtEnd).toBeCloseTo(direct.laps[49].wearAtEnd, 9);
+  });
+
   it('keeps Soft viable in the 40-lap race without making it dominant at 60 laps', () => {
     const shortRace = benchmarkStrategies(40);
     const longRace = benchmarkStrategies(60);
