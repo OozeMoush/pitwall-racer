@@ -56,6 +56,7 @@ import {
 } from '../simulation/RaceFlow';
 import {
   AI_START_REACTION_SECONDS,
+  LAUNCH_ACCELERATION_EFFECT_SECONDS,
   evaluateLaunchReaction,
   launchTone,
 } from '../simulation/RaceStartModel';
@@ -179,6 +180,8 @@ export class CoreRaceGame {
   private sessionFastestLap?: number;
   private sessionFastestSectors: Array<number | undefined> = [undefined, undefined, undefined];
   private launchEffectRemaining = 0;
+  private launchPerformanceRemaining = 0;
+  private launchAccelerationMultiplier = 1;
   private launchFeedback = '';
   private launchFeedbackTone: 'good' | 'bad' | 'neutral' = 'neutral';
   private lightsOutAtMs?: number;
@@ -374,6 +377,8 @@ export class CoreRaceGame {
       this.launchThrottleEnabled = false;
       this.launchRequiresRelease = this.keys.has('KeyW');
       this.launchReactionRecorded = false;
+      this.launchPerformanceRemaining = 0;
+      this.launchAccelerationMultiplier = 1;
       this.launchFeedback = this.launchRequiresRelease
         ? 'RELEASE W · THEN PRESS'
         : '';
@@ -390,6 +395,9 @@ export class CoreRaceGame {
 
     if (this.launchEffectRemaining > 0) {
       this.launchEffectRemaining = Math.max(0, this.launchEffectRemaining - dt);
+    }
+    if (this.launchPerformanceRemaining > 0) {
+      this.launchPerformanceRemaining = Math.max(0, this.launchPerformanceRemaining - dt);
     }
 
     this.timing = stepTiming(this.timing, dt);
@@ -462,7 +470,11 @@ export class CoreRaceGame {
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
       powerBoost: CORE_POWER_BOOST + towPowerBoost(aero.tow),
-      powerMultiplier: surface.powerMultiplier,
+      powerMultiplier:
+        surface.powerMultiplier
+        * (this.launchPerformanceRemaining > 0
+          ? this.launchAccelerationMultiplier
+          : 1),
       rollingResistance: surface.rollingResistance,
     }, dt);
     this.physics.step(dt);
@@ -1257,6 +1269,8 @@ export class CoreRaceGame {
     );
     this.launchFeedback = launch.label;
     this.launchFeedbackTone = launchTone(launch.quality);
+    this.launchAccelerationMultiplier = launch.accelerationMultiplier;
+    this.launchPerformanceRemaining = LAUNCH_ACCELERATION_EFFECT_SECONDS;
     this.launchEffectRemaining = 2.2;
   }
 
@@ -1319,6 +1333,8 @@ export class CoreRaceGame {
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
     this.launchEffectRemaining = 0;
+    this.launchPerformanceRemaining = 0;
+    this.launchAccelerationMultiplier = 1;
     this.launchFeedback = '';
     this.launchFeedbackTone = 'neutral';
     this.lightsOutAtMs = undefined;
