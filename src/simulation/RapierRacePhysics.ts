@@ -2,6 +2,12 @@ import RAPIER from '@dimforge/rapier2d-compat';
 import { aerodynamicEffect, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
 import {
+  createAiStuckRecoveryState,
+  stepAiStuckRecovery,
+  type AiRecoveryPhase,
+  type AiStuckRecoveryState,
+} from './AiStuckRecovery';
+import {
   aiEffectiveGrip,
   aiPowerBoostForSkill,
   dynamicAiControl,
@@ -91,6 +97,7 @@ export class RapierRacePhysics {
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
   private readonly aiPitStops: PitStopState[];
+  private aiRecoveryStates: AiStuckRecoveryState[];
   private playerSlideState = createTyreSlideState(0.37);
   private playerSlideSeverityValue = 0;
   private playerLongitudinalAccelerationValue = 0;
@@ -122,6 +129,7 @@ export class RapierRacePhysics {
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
     this.aiPitStops = ai.map(() => createPitStopState());
+    this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
@@ -165,14 +173,46 @@ export class RapierRacePhysics {
       }
 
       if (isPitActive(this.aiPitStops[index])) {
+        this.aiRecoveryStates[index] = createAiStuckRecoveryState();
         this.stepAiPit(index, driver, dt);
         return;
       }
 
       const control = dynamicAiControl(driver, state, traffic);
-      this.latestAiControls[index] = control;
-      driver.battleState = control.battleState;
       const projection = projectTrackNear(state.x, state.y, driver.progress);
+      const recovery = stepAiStuckRecovery(
+        this.aiRecoveryStates[index] ?? createAiStuckRecoveryState(),
+        {
+          speed: state.speed,
+          targetSpeed: control.targetSpeed,
+        },
+        dt,
+      );
+      this.aiRecoveryStates[index] = recovery;
+
+      if (recovery.phase === 'REVERSE') {
+        driver.battleState = 'CLEAR';
+        this.latestAiControls[index] = {
+          ...control,
+          throttle: 0,
+          brake: 0,
+          battleState: 'CLEAR',
+        };
+        this.applyAiReverse(index, projection.progress, dt);
+        return;
+      }
+
+      const effectiveControl = recovery.phase === 'RECOVER'
+        ? {
+            ...control,
+            throttle: Math.max(control.throttle, 0.72),
+            brake: state.speed < 12 ? 0 : control.brake,
+            battleState: 'CLEAR' as const,
+          }
+        : control;
+
+      this.latestAiControls[index] = effectiveControl;
+      driver.battleState = effectiveControl.battleState;
       const physicalSurfaceProjection = projectTrack(state.x, state.y);
       const surface = surfaceEffect(physicalSurfaceProjection.distance);
       const aero = aerodynamicEffect(
@@ -189,9 +229,9 @@ export class RapierRacePhysics {
       // player's car. Stronger drivers also get stronger hardware; this is
       // stable performance, never rubber-banding to the player's position.
       this.driveAi(index, {
-        throttle: control.throttle,
-        brake: control.brake,
-        steer: control.steer,
+        throttle: effectiveControl.throttle,
+        brake: effectiveControl.brake,
+        steer: effectiveControl.steer,
         tireGrip: aiEffectiveGrip(driver)
           * (1 - aero.dirtyAir * 0.42),
         tireWear: driver.tire.wear,
@@ -276,6 +316,10 @@ export class RapierRacePhysics {
     return this.latestAiControls;
   }
 
+  aiRecoveryPhase(index: number): AiRecoveryPhase {
+    return this.aiRecoveryStates[index]?.phase ?? 'NORMAL';
+  }
+
   isAiPitting(index: number): boolean {
     return isPitActive(this.aiPitStops[index] ?? createPitStopState());
   }
@@ -314,6 +358,7 @@ export class RapierRacePhysics {
     this.setPlayerState(playerStart);
     this.playerLap = 0;
     this.latestAiControls = [];
+    this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
@@ -445,6 +490,39 @@ export class RapierRacePhysics {
       driver.laneOffset = projection.laneOffset;
       driver.speed = state.speed;
     });
+  }
+
+  private applyAiReverse(
+    index: number,
+    progress: number,
+    dt: number,
+  ): void {
+    const body = this.aiBodies[index];
+    if (!body) return;
+
+    const velocity = body.linvel();
+    this.aiPreDriveSpeeds[index] = Math.hypot(velocity.x, velocity.y);
+
+    const heading = body.rotation();
+    const reverseSpeed = 5.2;
+    const response = 1 - Math.exp(-Math.max(0, dt) * 4.6);
+    const targetVx = -Math.cos(heading) * reverseSpeed;
+    const targetVy = -Math.sin(heading) * reverseSpeed;
+
+    body.setLinvel({
+      x: velocity.x + (targetVx - velocity.x) * response,
+      y: velocity.y + (targetVy - velocity.y) * response,
+    }, true);
+
+    const referenceHeading = sampleTrack(progress, 0).heading;
+    const headingError = wrapAngle(referenceHeading - heading);
+    const desiredYaw = clamp(headingError * 1.25, -0.55, 0.55);
+    body.setAngvel(
+      body.angvel() + (desiredYaw - body.angvel()) * response,
+      true,
+    );
+
+    this.aiLongitudinalAccelerationValues[index] = -4.5;
   }
 
   private driveBody(
@@ -684,4 +762,16 @@ export function carRelativeImpactSpeed(
   otherVy: number,
 ): number {
   return Math.hypot(playerVx - otherVx, playerVy - otherVy);
+}
+
+
+function wrapAngle(angle: number): number {
+  let result = angle;
+  while (result > Math.PI) result -= Math.PI * 2;
+  while (result < -Math.PI) result += Math.PI * 2;
+  return result;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
