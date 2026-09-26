@@ -49,6 +49,7 @@ import {
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
 import { evaluateLaunch, launchTone, stepLaunchCharge } from '../simulation/RaceStartModel';
 import { canRecover } from '../simulation/RecoveryModel';
+import { REFERENCE_POWER_BOOST } from '../simulation/ReferenceDriverModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
 import { surfaceEffect } from '../simulation/SurfaceModel';
@@ -91,7 +92,6 @@ import type { RaceSetup } from './RaceSetup';
 const FIXED_DT = 1 / 120;
 const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
-const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
 const TIMING_EPSILON = 0.0005;
@@ -416,7 +416,7 @@ export class CoreRaceGame {
       tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST + towPowerBoost(aero.tow) + launchPower,
+      powerBoost: REFERENCE_POWER_BOOST + towPowerBoost(aero.tow) + launchPower,
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
@@ -578,7 +578,7 @@ export class CoreRaceGame {
         tireGrip: this.tire.grip,
         tireWear: this.tire.wear,
         surfaceGrip: 1,
-        powerBoost: CORE_POWER_BOOST,
+        powerBoost: REFERENCE_POWER_BOOST,
         powerMultiplier: 1,
         rollingResistance: 0,
       }, dt);
