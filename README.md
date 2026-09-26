@@ -15,7 +15,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - Soft red / Medium yellow / Hard white tyre compounds
 - physical pit-lane transit and tyre service for player and CPU
 - dry-race two-compound requirement
-- CLEAR / FOLLOW / ATTACK / DEFEND / SIDE_BY_SIDE CPU racecraft states
+- CLEAR / FOLLOW / SIDE_BY_SIDE CPU traffic states with opportunistic physical passing
 - dirty air and tow
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
 - fixed 120 Hz physics/simulation step
