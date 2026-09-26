@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('dynamicAiControl', () => {
-  it('uses the tow first, then moves off line smoothly to attack without crossing the road', () => {
+  it('uses the tow first, then begins a gentle pass while remaining in FOLLOW', () => {
     const driver = createAiField()[0];
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 78 };
@@ -38,17 +38,17 @@ describe('dynamicAiControl', () => {
       ...ahead,
       progress: driver.progress + 12 / TRACK_LENGTH,
     };
-    const attack = dynamicAiControl(driver, vehicle, [closeAhead]);
-    expect(attack.battleState).toBe('ATTACK');
-    expect(Math.abs(attack.targetLane - closeAhead.laneOffset)).toBeGreaterThanOrEqual(2.2);
-    // A 3.2 m first move is deliberate enough to clear the wake without the
-    // old full-lane jump; the separate stable-side regression prevents it from
-    // oscillating back across the rival on the next controller tick.
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(3.3);
-    expect(Math.abs(attack.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
+    const pass = dynamicAiControl(driver, vehicle, [closeAhead]);
+    expect(pass.battleState).toBe('FOLLOW');
+    // Passing is a target-lane adjustment inside FOLLOW, not a mode switch.
+    // Keep the first steering target close to the car so it cannot lunge across
+    // the player's path in one controller decision.
+    expect(Math.abs(pass.targetLane - closeAhead.laneOffset)).toBeGreaterThan(0.5);
+    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(1.4);
+    expect(Math.abs(pass.targetLane)).toBeLessThanOrEqual(AI_SAFE_LANE_LIMIT);
   });
 
-  it('commits to the same passing side instead of weaving across the rival', () => {
+  it('chooses the same passing side instead of weaving across the rival', () => {
     const driver = createAiField()[0];
     const ahead: RaceTrafficCar = {
       id: 'leader',
@@ -63,8 +63,8 @@ describe('dynamicAiControl', () => {
     const leftControl = dynamicAiControl(driver, { ...createVehicle(left.x, left.y, left.heading), speed: 78 }, [ahead]);
     const rightControl = dynamicAiControl(driver, { ...createVehicle(right.x, right.y, right.heading), speed: 78 }, [ahead]);
 
-    expect(leftControl.battleState).toBe('ATTACK');
-    expect(rightControl.battleState).toBe('ATTACK');
+    expect(leftControl.battleState).toBe('FOLLOW');
+    expect(rightControl.battleState).toBe('FOLLOW');
     expect(Math.sign(leftControl.targetLane)).toBe(Math.sign(rightControl.targetLane));
   });
 
