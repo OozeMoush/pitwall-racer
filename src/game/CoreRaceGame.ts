@@ -321,7 +321,10 @@ export class CoreRaceGame {
         this.launchRequiresRelease = false;
       }
     });
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      if (!this.launchThrottleEnabled) this.launchRequiresRelease = false;
+    });
   }
 
   private readonly resize = (): void => {
@@ -1668,7 +1671,7 @@ export class CoreRaceGame {
     const bannerHtml = '';
     const showStartLights =
       this.flow.phase === 'COUNTDOWN'
-      || (this.flow.phase === 'RACING' && this.flow.goFlash > 0);
+      || banner === 'LIGHTS_OUT';
     const startLights = Array.from({ length: 5 }, (_, index) =>
       `<i class="${this.flow.phase === 'COUNTDOWN' && index < startLightCount ? 'on' : ''}"></i>`
     ).join('');
