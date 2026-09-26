@@ -145,7 +145,7 @@ export function pitRibbonGeometry(
       const i1 = i0 + 1;
       const i2 = i0 + 2;
       const i3 = i0 + 3;
-      indices.push(i0, i2, i1, i1, i2, i3);
+      indices.push(i0, i1, i2, i1, i3, i2);
     }
   }
   const geometry = new THREE.BufferGeometry();
