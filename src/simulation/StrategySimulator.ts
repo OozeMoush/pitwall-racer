@@ -113,31 +113,79 @@ export function pushAlways(): PaceMode {
   return 'PUSH';
 }
 
+interface BalancedStintTable {
+  laps: SimulatedLap[];
+  cumulativeTime: number[];
+}
+
+function balancedStintTable(
+  compound: Compound,
+  totalLaps: number,
+): BalancedStintTable {
+  // benchmarkStrategies only evaluates balanced one-stop plans. Simulate each
+  // fresh-compound stint once, then reuse its exact lap-by-lap result for every
+  // candidate stop window instead of re-running the 0.5 s tyre loop hundreds
+  // of times.
+  const result = simulateStrategy({
+    name: `${compound} benchmark stint`,
+    startCompound: compound,
+    paceForLap: balancedPace,
+  }, totalLaps);
+
+  const cumulativeTime = [0];
+  for (const lap of result.laps) {
+    cumulativeTime.push(cumulativeTime[cumulativeTime.length - 1] + lap.lapTime);
+  }
+  return { laps: result.laps, cumulativeTime };
+}
+
 export function benchmarkStrategies(totalLaps = 50): BalanceSnapshot {
   // Evaluate every legal one-stop compound pairing at every possible stop lap.
   // The live game also contains one deliberately aggressive two-stop CPU, but
   // this harness answers the simpler baseline question: can a legal one-stop
   // strategy remain competitive across the selectable 40/50/60-lap races?
-  const plans: StrategyPlan[] = [];
+  const stintTables = new Map(
+    COMPOUNDS.map((compound) => [
+      compound,
+      balancedStintTable(compound, totalLaps),
+    ] as const),
+  );
+  const pitLoss = pitStopTimeLossEstimateSeconds();
+  const legalResults: StrategyResult[] = [];
+
   for (const start of COMPOUNDS) {
+    const startTable = stintTables.get(start)!;
     for (const next of COMPOUNDS) {
       if (start === next) continue;
+      const nextTable = stintTables.get(next)!;
+
       for (let stopAfterLap = 1; stopAfterLap < totalLaps; stopAfterLap++) {
-        plans.push({
+        const secondStintLaps = totalLaps - stopAfterLap;
+        const firstLaps = startTable.laps
+          .slice(0, stopAfterLap)
+          .map((lap) => ({ ...lap }));
+        const secondLaps = nextTable.laps
+          .slice(0, secondStintLaps)
+          .map((lap, index) => ({
+            ...lap,
+            lap: stopAfterLap + index + 1,
+          }));
+
+        legalResults.push({
           name: `${start[0]}→${next[0]} lap${stopAfterLap}`,
-          startCompound: start,
-          stopAfterLap,
-          nextCompound: next,
-          paceForLap: balancedPace,
+          totalTime:
+            startTable.cumulativeTime[stopAfterLap]
+            + pitLoss
+            + nextTable.cumulativeTime[secondStintLaps],
+          legal: true,
+          usedCompounds: new Set<Compound>([start, next]),
+          laps: [...firstLaps, ...secondLaps],
         });
       }
     }
   }
 
-  const legalResults = plans
-    .map((plan) => simulateStrategy(plan, totalLaps))
-    .filter((result) => result.legal)
-    .sort((a, b) => a.totalTime - b.totalTime);
+  legalResults.sort((a, b) => a.totalTime - b.totalTime);
 
   const fastest = legalResults[0];
   const second = legalResults[1] ?? fastest;
