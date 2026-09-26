@@ -3,8 +3,13 @@ import { RaceAudio } from '../audio/RaceAudio';
 import { AiReferenceGhost } from '../simulation/AiReferenceGhost';
 import { normalizedTowStrength, towPowerBoost } from '../simulation/AeroModel';
 import { createFormulaCar, type FormulaCar3D } from '../rendering3d/Car3D';
-import { createPitLane3D } from '../rendering3d/PitLane3D';
-import { createTrack3D } from '../rendering3d/Track3D';
+import {
+  createRaceCamera,
+  followRaceCamera,
+  resizeRaceViewport,
+  setupRaceWorld,
+  snapRaceCamera,
+} from '../rendering3d/RaceScene3D';
 import { headingToYaw, toWorld } from '../rendering3d/WorldTransform';
 import { resolveAiOccupancy } from '../simulation/AiOccupancyModel';
 import { gridPositionFor, gridSlotForPosition, PLAYER_GRID } from '../simulation/GridModel';
@@ -89,8 +94,6 @@ import {
 import type { RaceSetup } from './RaceSetup';
 
 const FIXED_DT = 1 / 120;
-const CAMERA_HALF_HEIGHT = 19.5;
-const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
 const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
@@ -127,7 +130,7 @@ export class CoreRaceGame {
   private readonly startCompound: Compound;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.OrthographicCamera(-40, 40, CAMERA_HALF_HEIGHT, -CAMERA_HALF_HEIGHT, 0.1, 460);
+  private readonly camera = createRaceCamera();
   private readonly keys = new Set<string>();
   private readonly playerCar: FormulaCar3D;
   private readonly aiCars: FormulaCar3D[];
@@ -223,7 +226,7 @@ export class CoreRaceGame {
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
 
-    this.setupWorld();
+    setupRaceWorld(this.scene);
     this.playerCar = createFormulaCar(0x31b9ef, this.tire.compound, true);
     this.scene.add(this.playerCar.root);
     this.aiCars = this.ai.map((driver, index) => {
@@ -241,27 +244,6 @@ export class CoreRaceGame {
     this.audio.unlock();
     this.syncVisuals(true);
     requestAnimationFrame(this.frame);
-  }
-
-  private setupWorld(): void {
-    this.scene.background = new THREE.Color(0x8baab2);
-    this.scene.fog = new THREE.Fog(0x8baab2, 165, 450);
-    this.scene.add(new THREE.HemisphereLight(0xdceef3, 0x29402d, 1.45));
-
-    const sun = new THREE.DirectionalLight(0xfff1d5, 3.2);
-    sun.position.set(-58, 88, 38);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -120;
-    sun.shadow.camera.right = 120;
-    sun.shadow.camera.top = 100;
-    sun.shadow.camera.bottom = -100;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 260;
-    this.scene.add(sun);
-
-    this.scene.add(createTrack3D());
-    this.scene.add(createPitLane3D());
   }
 
   private bindInput(): void {
@@ -294,15 +276,7 @@ export class CoreRaceGame {
   }
 
   private readonly resize = (): void => {
-    const width = Math.max(1, this.container.clientWidth);
-    const height = Math.max(1, this.container.clientHeight);
-    const aspect = width / height;
-    this.renderer.setSize(width, height, false);
-    this.camera.left = -CAMERA_HALF_HEIGHT * aspect;
-    this.camera.right = CAMERA_HALF_HEIGHT * aspect;
-    this.camera.top = CAMERA_HALF_HEIGHT;
-    this.camera.bottom = -CAMERA_HALF_HEIGHT;
-    this.camera.updateProjectionMatrix();
+    resizeRaceViewport(this.container, this.renderer, this.camera);
   };
 
   private readonly frame = (now: number): void => {
@@ -981,9 +955,7 @@ export class CoreRaceGame {
     });
 
     if (initial) {
-      this.cameraTarget.copy(playerPos);
-      this.camera.position.copy(playerPos).add(CAMERA_OFFSET);
-      this.camera.lookAt(this.cameraTarget);
+      snapRaceCamera(this.camera, this.cameraTarget, this.vehicle.x, this.vehicle.y);
     }
   }
 
@@ -1173,13 +1145,13 @@ export class CoreRaceGame {
   }
 
   private updateCamera(dt: number): void {
-    const position = toWorld(this.vehicle.x, this.vehicle.y, 0.25);
-    const desired = position.clone().add(CAMERA_OFFSET);
-    const cameraLerp = 1 - Math.exp(-dt * 4.0);
-    const targetLerp = 1 - Math.exp(-dt * 4.4);
-    this.cameraTarget.lerp(position, targetLerp);
-    this.camera.position.lerp(desired, cameraLerp);
-    this.camera.lookAt(this.cameraTarget);
+    followRaceCamera(
+      this.camera,
+      this.cameraTarget,
+      this.vehicle.x,
+      this.vehicle.y,
+      dt,
+    );
   }
 
   private updateAudio(dt: number): void {
