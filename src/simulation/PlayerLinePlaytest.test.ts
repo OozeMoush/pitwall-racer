@@ -118,7 +118,11 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
   const physics = new RapierRacePhysics(createVehicle(-10000, -10000, 0), pack);
   const telemetry = pack.map(d => ({ name: d.name, laps: 0, stall: 0, maxStall: 0, departure: 0, maxDeparture: 0, maxPath: 0 }));
   try {
-    for (let tick = 0; tick < 120 / DT; tick++) {
+    // The regression only needs every CPU identity to survive multiple laps on
+    // the PLAYER line. The old fixed 120-second window kept simulating long
+    // after all seven cars had already satisfied the Lap 3 assertion.
+    const packTimeoutTicks = 90 / DT;
+    for (let tick = 0; tick < packTimeoutTicks; tick++) {
       pack = stepAiField(pack, DT, 20, [], false);
       physics.syncAiKinematics(pack, DT, -10);
       physics.step(DT);
@@ -133,6 +137,7 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
         row.maxDeparture = Math.max(row.maxDeparture, row.departure);
         row.maxPath = Math.max(row.maxPath, control.debug.pathError);
       });
+      if (telemetry.every((row) => row.laps >= 3)) break;
     }
     console.info('PLAYER_LINE_PACK', JSON.stringify(telemetry));
     for (const row of telemetry) {
