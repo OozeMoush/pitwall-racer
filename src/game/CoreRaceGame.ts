@@ -46,8 +46,19 @@ import {
   stepPlayerPitStop,
   type PitStopState,
 } from '../simulation/PitLaneModel';
-import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
-import { evaluateLaunch, launchTone, stepLaunchCharge } from '../simulation/RaceStartModel';
+import {
+  createRaceFlow,
+  finishRaceFlow,
+  raceBanner,
+  raceStartLightCount,
+  stepRaceFlow,
+  type RaceFlowState,
+} from '../simulation/RaceFlow';
+import {
+  AI_START_REACTION_SECONDS,
+  evaluateLaunchReaction,
+  launchTone,
+} from '../simulation/RaceStartModel';
 import { canRecover } from '../simulation/RecoveryModel';
 import { twoCompoundWarning } from '../simulation/RuleFeedback';
 import { selectStartingTyre } from '../simulation/StrategySelection';
@@ -167,11 +178,13 @@ export class CoreRaceGame {
   private aiLapClocks = new Map<string, AiLapClock>();
   private sessionFastestLap?: number;
   private sessionFastestSectors: Array<number | undefined> = [undefined, undefined, undefined];
-  private launchCharge = 0;
-  private launchBoost = 0;
   private launchEffectRemaining = 0;
   private launchFeedback = '';
   private launchFeedbackTone: 'good' | 'bad' | 'neutral' = 'neutral';
+  private lightsOutAtMs?: number;
+  private launchThrottleEnabled = false;
+  private launchRequiresRelease = false;
+  private launchReactionRecorded = false;
   private lineCandidateReferenceGrip = 1;
   private racingLineNotice = '';
   private racingLineNoticeRemaining = 0;
@@ -270,6 +283,15 @@ export class CoreRaceGame {
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
       this.keys.add(event.code);
       if (event.repeat) return;
+      if (
+        event.code === 'KeyW'
+        && this.flow.phase === 'RACING'
+        && this.lightsOutAtMs !== undefined
+        && !this.launchThrottleEnabled
+        && !this.launchRequiresRelease
+      ) {
+        this.captureLaunchReaction();
+      }
       if (event.code === 'KeyQ') this.chooseCompound('SOFT');
       if (event.code === 'KeyE') this.chooseCompound('MEDIUM');
       if (event.code === 'KeyR') this.chooseCompound('HARD');
@@ -289,7 +311,16 @@ export class CoreRaceGame {
       }
     });
     this.container.addEventListener('pointerdown', () => this.audio.unlock(), { passive: true });
-    window.addEventListener('keyup', (event) => this.keys.delete(event.code));
+    window.addEventListener('keyup', (event) => {
+      this.keys.delete(event.code);
+      if (
+        event.code === 'KeyW'
+        && this.flow.phase === 'RACING'
+        && !this.launchThrottleEnabled
+      ) {
+        this.launchRequiresRelease = false;
+      }
+    });
     window.addEventListener('blur', () => this.keys.clear());
   }
 
@@ -334,17 +365,17 @@ export class CoreRaceGame {
 
   private stepSimulation(dt: number): void {
     const previousPhase = this.flow.phase;
-    if (previousPhase === 'COUNTDOWN') {
-      this.launchCharge = stepLaunchCharge(this.launchCharge, this.keys.has('KeyW'), dt);
-    }
-
     this.flow = stepRaceFlow(this.flow, dt);
     if (previousPhase === 'COUNTDOWN' && this.flow.phase === 'RACING') {
-      const launch = evaluateLaunch(this.launchCharge);
-      this.launchBoost = launch.powerBoost;
-      this.launchEffectRemaining = 1.8;
-      this.launchFeedback = launch.label;
-      this.launchFeedbackTone = launchTone(launch.quality);
+      this.lightsOutAtMs = performance.now();
+      this.launchThrottleEnabled = false;
+      this.launchRequiresRelease = this.keys.has('KeyW');
+      this.launchReactionRecorded = false;
+      this.launchFeedback = this.launchRequiresRelease
+        ? 'RELEASE W · THEN PRESS'
+        : '';
+      this.launchFeedbackTone = this.launchRequiresRelease ? 'bad' : 'neutral';
+      this.launchEffectRemaining = this.launchRequiresRelease ? 1.4 : 0;
     }
 
     if (this.flow.phase !== 'RACING') {
@@ -372,10 +403,15 @@ export class CoreRaceGame {
           isPlayer: true,
         }];
 
-    this.ai = stepAiField(this.ai, dt, this.totalLaps, playerTraffic, false);
-    this.ai = resolveAiOccupancy(this.ai, dt);
-    this.physics.syncAiKinematics(this.ai, dt, this.lap);
-    this.stepAiDebugGhost(dt);
+    const aiLaunchReleased =
+      this.lightsOutAtMs === undefined
+      || this.timing.raceTime >= AI_START_REACTION_SECONDS;
+    if (aiLaunchReleased) {
+      this.ai = stepAiField(this.ai, dt, this.totalLaps, playerTraffic, false);
+      this.ai = resolveAiOccupancy(this.ai, dt);
+      this.physics.syncAiKinematics(this.ai, dt, this.lap);
+      this.stepAiDebugGhost(dt);
+    }
 
     if (this.stepPhysicalPit(dt)) {
       this.updateAiLapTiming();
@@ -383,7 +419,14 @@ export class CoreRaceGame {
       return;
     }
 
-    const throttle = this.keys.has('KeyW') ? 1 : 0;
+    const launchInputRequired =
+      this.lightsOutAtMs !== undefined
+      && !this.launchReactionRecorded;
+    const throttle =
+      this.keys.has('KeyW')
+      && (!launchInputRequired || this.launchThrottleEnabled)
+        ? 1
+        : 0;
     const brake = this.keys.has('KeyS') ? 1 : 0;
     const rawSteer = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     this.steerInput = stepSteering(this.steerInput, rawSteer, this.vehicle.speed, dt);
@@ -408,7 +451,6 @@ export class CoreRaceGame {
 
     this.tire = stepTire(this.tire, 'BALANCED', load + aero.dirtyAir * 0.5, dt);
 
-    const launchPower = this.launchEffectRemaining > 0 ? this.launchBoost : 0;
     this.physics.drivePlayer({
       throttle,
       brake,
@@ -416,7 +458,7 @@ export class CoreRaceGame {
       tireGrip: this.tire.grip * (1 - aero.dirtyAir * 0.42),
       tireWear: this.tire.wear,
       surfaceGrip: surface.gripMultiplier,
-      powerBoost: CORE_POWER_BOOST + towPowerBoost(aero.tow) + launchPower,
+      powerBoost: CORE_POWER_BOOST + towPowerBoost(aero.tow),
       powerMultiplier: surface.powerMultiplier,
       rollingResistance: surface.rollingResistance,
     }, dt);
@@ -1198,6 +1240,23 @@ export class CoreRaceGame {
     }, dt);
   }
 
+  private captureLaunchReaction(): void {
+    if (
+      this.lightsOutAtMs === undefined
+      || this.launchReactionRecorded
+      || this.launchRequiresRelease
+    ) return;
+
+    this.launchThrottleEnabled = true;
+    this.launchReactionRecorded = true;
+    const launch = evaluateLaunchReaction(
+      Math.max(0, performance.now() - this.lightsOutAtMs) / 1000,
+    );
+    this.launchFeedback = launch.label;
+    this.launchFeedbackTone = launchTone(launch.quality);
+    this.launchEffectRemaining = 2.2;
+  }
+
   private chooseCompound(compound: Compound): void {
     if (this.flow.phase !== 'FINISHED' && !isPitActive(this.pitStop)) this.selectedCompound = compound;
   }
@@ -1256,11 +1315,13 @@ export class CoreRaceGame {
     this.sessionFastestLap = undefined;
     this.sessionFastestSectors = [undefined, undefined, undefined];
     this.fixedAccumulator = 0;
-    this.launchCharge = 0;
-    this.launchBoost = 0;
     this.launchEffectRemaining = 0;
     this.launchFeedback = '';
     this.launchFeedbackTone = 'neutral';
+    this.lightsOutAtMs = undefined;
+    this.launchThrottleEnabled = false;
+    this.launchRequiresRelease = false;
+    this.launchReactionRecorded = false;
     this.raceIntervals.reset();
     this.impactDamage.reset();
     this.impactDamageNotice = '';
@@ -1535,6 +1596,7 @@ export class CoreRaceGame {
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
     const banner = raceBanner(this.flow);
+    const startLightCount = raceStartLightCount(this.flow);
     const compoundLegal = isTwoCompoundLegal(this.usedCompounds);
     const penaltyLegal = this.trackLimitPenalty.pendingPitSeconds <= 0;
     const legal = compoundLegal && penaltyLegal;
@@ -1603,9 +1665,20 @@ export class CoreRaceGame {
     const lastTone = timingTone(this.timing.lastLapTime, playerBest, this.sessionFastestLap);
     const bestTone = playerBest === undefined ? 'neutral' : timingTone(playerBest, playerBest, this.sessionFastestLap);
     const fastestText = this.sessionFastestLap === undefined ? '--:--.---' : formatLapTime(this.sessionFastestLap);
-    const bannerHtml = banner ? `<div class="race-banner ${banner === 'GO' ? 'go' : ''}">${banner}</div>` : '';
-    const launchHtml = this.flow.phase === 'COUNTDOWN'
-      ? `<div class="launch-panel"><header><b>RACE START</b><span>PRESS W NEAR LIGHTS OUT</span></header><div class="launch-track"><div class="launch-target"></div><div class="launch-fill" style="width:${Math.round(this.launchCharge * 100)}%"></div></div></div>`
+    const bannerHtml = '';
+    const showStartLights =
+      this.flow.phase === 'COUNTDOWN'
+      || (this.flow.phase === 'RACING' && this.flow.goFlash > 0);
+    const startLights = Array.from({ length: 5 }, (_, index) =>
+      `<i class="${this.flow.phase === 'COUNTDOWN' && index < startLightCount ? 'on' : ''}"></i>`
+    ).join('');
+    const startPrompt = this.flow.phase === 'COUNTDOWN'
+      ? 'PRESS W WHEN THE LIGHTS GO OUT'
+      : this.launchRequiresRelease
+        ? 'RELEASE W · THEN PRESS'
+        : 'LIGHTS OUT';
+    const launchHtml = showStartLights
+      ? `<div class="start-light-panel"><div class="start-lights">${startLights}</div><b>${startPrompt}</b></div>`
       : this.launchEffectRemaining > 0 && this.launchFeedback
         ? `<div class="launch-feedback ${this.launchFeedbackTone}">${this.launchFeedback}</div>`
         : '';
