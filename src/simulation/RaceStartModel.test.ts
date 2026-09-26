@@ -1,20 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateLaunch, stepLaunchCharge } from './RaceStartModel';
+import {
+  AI_START_REACTION_SECONDS,
+  evaluateLaunchReaction,
+} from './RaceStartModel';
 
 describe('RaceStartModel', () => {
-  it('rewards pressing W near the final second rather than holding from the first light', () => {
-    let timed = 0;
-    for (let i = 0; i < 120; i++) timed = stepLaunchCharge(timed, true, 1 / 120);
-    expect(evaluateLaunch(timed).quality).toBe('PERFECT');
-
-    let held = 0;
-    for (let i = 0; i < 360; i++) held = stepLaunchCharge(held, true, 1 / 120);
-    expect(evaluateLaunch(held).quality).toBe('WHEELSPIN');
+  it('grades lights-out reaction time instead of preloading launch charge', () => {
+    expect(evaluateLaunchReaction(0.16).quality).toBe('GREAT');
+    expect(evaluateLaunchReaction(0.22).quality).toBe('GOOD');
+    expect(evaluateLaunchReaction(0.34).quality).toBe('OK');
+    expect(evaluateLaunchReaction(0.52).quality).toBe('SLOW');
   });
 
-  it('makes a perfect launch materially better than a bogged start', () => {
-    const perfect = evaluateLaunch(0.68);
-    const bogged = evaluateLaunch(0.12);
-    expect(perfect.powerBoost).toBeGreaterThan(bogged.powerBoost + 0.15);
+  it('uses a competitive CPU reaction benchmark near a normal human response', () => {
+    expect(AI_START_REACTION_SECONDS).toBeGreaterThan(0.18);
+    expect(AI_START_REACTION_SECONDS).toBeLessThan(0.30);
+  });
+
+  it('turns reaction advantage into a clearly visible short launch-performance gap', () => {
+    const fast = evaluateLaunchReaction(0.16);
+    const cpuBaseline = evaluateLaunchReaction(AI_START_REACTION_SECONDS);
+    const slow = evaluateLaunchReaction(0.34);
+
+    expect(cpuBaseline.accelerationMultiplier).toBeCloseTo(1, 8);
+    expect(fast.accelerationMultiplier).toBeGreaterThan(1.07);
+    expect(slow.accelerationMultiplier).toBeLessThan(0.86);
+    expect(fast.accelerationMultiplier - slow.accelerationMultiplier).toBeGreaterThan(0.20);
+  });
+
+  it('reports the measured reaction and launch performance in the feedback', () => {
+    const result = evaluateLaunchReaction(0.16);
+    expect(result.label).toContain('160 ms');
+    expect(result.label).toContain('LAUNCH');
   });
 });

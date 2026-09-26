@@ -77,8 +77,8 @@ export class RaceAudio {
     this.surfaceGain?.gain.setTargetAtTime(params.surfaceGain, now, 0.04);
 
     if (input.banner !== this.lastBanner) {
-      if (input.banner === '3' || input.banner === '2' || input.banner === '1') this.beep(440, 0.075, 0.07);
-      if (input.banner === 'GO') this.beep(780, 0.12, 0.11);
+      if (input.banner?.startsWith('RED_')) this.beep(440, 0.075, 0.07);
+      if (input.banner === 'LIGHTS_OUT') this.beep(780, 0.12, 0.11);
       this.lastBanner = input.banner;
     }
 

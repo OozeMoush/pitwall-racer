@@ -1,39 +1,70 @@
-export type LaunchQuality = 'PERFECT' | 'GOOD' | 'BOGGED' | 'WHEELSPIN';
+export type LaunchQuality = 'GREAT' | 'GOOD' | 'OK' | 'SLOW';
 
 export interface LaunchResult {
   quality: LaunchQuality;
   label: string;
-  powerBoost: number;
+  reactionSeconds: number;
+  accelerationMultiplier: number;
 }
 
-export function stepLaunchCharge(charge: number, throttleHeld: boolean, dt: number): number {
-  const rate = throttleHeld ? 0.72 : -0.26;
-  return clamp(charge + rate * dt, 0, 1);
-}
+export const AI_START_REACTION_SECONDS = 0.22;
+export const LAUNCH_ACCELERATION_EFFECT_SECONDS = 1.6;
 
-/**
- * Keyboard input is binary, so the skill is timing rather than analogue pedal
- * modulation. Press W roughly one second before lights-out to land in the
- * launch window. Holding from the first light overcharges the launch and spins.
- */
-export function evaluateLaunch(charge: number): LaunchResult {
-  if (charge >= 0.58 && charge <= 0.80) {
-    return { quality: 'PERFECT', label: 'PERFECT LAUNCH', powerBoost: 0.14 };
+export function evaluateLaunchReaction(reactionSeconds: number): LaunchResult {
+  const reaction = Math.max(0, reactionSeconds);
+  const milliseconds = Math.round(reaction * 1000);
+  // Make reaction time visible in the launch itself, not only in the HUD.
+  // 220 ms is the CPU benchmark and therefore neutral. Faster reactions get a
+  // brief acceleration advantage; slower reactions lose launch performance.
+  // The clamp keeps the effect obvious without turning it into a rocket boost.
+  const accelerationMultiplier = clamp(
+    1 + (AI_START_REACTION_SECONDS - reaction) * 1.4,
+    0.82,
+    1.18,
+  );
+  const performancePct = Math.round((accelerationMultiplier - 1) * 100);
+  const performanceText = performancePct === 0
+    ? ''
+    : ` · ${performancePct > 0 ? '+' : ''}${performancePct}% LAUNCH`;
+
+  if (reaction <= 0.18) {
+    return {
+      quality: 'GREAT',
+      label: `GREAT START · ${milliseconds} ms${performanceText}`,
+      reactionSeconds: reaction,
+      accelerationMultiplier,
+    };
   }
-  if (charge >= 0.40 && charge <= 0.90) {
-    return { quality: 'GOOD', label: 'GOOD LAUNCH', powerBoost: 0.065 };
+  if (reaction <= 0.26) {
+    return {
+      quality: 'GOOD',
+      label: `GOOD START · ${milliseconds} ms${performanceText}`,
+      reactionSeconds: reaction,
+      accelerationMultiplier,
+    };
   }
-  if (charge > 0.90) {
-    return { quality: 'WHEELSPIN', label: 'WHEELSPIN', powerBoost: -0.085 };
+  if (reaction <= 0.40) {
+    return {
+      quality: 'OK',
+      label: `REACTION · ${milliseconds} ms${performanceText}`,
+      reactionSeconds: reaction,
+      accelerationMultiplier,
+    };
   }
-  return { quality: 'BOGGED', label: 'BOGGED START', powerBoost: -0.045 };
+  return {
+    quality: 'SLOW',
+    label: `SLOW START · ${milliseconds} ms${performanceText}`,
+    reactionSeconds: reaction,
+    accelerationMultiplier,
+  };
 }
 
 export function launchTone(quality: LaunchQuality): 'good' | 'bad' | 'neutral' {
-  if (quality === 'PERFECT' || quality === 'GOOD') return 'good';
-  if (quality === 'WHEELSPIN' || quality === 'BOGGED') return 'bad';
+  if (quality === 'GREAT' || quality === 'GOOD') return 'good';
+  if (quality === 'SLOW') return 'bad';
   return 'neutral';
 }
+
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));

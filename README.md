@@ -17,6 +17,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - dry-race two-compound requirement
 - CLEAR / FOLLOW / SIDE_BY_SIDE CPU traffic states with opportunistic physical passing
 - dirty air and tow
+- five-light randomized race start with measured throttle reaction time
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
 - fixed 120 Hz physics/simulation step
 - AUTO and PLAYER BEST CPU racing-line sources
