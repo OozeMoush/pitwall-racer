@@ -35,6 +35,14 @@ describe('TrackModel', () => {
     expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
   });
 
+  it('includes a Baku-style long street circuit with a dense city section', () => {
+    setActiveTrack('baku-street');
+    const circuit = TRACKS.find((entry) => entry.id === 'baku-street');
+    expect(circuit?.controls.length).toBeGreaterThanOrEqual(30);
+    expect(TRACK_LENGTH).toBeGreaterThan(2100);
+    expect(TRACK_LENGTH).toBeLessThan(2450);
+  });
+
   it('has no discontinuous heading jumps around every closed circuit', () => {
     for (const track of TRACKS) {
       setActiveTrack(track.id);
