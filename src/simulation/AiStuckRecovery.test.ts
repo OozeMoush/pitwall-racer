@@ -5,6 +5,7 @@ import {
   AI_STUCK_TRIGGER_SECONDS,
   createAiStuckRecoveryState,
   stepAiStuckRecovery,
+  type AiStuckRecoveryState,
 } from './AiStuckRecovery';
 
 describe('AiStuckRecovery', () => {
@@ -38,9 +39,9 @@ describe('AiStuckRecovery', () => {
   });
 
   it('backs for a short fixed window then returns through a forward recovery phase', () => {
-    let state = {
+    let state: AiStuckRecoveryState = {
       ...createAiStuckRecoveryState(),
-      phase: 'REVERSE' as const,
+      phase: 'REVERSE',
     };
 
     state = stepAiStuckRecovery(state, { speed: 4, targetSpeed: 58 }, AI_REVERSE_SECONDS + 0.01);
