@@ -105,13 +105,18 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     expect(game.lapHistory[1].s2).toBeCloseTo(10, 1);
     expect(game.lapHistory[1].s3).toBeCloseTo(10, 1);
     game.pitRequested = true;
-    for (let tick = 1; tick < 3600 && game.pitStop.phase === 'IDLE'; tick++) traverse(tick / 3600, 0);
+    for (let tick = 1; tick < 3600 && game.pitStop.phase === 'IDLE'; tick++) {
+      const p = tick / 3600;
+      traverse(p, p > 0.88 ? 11 : 0);
+    }
     expect(game.pitStop.phase).toBe('TRANSIT_IN');
-    for (let tick = 0; tick < 2400 && game.pitStop.phase !== 'SERVICE'; tick++) game.stepSimulation(1 / 120);
+    game.keys.add('KeyW');
+    for (let tick = 0; tick < 5000 && game.pitStop.phase !== 'SERVICE'; tick++) game.stepSimulation(1 / 120);
     expect(game.pitStop.phase).toBe('SERVICE');
     expect(game.pitStop.serviceRemaining).toBeGreaterThan(7);
     expect(game.trackLimitPenalty.pendingPitSeconds).toBe(0);
-    for (let tick = 0; tick < 2400 && game.pitStop.phase !== 'IDLE'; tick++) game.stepSimulation(1 / 120);
+    for (let tick = 0; tick < 7000 && game.pitStop.phase !== 'IDLE'; tick++) game.stepSimulation(1 / 120);
+    game.keys.delete('KeyW');
     expect(game.pitStop.phase).toBe('IDLE');
     expect(game.tire.compound).toBe('MEDIUM');
     expect(game.lap).toBe(4);

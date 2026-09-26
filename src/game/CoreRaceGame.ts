@@ -33,13 +33,17 @@ import {
   RaceIntervalTracker,
 } from '../simulation/RaceIntervalModel';
 import {
+  PIT_BOX_T,
   PIT_SPEED,
   beginPitStop,
   createPitStopState,
   isPitActive,
   pitLanePose,
+  pitLaneSpeedLimitActive,
+  pitLaneTargetSpeed,
+  projectPitLane,
   shouldEnterPit,
-  stepPitStop,
+  stepPlayerPitStop,
   type PitStopState,
 } from '../simulation/PitLaneModel';
 import { createRaceFlow, finishRaceFlow, raceBanner, stepRaceFlow, type RaceFlowState } from '../simulation/RaceFlow';
@@ -374,7 +378,6 @@ export class CoreRaceGame {
     this.stepAiDebugGhost(dt);
 
     if (this.stepPhysicalPit(dt)) {
-      this.physics.step(dt);
       this.updateAiLapTiming();
       this.updateRaceIntervals();
       return;
@@ -483,11 +486,21 @@ export class CoreRaceGame {
     this.updateSectorTiming();
     this.updateLapAndCheckpoints(afterPhysicalProjection.distance);
 
-    if (shouldEnterPit(this.lastTrackProgress, this.trackProgress, afterPhysicalProjection.distance, this.pitRequested)) {
+    if (shouldEnterPit(
+      this.lastTrackProgress,
+      this.trackProgress,
+      afterPhysicalProjection.distance,
+      this.pitRequested,
+      afterTrack.laneOffset,
+    )) {
       this.lineCandidate.markIneligible();
-      this.pitStop = beginPitStop();
+      const initialPit = projectPitLane(
+        this.vehicle.x,
+        this.vehicle.y,
+        0,
+      );
+      this.pitStop = beginPitStop(PIT_BOX_T, initialPit.t);
       this.pitRequested = false;
-      this.steerInput = 0;
     }
 
     this.trafficPressure = this.estimateTrafficPressure();
@@ -498,9 +511,103 @@ export class CoreRaceGame {
     if (!isPitActive(this.pitStop)) return false;
 
     this.lineCandidate.markIneligible();
-    const previous = this.pitStop;
-    this.pitStop = stepPitStop(this.pitStop, dt);
-    if (previous.phase !== 'SERVICE' && this.pitStop.phase === 'SERVICE') {
+    const beforeState = this.pitStop;
+
+    if (this.pitStop.phase === 'SERVICE') {
+      this.pitStop = stepPlayerPitStop(this.pitStop, dt, this.pitStop.t);
+      const box = pitLanePose(this.pitStop.boxT);
+      this.vehicle = createVehicle(box.x, box.y, box.heading);
+      this.physics.setPlayerState(this.vehicle);
+      this.physics.step(dt);
+      this.vehicle = this.physics.playerState();
+    } else {
+      const before = projectPitLane(
+        this.vehicle.x,
+        this.vehicle.y,
+        this.pitStop.t,
+      );
+      const rawSteer =
+        (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
+      const targetPose = pitLanePose(Math.min(1, before.t + 0.026));
+      const targetHeading = Math.atan2(
+        targetPose.y - this.vehicle.y,
+        targetPose.x - this.vehicle.x,
+      );
+      const headingError = wrapAngle(targetHeading - this.vehicle.heading);
+      const pathAssist = Math.max(
+        -1,
+        Math.min(
+          1,
+          headingError * 1.55 - before.lateralOffset * 0.038,
+        ),
+      );
+      const steerCommand = Math.max(
+        -1,
+        Math.min(1, rawSteer * 0.72 + pathAssist * 0.82),
+      );
+      this.steerInput = stepSteering(
+        this.steerInput,
+        steerCommand,
+        this.vehicle.speed,
+        dt,
+      );
+
+      let throttle = this.keys.has('KeyW') ? 1 : 0;
+      let brake = this.keys.has('KeyS') ? 1 : 0;
+      const targetSpeed = pitLaneTargetSpeed(this.pitStop, before.t);
+      if (this.vehicle.speed > targetSpeed) {
+        throttle = 0;
+        brake = Math.max(
+          brake,
+          Math.min(1, (this.vehicle.speed - targetSpeed) / 7 + 0.18),
+        );
+      }
+
+      const speedLoad = Math.min(1, this.vehicle.speed / 60);
+      const pitLoad = Math.min(
+        1.15,
+        Math.abs(this.steerInput) * speedLoad * 0.45
+          + brake * speedLoad * 0.55
+          + throttle * 0.08,
+      );
+      this.tire = stepTire(this.tire, 'BALANCED', pitLoad, dt);
+      this.physics.drivePlayer({
+        throttle,
+        brake,
+        steer: this.steerInput,
+        tireGrip: this.tire.grip,
+        tireWear: this.tire.wear,
+        surfaceGrip: 1,
+        powerBoost: CORE_POWER_BOOST,
+        powerMultiplier: 1,
+        rollingResistance: 0,
+      }, dt);
+      this.physics.step(dt);
+      this.vehicle = this.physics.playerState();
+
+      const after = projectPitLane(
+        this.vehicle.x,
+        this.vehicle.y,
+        before.t,
+      );
+      this.pitStop = stepPlayerPitStop(this.pitStop, dt, after.t);
+
+      if (
+        beforeState.phase !== 'SERVICE'
+        && this.pitStop.phase === 'SERVICE'
+      ) {
+        // Final docking is deliberately the only positional assist in the
+        // player pit sequence. Entry/lane/exit remain real physics.
+        const box = pitLanePose(this.pitStop.boxT);
+        this.vehicle = createVehicle(box.x, box.y, box.heading);
+        this.physics.setPlayerState(this.vehicle);
+      }
+    }
+
+    if (
+      beforeState.phase !== 'SERVICE'
+      && this.pitStop.phase === 'SERVICE'
+    ) {
       const served = serveTrackLimitPitPenalty(this.trackLimitPenalty);
       this.trackLimitPenalty = served.state;
       if (served.seconds > 0) {
@@ -508,11 +615,13 @@ export class CoreRaceGame {
           ...this.pitStop,
           serviceRemaining: this.pitStop.serviceRemaining + served.seconds,
         };
-        this.racePenaltyNotice = `SERVING ${served.seconds}s TRACK LIMIT PENALTY`;
+        this.racePenaltyNotice =
+          `SERVING ${served.seconds}s TRACK LIMIT PENALTY`;
         this.racePenaltyNoticeRemaining = served.seconds + 1.5;
       }
     }
-    if (!previous.tyreChanged && this.pitStop.tyreChanged) {
+
+    if (!beforeState.tyreChanged && this.pitStop.tyreChanged) {
       this.lapPitted = true;
       this.tire = createTire(this.selectedCompound);
       this.usedCompounds.add(this.selectedCompound);
@@ -520,22 +629,16 @@ export class CoreRaceGame {
     }
 
     this.lastTrackProgress = this.trackProgress;
-    const pose = pitLanePose(this.pitStop.t);
-    this.trackProgress = pose.raceProgress;
+    const timingPose = pitLanePose(
+      this.pitStop.phase === 'DONE' ? 1 : this.pitStop.t,
+    );
+    this.trackProgress = timingPose.raceProgress;
     this.trackDistance = 0;
     this.updateSectorTiming();
     this.updateLapAndCheckpoints(0);
-    this.steerInput = 0;
     this.trafficPressure = 0;
 
-    const speed = this.pitStop.phase === 'SERVICE' ? 0 : PIT_SPEED;
-    this.vehicle = { ...createVehicle(pose.x, pose.y, pose.heading), speed };
-    this.physics.setPlayerState(this.vehicle);
-
     if (this.pitStop.phase === 'DONE') {
-      const exit = pitLanePose(1);
-      this.vehicle = { ...createVehicle(exit.x, exit.y, exit.heading), speed: PIT_SPEED };
-      this.physics.setPlayerState(this.vehicle);
       this.pitStop = createPitStopState();
     }
     return true;
@@ -1456,9 +1559,9 @@ export class CoreRaceGame {
       : this.pitStop.phase === 'SERVICE'
         ? `PIT BOX · ${this.pitStop.serviceRemaining.toFixed(1)}s`
         : isPitActive(this.pitStop)
-          ? `PIT LANE · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
+          ? `${pitLaneSpeedLimitActive(this.pitStop.t) ? 'PIT LIMIT 80' : 'PIT LANE'} · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
           : this.pitRequested
-            ? `BOX THIS LAP → ${this.selectedCompound}`
+            ? `BOX THIS LAP · TAKE RIGHT ENTRY → ${this.selectedCompound}`
             : this.trackLimitPenalty.pendingPitSeconds > 0
               ? `PENALTY ${this.trackLimitPenalty.pendingPitSeconds}s · F TO BOX`
               : `NEXT ${this.selectedCompound} · F TO BOX`;

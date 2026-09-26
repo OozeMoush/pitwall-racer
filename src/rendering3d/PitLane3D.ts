@@ -1,25 +1,51 @@
 import * as THREE from 'three';
-import { PIT_BOX_T, pitLanePose } from '../simulation/PitLaneModel';
+import {
+  PIT_LIMIT_END_T,
+  PIT_LIMIT_START_T,
+  pitBoxTForSlot,
+  pitLanePose,
+} from '../simulation/PitLaneModel';
 import { headingToYaw, toWorld } from './WorldTransform';
 
-const SAMPLES = 96;
-export const PIT_LANE_HALF_WIDTH = 20;
-const EDGE_LINE_WIDTH = 0.7;
+const SAMPLES = 128;
+export const PIT_LANE_HALF_WIDTH = 7.5;
+const EDGE_LINE_WIDTH = 0.45;
+const BOX_COLORS = [
+  0x31b9ef,
+  0xe64c4c,
+  0xe8e8e5,
+  0x54cf88,
+  0x9f72e6,
+  0xf3a341,
+  0x5d8fe8,
+  0xf064ad,
+];
 
 export function createPitLane3D(): THREE.Group {
   const root = new THREE.Group();
   const road = new THREE.Mesh(
     pitRibbonGeometry(-PIT_LANE_HALF_WIDTH, PIT_LANE_HALF_WIDTH, 0.04),
-    new THREE.MeshStandardMaterial({ color: 0x34383b, roughness: 0.9, metalness: 0.02 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x34383b,
+      roughness: 0.9,
+      metalness: 0.02,
+    }),
   );
   road.receiveShadow = true;
   root.add(road);
 
-  const lineMat = new THREE.MeshStandardMaterial({ color: 0xf0f2ed, roughness: 0.78 });
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0xf0f2ed,
+    roughness: 0.78,
+  });
   for (const side of [-1, 1] as const) {
-    const center = side * (PIT_LANE_HALF_WIDTH - 0.45);
+    const center = side * (PIT_LANE_HALF_WIDTH - 0.32);
     const edge = new THREE.Mesh(
-      pitRibbonGeometry(center - EDGE_LINE_WIDTH / 2, center + EDGE_LINE_WIDTH / 2, 0.067),
+      pitRibbonGeometry(
+        center - EDGE_LINE_WIDTH / 2,
+        center + EDGE_LINE_WIDTH / 2,
+        0.067,
+      ),
       lineMat,
     );
     edge.receiveShadow = true;
@@ -27,34 +53,67 @@ export function createPitLane3D(): THREE.Group {
   }
 
   addPitWall(root);
-
-  const boxPose = pitLanePose(PIT_BOX_T);
-  const boxWorld = toWorld(boxPose.x, boxPose.y, 0.075);
-  const boxMat = new THREE.MeshStandardMaterial({ color: 0xf1f2ed, roughness: 0.72 });
-  const pitBox = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.028, 1.9), boxMat);
-  pitBox.position.copy(boxWorld);
-  pitBox.rotation.y = headingToYaw(boxPose.heading);
-  root.add(pitBox);
-
-  const centre = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 0.035, 1.25),
-    new THREE.MeshStandardMaterial({ color: 0xe84c50, roughness: 0.65 }),
-  );
-  centre.position.copy(boxWorld).add(new THREE.Vector3(0, 0.03, 0));
-  centre.rotation.y = pitBox.rotation.y;
-  root.add(centre);
-
+  addPitBoxes(root);
+  addLimiterLine(root, PIT_LIMIT_START_T, 0x58f59a);
+  addLimiterLine(root, PIT_LIMIT_END_T, 0xffd166);
   return root;
 }
 
+function addPitBoxes(root: THREE.Group): void {
+  for (let slot = 0; slot < 8; slot++) {
+    const pose = pitLanePose(pitBoxTForSlot(slot));
+    const world = toWorld(pose.x, pose.y, 0.075);
+    const outline = new THREE.Mesh(
+      new THREE.BoxGeometry(4.8, 0.028, 2.25),
+      new THREE.MeshStandardMaterial({
+        color: 0xf1f2ed,
+        roughness: 0.72,
+      }),
+    );
+    outline.position.copy(world);
+    outline.rotation.y = headingToYaw(pose.heading);
+    root.add(outline);
+
+    const marker = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.04, 1.55),
+      new THREE.MeshStandardMaterial({
+        color: BOX_COLORS[slot] ?? 0xffffff,
+        roughness: 0.62,
+      }),
+    );
+    marker.position.copy(world).add(new THREE.Vector3(0, 0.035, 0));
+    marker.rotation.y = outline.rotation.y;
+    root.add(marker);
+  }
+}
+
+function addLimiterLine(
+  root: THREE.Group,
+  t: number,
+  color: number,
+): void {
+  const pose = pitLanePose(t);
+  const world = toWorld(pose.x, pose.y, 0.08);
+  const line = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.035, PIT_LANE_HALF_WIDTH * 2),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.65 }),
+  );
+  line.position.copy(world);
+  line.rotation.y = headingToYaw(pose.heading);
+  root.add(line);
+}
+
 function addPitWall(root: THREE.Group): void {
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0xcfd3d1, roughness: 0.78 });
-  const segments = 16;
-  const geometry = new THREE.BoxGeometry(6.8, 0.48, 0.2);
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0xcfd3d1,
+    roughness: 0.78,
+  });
+  const segments = 22;
+  const geometry = new THREE.BoxGeometry(5.1, 0.48, 0.2);
   for (let i = 0; i < segments; i++) {
     const t = 0.13 + (i + 0.5) / segments * 0.74;
     const pose = pitLanePose(t);
-    const point = offsetPose(pose, 28);
+    const point = offsetPose(pose, PIT_LANE_HALF_WIDTH + 1.6);
     const barrier = new THREE.Mesh(geometry, wallMat);
     barrier.position.copy(toWorld(point.x, point.y, 0.25));
     barrier.rotation.y = headingToYaw(pose.heading);
@@ -64,13 +123,11 @@ function addPitWall(root: THREE.Group): void {
   }
 }
 
-/**
- * Keep the first vertex on the left side of travel and the second on the right.
- * Track3D uses the same winding. The old pit code accepted (-width, +width)
- * literally, flipping every triangle downward; Three.js then backface-culled
- * the road from the overhead camera and exposed the grass beneath it.
- */
-export function pitRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
+export function pitRibbonGeometry(
+  offsetA: number,
+  offsetB: number,
+  height: number,
+): THREE.BufferGeometry {
   const leftOffset = Math.max(offsetA, offsetB);
   const rightOffset = Math.min(offsetA, offsetB);
   const vertices: number[] = [];
@@ -92,13 +149,19 @@ export function pitRibbonGeometry(offsetA: number, offsetB: number, height: numb
     }
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(vertices, 3),
+  );
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
 }
 
-function offsetPose(pose: { x: number; y: number; heading: number }, offset: number): { x: number; y: number } {
+function offsetPose(
+  pose: { x: number; y: number; heading: number },
+  offset: number,
+): { x: number; y: number } {
   return {
     x: pose.x - Math.sin(pose.heading) * offset,
     y: pose.y + Math.cos(pose.heading) * offset,

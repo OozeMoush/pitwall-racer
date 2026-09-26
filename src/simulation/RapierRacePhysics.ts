@@ -12,6 +12,7 @@ import {
   beginPitStop,
   createPitStopState,
   isPitActive,
+  pitBoxTForSlot,
   pitLanePose,
   shouldEnterPit,
   stepPitStop,
@@ -419,7 +420,7 @@ export class RapierRacePhysics {
         && driver.pitStopIndex < driver.pitPlan.length;
       if (!isPitActive(this.aiPitStops[index])
         && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit)) {
-        this.aiPitStops[index] = beginPitStop();
+        this.aiPitStops[index] = beginPitStop(pitBoxTForSlot(index + 1));
         driver.battleState = 'CLEAR';
       }
 
