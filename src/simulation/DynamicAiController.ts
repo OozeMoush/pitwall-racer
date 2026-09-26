@@ -64,6 +64,11 @@ const AI_EXPLICIT_PACE_MAX = 1.000;
 const AI_SKILL_GRIP_MAX = 1.010;
 const AI_POWER_BONUS_MIN = 0.065;
 const AI_POWER_BONUS_MAX = 0.115;
+// Start recovering before momentum carries a high-speed CPU all the way to
+// the barrier. This does not change the reference racing line; it only decides
+// when a physically displaced car stops trying to finish the current corner
+// and prioritises returning to the route.
+const AI_LATERAL_RECOVERY_DISTANCE = TRACK_KERB_OUTER_OFFSET - 0.35;
 
 export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
@@ -173,7 +178,7 @@ export function dynamicAiControl(
     ? baseLane
     : approachLane(projection.laneOffset, baseLane, 2.6);
 
-  const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
+  const offRoad = projection.distance > AI_LATERAL_RECOVERY_DISTANCE;
   if (offRoad) {
     // AUTO recovers toward the centreline, but an explicit line should not
     // suddenly be replaced by a completely different path the moment one tyre
@@ -373,7 +378,7 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65) targetSpeed = Math.min(targetSpeed, 58);
+  if (projection.distance > AI_LATERAL_RECOVERY_DISTANCE) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
