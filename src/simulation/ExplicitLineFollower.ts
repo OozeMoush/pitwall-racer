@@ -1,7 +1,7 @@
 import { referenceSteerForCurvature } from './ReferenceDriverModel';
 import { sampleRacingLineAsset } from './RacingLineAsset';
 import type { TrackId } from './TrackModel';
-import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { projectTrackNear, TRACK_LENGTH } from './TrackModel';
 import {
   activeReferenceTarget,
   projectRuntimeRacingLineNear,
@@ -84,11 +84,6 @@ export function explicitLineFollower(
   const pathAheadProgress = wrap01(
     pathProgress + headingProbeMetres / TRACK_LENGTH,
   );
-  const pathAheadReference = activeReferenceTarget(
-    trackId,
-    pathAheadProgress,
-    tireGrip,
-  );
   const pathNow = sampleRuntimeRacingLinePose(trackId, pathProgress);
   const pathAhead = sampleRuntimeRacingLinePose(trackId, pathAheadProgress);
   const pathHeading = Math.atan2(
@@ -159,11 +154,6 @@ export function explicitLineFollower(
   const previewAheadProgress = wrap01(
     previewProgress + headingProbeMetres / TRACK_LENGTH,
   );
-  const previewAheadReference = activeReferenceTarget(
-    trackId,
-    previewAheadProgress,
-    tireGrip,
-  );
   const previewAhead = sampleRuntimeRacingLinePose(trackId, previewAheadProgress);
   const previewPathHeading = Math.atan2(
     previewAhead.y - previewPoint.y,
@@ -214,9 +204,7 @@ export function explicitLineFollower(
   const afterProgress = wrap01(
     curvatureProgress + curvatureProbeMetres / TRACK_LENGTH,
   );
-  const beforeReference = activeReferenceTarget(trackId, beforeProgress, tireGrip);
   const atReference = activeReferenceTarget(trackId, curvatureProgress, tireGrip);
-  const afterReference = activeReferenceTarget(trackId, afterProgress, tireGrip);
   const beforePoint = sampleRuntimeRacingLinePose(trackId, beforeProgress);
   const atPoint = sampleRuntimeRacingLinePose(trackId, curvatureProgress);
   const afterPoint = sampleRuntimeRacingLinePose(trackId, afterProgress);
