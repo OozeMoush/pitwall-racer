@@ -40,7 +40,6 @@ import {
 } from '../simulation/RaceIntervalModel';
 import {
   PIT_BOX_T,
-  PIT_SPEED,
   beginPitStop,
   createPitStopState,
   isPitActive,
