@@ -5,7 +5,7 @@ import { createTire, stepTire, type Compound, type PaceMode, type TireState } fr
 import { trackProfile } from './TrackProfile';
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
-export type BattleState = 'CLEAR' | 'FOLLOW' | 'SIDE_BY_SIDE';
+export type BattleState = 'CLEAR' | 'FOLLOW';
 export type StrategyIntent = 'PLAN' | 'UNDERCUT' | 'OVERCUT' | 'DONE';
 
 export interface AiPitPlanStop {
@@ -55,7 +55,6 @@ interface TrafficContext {
   carAhead?: RaceTrafficCar;
   gapMetres: number;
   lateralGapAhead: number;
-  alongside?: RaceTrafficCar;
 }
 
 const EMPTY_TRAFFIC: TrafficContext = {
@@ -154,27 +153,18 @@ export function stepAi(
 
   const laneBlocked = traffic.lateralGapAhead < 6.5;
   const following = traffic.gapMetres < raceScaleDistance(76) && laneBlocked;
-  const alongside = traffic.alongside !== undefined;
 
-  // RaceModel owns strategy/tyre state, not an "attack mode". Physical passing
-  // is decided by DynamicAiController from real car positions. Keeping only
-  // traffic states here prevents a synthetic lateral lunge before physics has
-  // established that there is actually room to pass.
-  const battleState: BattleState = alongside
-    ? 'SIDE_BY_SIDE'
-    : following
-      ? 'FOLLOW'
-      : 'CLEAR';
+  // CPU traffic is longitudinal only. CPU cars never invent a second racing
+  // line to pass or defend because CPU↔CPU contact is disabled. Keeping them on
+  // the shared reference line prevents clustered fields from steering one
+  // another into walls.
+  const battleState: BattleState = following ? 'FOLLOW' : 'CLEAR';
 
   const strategy = choosePitStrategy(driver, battleState, traffic.gapMetres, tireHealth, totalLaps);
   const pitLap = strategy.pitLap;
   let strategyIntent = strategy.intent;
 
-  const trafficLoad = battleState === 'FOLLOW'
-    ? 0.1
-    : battleState === 'SIDE_BY_SIDE'
-      ? 0.14
-      : 0;
+  const trafficLoad = battleState === 'FOLLOW' ? 0.1 : 0;
   let tire = stepTire(driver.tire, pace, (pace === 'PUSH' ? 0.78 : 0.55) + trafficLoad, dt);
   let lap = driver.lap;
   let progress = driver.progress;
@@ -189,32 +179,18 @@ export function stepAi(
   const towFactor = battleState === 'FOLLOW' ? 1.022 : 1;
   let targetSpeed = Math.min(122, profile.targetSpeed * paceFactor * towFactor);
 
-  if (traffic.carAhead && traffic.gapMetres < raceScaleDistance(76) && laneBlocked && battleState !== 'SIDE_BY_SIDE') {
+  if (traffic.carAhead && traffic.gapMetres < raceScaleDistance(76) && laneBlocked) {
     targetSpeed = Math.min(targetSpeed, traffic.carAhead.speed * 0.996);
-  }
-
-  if (traffic.alongside && battleState === 'SIDE_BY_SIDE') {
-    if (profile.severity < 0.35) {
-      targetSpeed = Math.max(targetSpeed, Math.min(122, traffic.alongside.speed + 6));
-    } else {
-      targetSpeed = Math.min(targetSpeed, Math.max(44, traffic.alongside.speed + 2));
-    }
   }
 
   const speed = approachSpeed(driver.speed, targetSpeed, dt, 50, 116);
 
-  const normalLine = clamp(profile.apexOffset + driver.preferredLane * 0.16, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  let targetLane = normalLine;
-
-  if (battleState === 'FOLLOW' && traffic.carAhead) {
-    targetLane = clamp(traffic.carAhead.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  } else if (battleState === 'SIDE_BY_SIDE' && traffic.alongside) {
-    const separationSide = driver.laneOffset >= traffic.alongside.laneOffset ? 1 : -1;
-    targetLane = clamp(traffic.alongside.laneOffset + separationSide * 5.7, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
-  }
-
-  const laneRate = battleState === 'SIDE_BY_SIDE' ? 62 : 44;
-  const laneOffset = approach(driver.laneOffset, targetLane, dt * laneRate);
+  const targetLane = clamp(
+    profile.apexOffset + driver.preferredLane * 0.16,
+    -AI_SAFE_LANE_LIMIT,
+    AI_SAFE_LANE_LIMIT,
+  );
+  const laneOffset = approach(driver.laneOffset, targetLane, dt * 44);
 
   if (advanceProgress) {
     progress += (speed * dt) / TRACK_LENGTH;
@@ -308,8 +284,6 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
   let carAhead: RaceTrafficCar | undefined;
   let gapMetres = Number.POSITIVE_INFINITY;
   let lateralGapAhead = Number.POSITIVE_INFINITY;
-  let alongside: RaceTrafficCar | undefined;
-  let alongsideDistance = Number.POSITIVE_INFINITY;
 
   for (const other of candidates) {
     const deltaMetres = (raceDistance(other.lap, other.progress) - distance) * TRACK_LENGTH;
@@ -318,15 +292,9 @@ function trafficFor(driver: DriverState, field: DriverState[], externalTraffic: 
       carAhead = other;
       lateralGapAhead = Math.abs(other.laneOffset - driver.laneOffset);
     }
-    const absolute = Math.abs(deltaMetres);
-    const lateralGap = Math.abs(other.laneOffset - driver.laneOffset);
-    if (absolute <= raceScaleDistance(18) && lateralGap >= 4.2 && lateralGap <= 13 && absolute < alongsideDistance) {
-      alongsideDistance = absolute;
-      alongside = other;
-    }
   }
 
-  return { carAhead, gapMetres, lateralGapAhead, alongside };
+  return { carAhead, gapMetres, lateralGapAhead };
 }
 
 function toTrafficCar(driver: DriverState): RaceTrafficCar {
