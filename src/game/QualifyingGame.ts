@@ -552,22 +552,28 @@ class QualifyingGame {
       completedLapTime,
       this.tire.wear,
     );
-    const storedEvidence = savePaceEvidence(window.localStorage, evidence);
     const physicsBenchmark = qualifyingBenchmarkSeconds(
       this.setup.trackId,
       TRACK_LENGTH,
     );
-    const calibratedBenchmark = calibratedPaceBenchmark(
+    const historicalEvidence = loadPaceEvidence(window.localStorage);
+    const historicalBenchmark = calibratedPaceBenchmark(
       this.setup.trackId,
       physicsBenchmark,
-      storedEvidence,
+      historicalEvidence,
+    );
+    const demonstratedBenchmark = Math.min(
+      historicalBenchmark.seconds,
+      this.timeTrialRecord.bestLap ?? Number.POSITIVE_INFINITY,
     );
     const assessment = assessEmpiricalLap(evidence);
+    savePaceEvidence(window.localStorage, evidence);
     console.info('PACE_BENCHMARK_EVIDENCE', {
       lap: evidence,
       eligible: assessment.eligibleForMachineLimit,
       rejectionReasons: assessment.reasons,
-      benchmark: calibratedBenchmark,
+      historicalBenchmark,
+      qualifyingBenchmark: demonstratedBenchmark,
     });
 
     const ai = createAiField();
@@ -576,6 +582,7 @@ class QualifyingGame {
       ai,
       this.setup.trackId,
       TRACK_LENGTH,
+      demonstratedBenchmark,
     );
     const playerPosition = classification.find(
       (entry) => entry.id === 'player',
