@@ -18,20 +18,39 @@ describe('QualifyingModel', () => {
     expect(benchmark).toBeCloseTo(reference, 6);
   });
 
-  it('keeps the F1-level field within tenths around 98-100 percent execution', () => {
+  it('keeps the field compact while allowing the strongest car to beat the benchmark', () => {
     const field = createAiField();
-    const times = field.map((driver) => aiQualifyingTime(driver, 'pitwall-gp', 2071));
+    const benchmark = 23;
+    const times = field.map((driver) =>
+      aiQualifyingTime(driver, 'pitwall-gp', 2071, benchmark));
     expect(Math.max(...times) - Math.min(...times)).toBeLessThan(0.55);
+    expect(Math.min(...times)).toBeLessThan(22.85);
+    expect(Math.max(...times)).toBeGreaterThan(23.0);
   });
 
-  it('requires the player to approach the reference limit to qualify at the front', () => {
+  it('makes a benchmark lap a midfield result and a slower lap a back-row result', () => {
     const field = createAiField();
-    const reference = qualifyingBenchmarkSeconds('pitwall-gp', 2071);
-    const nearLimit = qualifyingClassification(reference, field, 'pitwall-gp', 2071);
-    const ordinary = qualifyingClassification(reference + 0.55, field, 'pitwall-gp', 2071);
+    const benchmark = 23;
+    const nearLimit = qualifyingClassification(
+      benchmark,
+      field,
+      'pitwall-gp',
+      2071,
+      benchmark,
+    );
+    const ordinary = qualifyingClassification(
+      benchmark + 0.55,
+      field,
+      'pitwall-gp',
+      2071,
+      benchmark,
+    );
 
-    expect(nearLimit.find((entry) => entry.id === 'player')?.position).toBeLessThanOrEqual(2);
-    expect(ordinary.find((entry) => entry.id === 'player')?.position).toBeGreaterThanOrEqual(6);
+    const benchmarkPosition =
+      nearLimit.find((entry) => entry.id === 'player')?.position ?? 8;
+    expect(benchmarkPosition).toBeGreaterThanOrEqual(3);
+    expect(benchmarkPosition).toBeLessThanOrEqual(7);
+    expect(ordinary.find((entry) => entry.id === 'player')?.position).toBeGreaterThanOrEqual(7);
     expect(qualifyingGridOrder(nearLimit)).toHaveLength(8);
   });
 });
