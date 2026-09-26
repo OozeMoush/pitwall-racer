@@ -4,6 +4,7 @@ import { WORLD_SCALE } from '../rendering3d/WorldTransform';
 import { dynamicAiControl } from './DynamicAiController';
 import { PLAYER_GRID } from './GridModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
+import { REFERENCE_POWER_BOOST } from './ReferenceDriverModel';
 import { createAiField, type DriverState } from './RaceModel';
 import { surfaceEffect } from './SurfaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
@@ -13,7 +14,6 @@ import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
 const CAMERA_VIEW_HEIGHT = 39;
-const CORE_POWER_BOOST = 0.22;
 
 describe('dynamic field playtest telemetry', () => {
   beforeAll(async () => {
@@ -80,7 +80,7 @@ describe('dynamic field playtest telemetry', () => {
         steer: playerControl.steer,
         tireGrip: playerDriver.tire.grip,
         surfaceGrip: playerSurface.gripMultiplier,
-        powerBoost: CORE_POWER_BOOST,
+        powerBoost: REFERENCE_POWER_BOOST,
         powerMultiplier: playerSurface.powerMultiplier,
         rollingResistance: playerSurface.rollingResistance,
       }, DT);
