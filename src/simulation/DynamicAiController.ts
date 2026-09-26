@@ -241,10 +241,13 @@ export function dynamicAiControl(
     : approachLane(projection.laneOffset, baseLane, 2.6);
 
   if (movingToPass && passLane !== undefined) {
-    // Feed the pass lane to steering gradually from the car's actual position.
-    // The old ATTACK state jumped the target by up to 3.2 m per controller tick,
-    // which looked like a deliberate body-check at 120 Hz.
-    targetLane = approachLane(projection.laneOffset, passLane, 0.90);
+    // Blend toward the pass corridor from longitudinal gap, not "metres per
+    // controller tick". A per-tick lane delta at 120 Hz effectively creates an
+    // extremely fast moving target and can fling the car across the circuit.
+    // The requested lane now progresses smoothly from the racing line as the
+    // follower closes from ~14 m to genuine overlap.
+    const passBlend = smoothstep(clamp((14.2 - aheadGap) / 10.0, 0, 1));
+    targetLane = baseLane + (passLane - baseLane) * passBlend;
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
 
