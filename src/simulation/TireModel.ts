@@ -17,14 +17,14 @@ export interface TireImpactDamage {
 
 // Make the choice legible without changing straight-line power. Soft has a
 // real one-lap/cornering advantage, Medium is the default race tyre, and Hard
-// gives away enough peak pace to be a deliberate endurance choice rather than
-// "Medium but better". Hard remains easy to steer; its deficit is carried
+// gives away some peak pace to be a deliberate endurance choice rather than
+// "Medium but better". Hard remains easy to steer; its smaller deficit is carried
 // through braking/corner speed and line rather than an unresponsive steering
 // rack.
 const compound = {
   SOFT: { baseGrip: 1.18, wear: 2.20, ideal: 103 },
   MEDIUM: { baseGrip: 1.06, wear: 1.00, ideal: 97 },
-  HARD: { baseGrip: 0.99, wear: 0.50, ideal: 90 },
+  HARD: { baseGrip: 1.02, wear: 0.50, ideal: 90 },
 } satisfies Record<Compound, { baseGrip: number; wear: number; ideal: number }>;
 
 const pace = {
