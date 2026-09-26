@@ -64,11 +64,6 @@ const AI_EXPLICIT_PACE_MAX = 1.000;
 const AI_SKILL_GRIP_MAX = 1.010;
 const AI_POWER_BONUS_MIN = 0.065;
 const AI_POWER_BONUS_MAX = 0.115;
-// Start recovering before momentum carries a high-speed CPU all the way to
-// the barrier. This does not change the reference racing line; it only decides
-// when a physically displaced car stops trying to finish the current corner
-// and prioritises returning to the route.
-const AI_LATERAL_RECOVERY_DISTANCE = TRACK_KERB_OUTER_OFFSET - 0.35;
 
 export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
@@ -170,6 +165,7 @@ export function dynamicAiControl(
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = activeReferenceTarget(trackId, targetProgress, controlGrip);
   const currentLineReference = activeReferenceTarget(trackId, projection.progress, controlGrip);
+  const rawReferenceLaneNow = currentLineReference.laneOffset;
   const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
 
   // Traffic must never create a lateral target. CPU cars always steer toward
@@ -178,16 +174,15 @@ export function dynamicAiControl(
     ? baseLane
     : approachLane(projection.laneOffset, baseLane, 2.6);
 
-  const offRoad = projection.distance > AI_LATERAL_RECOVERY_DISTANCE;
+  const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
   if (offRoad) {
-    // AUTO recovers toward the centreline, but an explicit line should not
-    // suddenly be replaced by a completely different path the moment one tyre
-    // runs wide. Keep PLAYER/EDITOR recovery locked to the demonstrated path;
-    // the speed caps below provide the safety margin while the same follower
-    // brings the car back.
-    targetLane = highFidelityLine
-      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
-      : 0;
+    // Recovery must stay line-locked too. Do not invent a centreline route
+    // after an excursion; keep aiming at the current reference trajectory.
+    targetLane = clamp(
+      currentLineReference.laneOffset,
+      -AI_SAFE_LANE_LIMIT,
+      AI_SAFE_LANE_LIMIT,
+    );
     battleState = 'CLEAR';
   }
 
@@ -223,25 +218,31 @@ export function dynamicAiControl(
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
   const referenceLaneNow = explicitFollower
-    ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
-    : offRoad
-      ? 0
-      : clamp(
-          currentLineReference.laneOffset,
-          -AI_SAFE_LANE_LIMIT,
-          AI_SAFE_LANE_LIMIT,
-        );
+    ? explicitFollower.referenceLane
+    : rawReferenceLaneNow;
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
+  const lineDeparture = Math.abs(referenceLaneNow - projection.laneOffset);
+  const lineRecoveryPressure = clamp((lineDeparture - 2.5) / 4.5, 0, 1);
+  // Traffic never changes the lateral target. If physics carries a CPU away
+  // from that line, progressively strengthen the same signed line-error
+  // correction instead. This prevents a high-speed car from coasting all the
+  // way to the barrier while preserving legitimate edge/kerb reference lines.
+  const lineRecoverySteer = lateralError * lineRecoveryPressure * 1.35;
   const steerCommand = offRoad
-    ? bearingError * 3.25 + lateralError * 1.20 - vehicle.yawRate * 0.25
+    ? bearingError * 3.25
+      + lateralError * 1.55
+      + lineRecoverySteer
+      - vehicle.yawRate * 0.25
     : highFidelityLine
       ? headingError * 2.45
         + bearingError * 1.05
         + lateralError * 0.82
+        + lineRecoverySteer
         - vehicle.yawRate * 0.42
       : headingError * 2.15
         + bearingError * 0.82
         + lateralError * 0.52
+        + lineRecoverySteer
         - vehicle.yawRate * 0.38;
   const baselineSteer = explicitFollower
     ? explicitFollower.steer
@@ -378,7 +379,7 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (projection.distance > AI_LATERAL_RECOVERY_DISTANCE) targetSpeed = Math.min(targetSpeed, 58);
+  if (projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65) targetSpeed = Math.min(targetSpeed, 58);
   if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
