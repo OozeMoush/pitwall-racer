@@ -70,6 +70,10 @@ function overlappingPair(
     speed: playerSpeed,
   };
   const physics = new RapierRacePhysics(playerStart, [driver]);
+  // RapierRacePhysics construction places bodies but does not seed dynamic
+  // velocity from VehicleState. Set both bodies explicitly so this test really
+  // exercises 60-vs-60 and 60-vs-40 relative impact speeds.
+  physics.setPlayerState(playerStart);
   physics.setAiState(0, {
     ...createVehicle(pose.x, pose.y, pose.heading),
     speed: aiSpeed,
