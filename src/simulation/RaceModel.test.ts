@@ -184,9 +184,12 @@ describe('RaceModel', () => {
       speed: 92, laneOffset: -8, performance: 1.08, isPlayer: true,
     };
 
+    const [baseline] = stepAiField([{ ...driver }], 0.1, 50);
     const [next] = stepAiField([driver], 0.1, 50, [player]);
     expect(next.battleState).toBe('CLEAR');
-    expect(Math.abs(next.laneOffset)).toBeLessThan(1);
+    // Preferred-line movement is allowed; the approaching player must not add
+    // a separate defensive lane change.
+    expect(next.laneOffset).toBeCloseTo(baseline.laneOffset, 6);
   });
 
   it('leaves lateral space when the player is genuinely alongside', () => {
