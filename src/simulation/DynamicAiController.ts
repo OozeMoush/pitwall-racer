@@ -244,7 +244,7 @@ export function dynamicAiControl(
     // Feed the pass lane to steering gradually from the car's actual position.
     // The old ATTACK state jumped the target by up to 3.2 m per controller tick,
     // which looked like a deliberate body-check at 120 Hz.
-    targetLane = approachLane(projection.laneOffset, passLane, 1.35);
+    targetLane = approachLane(projection.laneOffset, passLane, 0.90);
   } else if (battleState === 'SIDE_BY_SIDE' && alongside) {
     const currentSeparation = Math.abs(projection.laneOffset - alongside.laneOffset);
 
