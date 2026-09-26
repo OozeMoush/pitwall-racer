@@ -69,13 +69,17 @@ After the race, `C` starts the same setup again.
 
 ## Verify
 
-For gameplay changes:
+The test suite is split by feedback speed without changing the full-suite gate:
 
 ```bash
-npm run test:playtest
-npm test
+npm run test:fast      # cheap unit/regression loop
+npm run test:playtest  # focused gameplay/physics regressions
+npm run test:long      # multi-lap, multi-circuit and endurance checks
+npm test               # all 66 test files; authoritative final gate
 npm run build
 ```
+
+Use `test:fast` while iterating. Gameplay changes should also run `test:playtest`. Run `test:long` directly when touching racing-line replay, long-run CPU behaviour, multi-circuit physics or the machine reference. Before merging a gameplay change, `npm test` and `npm run build` remain mandatory.
 
 CI runs the full test suite and production build on pushes to `main` and can also be started manually. Automated tests are guardrails, not a substitute for human feel.
 
