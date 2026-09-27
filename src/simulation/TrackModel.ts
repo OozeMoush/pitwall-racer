@@ -176,6 +176,11 @@ export function getTrackDefinition(id: TrackId): TrackDefinition {
   return TRACKS.find((track) => track.id === id) ?? TRACKS[0];
 }
 
+export function trackCentreline(id: TrackId): readonly TrackPoint[] {
+  const definition = getTrackDefinition(id);
+  return buildTrackCentreline(definition);
+}
+
 export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { heading: number } {
   const p = ((progress % 1) + 1) % 1;
   const distance = p * TRACK_LENGTH;
@@ -310,9 +315,7 @@ function rebuildTrack(
   controls: readonly TrackPoint[],
   geometry: 'smooth' | 'street' = 'smooth',
 ): void {
-  RACING_LINE = geometry === 'street'
-    ? buildClosedRoundedStreet(controls, SAMPLES_PER_CONTROL)
-    : buildClosedCatmullRom(controls, SAMPLES_PER_CONTROL);
+  RACING_LINE = buildTrackCentreline({ id: activeTrackId, name: '', subtitle: '', controls, geometry });
   const nextSegments: Segment[] = [];
   let total = 0;
   for (let i = 0; i < RACING_LINE.length; i++) {
@@ -324,6 +327,12 @@ function rebuildTrack(
   }
   segments = nextSegments;
   TRACK_LENGTH = total;
+}
+
+function buildTrackCentreline(definition: TrackDefinition): readonly TrackPoint[] {
+  return definition.geometry === 'street'
+    ? buildClosedRoundedStreet(definition.controls, SAMPLES_PER_CONTROL)
+    : buildClosedCatmullRom(definition.controls, SAMPLES_PER_CONTROL);
 }
 
 function segmentAtDistance(distance: number): Segment {
