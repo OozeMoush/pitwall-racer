@@ -1,6 +1,7 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
+  CAR_COLLIDER_HALF_LENGTH,
   CAR_CONTACT_MIN_RELATIVE_SPEED,
   RapierRacePhysics,
   carRelativeImpactSpeed,
