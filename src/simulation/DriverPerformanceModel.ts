@@ -18,13 +18,13 @@ export interface DriverPerformanceSample {
 }
 
 const PROFILES: Record<string, DriverPerformanceProfile> = {
-  APEX:  { pace: 0.9960, consistency: 0.0030, precision: 0.996 },
-  ORBIT: { pace: 0.9930, consistency: 0.0033, precision: 0.994 },
-  NOVA:  { pace: 0.9925, consistency: 0.0036, precision: 0.993 },
-  ZEN:   { pace: 0.9915, consistency: 0.0038, precision: 0.992 },
-  KITE:  { pace: 0.9900, consistency: 0.0042, precision: 0.991 },
-  VOLT:  { pace: 0.9855, consistency: 0.0050, precision: 0.987 },
-  RIFT:  { pace: 0.9815, consistency: 0.0060, precision: 0.984 },
+  APEX:  { pace: 0.9930, consistency: 0.0055, precision: 0.996 },
+  ORBIT: { pace: 0.9905, consistency: 0.0060, precision: 0.994 },
+  NOVA:  { pace: 0.9900, consistency: 0.0063, precision: 0.993 },
+  ZEN:   { pace: 0.9890, consistency: 0.0065, precision: 0.992 },
+  KITE:  { pace: 0.9875, consistency: 0.0070, precision: 0.991 },
+  VOLT:  { pace: 0.9825, consistency: 0.0080, precision: 0.987 },
+  RIFT:  { pace: 0.9775, consistency: 0.0090, precision: 0.984 },
 };
 
 /**
@@ -74,8 +74,8 @@ export function driverPerformanceProfile(
   // without requiring every caller to register a named profile.
   const t = clamp01((driver.skill - 1.118) / (1.136 - 1.118));
   return {
-    pace: lerp(0.9815, 0.9960, t),
-    consistency: lerp(0.0060, 0.0030, t),
+    pace: lerp(0.9775, 0.9930, t),
+    consistency: lerp(0.0090, 0.0055, t),
     precision: lerp(0.984, 0.996, t),
   };
 }
