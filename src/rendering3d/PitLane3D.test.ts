@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it } from 'vitest';
-import { TRACKS, setActiveTrack } from '../simulation/TrackModel';
 import { pitLanePose } from '../simulation/PitLaneModel';
+import { TRACKS, setActiveTrack } from '../simulation/TrackModel';
 import { PIT_LANE_HALF_WIDTH, pitRibbonGeometry } from './PitLane3D';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
@@ -19,7 +19,9 @@ describe('PitLane3D', () => {
     const normal = b.clone().sub(a).cross(c.clone().sub(a));
 
     expect(normal.y).toBeGreaterThan(0);
-    it('keeps the visible pit ribbon continuous and upward-facing on every circuit', () => {
+  });
+
+  it('keeps the visible pit ribbon continuous and upward-facing on every circuit', () => {
     for (const track of TRACKS) {
       setActiveTrack(track.id);
       const geometry = pitRibbonGeometry(
@@ -35,8 +37,8 @@ describe('PitLane3D', () => {
       for (let triangle = 0; triangle < index!.count; triangle += 3) {
         const a = new THREE.Vector3().fromBufferAttribute(position, index!.getX(triangle));
         const b = new THREE.Vector3().fromBufferAttribute(position, index!.getX(triangle + 1));
-        const d = new THREE.Vector3().fromBufferAttribute(position, index!.getX(triangle + 2));
-        const normalY = b.clone().sub(a).cross(d.clone().sub(a)).y;
+        const c = new THREE.Vector3().fromBufferAttribute(position, index!.getX(triangle + 2));
+        const normalY = b.clone().sub(a).cross(c.clone().sub(a)).y;
         minimumNormalY = Math.min(minimumNormalY, normalY);
       }
       expect(minimumNormalY).toBeGreaterThan(0);
@@ -54,5 +56,4 @@ describe('PitLane3D', () => {
       }
     }
   });
-});
 });
