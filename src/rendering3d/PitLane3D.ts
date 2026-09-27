@@ -145,7 +145,8 @@ export function pitRibbonGeometry(
       const i1 = i0 + 1;
       const i2 = i0 + 2;
       const i3 = i0 + 3;
-      indices.push(i0, i1, i2, i1, i3, i2);
+      pushUpwardTriangle(indices, vertices, i0, i2, i1);
+      pushUpwardTriangle(indices, vertices, i1, i2, i3);
     }
   }
   const geometry = new THREE.BufferGeometry();
@@ -156,6 +157,25 @@ export function pitRibbonGeometry(
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
+}
+
+function pushUpwardTriangle(
+  indices: number[],
+  vertices: readonly number[],
+  a: number,
+  b: number,
+  c: number,
+): void {
+  const ax = vertices[a * 3];
+  const az = vertices[a * 3 + 2];
+  const bx = vertices[b * 3];
+  const bz = vertices[b * 3 + 2];
+  const cx = vertices[c * 3];
+  const cz = vertices[c * 3 + 2];
+  const normalY = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+
+  if (normalY >= 0) indices.push(a, b, c);
+  else indices.push(a, c, b);
 }
 
 function offsetPose(
