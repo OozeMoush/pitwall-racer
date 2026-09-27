@@ -126,13 +126,27 @@ interface LapTelemetry {
   lapTime: number;
 }
 
+interface AiLapTelemetry {
+  lap: number;
+  startCompound: Compound;
+  endCompound: Compound;
+  pitted: boolean;
+  s1: number;
+  s2: number;
+  s3: number;
+  lapTime: number;
+}
+
 interface AiLapClock {
   lap: number;
   lapStartTime: number;
+  lapStartCompound: Compound;
+  lapStartPitStopIndex: number;
   bestLap?: number;
   lastLap?: number;
-  laps: Array<{ lap: number; time: number }>;
+  laps: AiLapTelemetry[];
   bestSectors: Array<number | undefined>;
+  sectorTimes: number[];
   lastProgress: number;
   nextSector: number;
   sectorStartTime: number;
@@ -943,17 +957,26 @@ export class CoreRaceGame {
       }
 
       if (driver.lap > clock.lap) {
-        if (clock.lap >= 1) {
-          const s3 = this.timing.raceTime - clock.sectorStartTime;
-          if (s3 > 0.5) {
-            this.registerAiBestSector(clock, 2, s3);
-            this.registerSessionFastestSector(2, s3);
-          }
-        }
         const completedLap = this.timing.raceTime - clock.lapStartTime;
+        const s1 = clock.sectorTimes[0] ?? completedLap / 3;
+        const s2 = clock.sectorTimes[1] ?? completedLap / 3;
+        const s3 = Math.max(0, completedLap - s1 - s2);
+        if (clock.lap >= 1 && s3 > 0.5) {
+          this.registerAiBestSector(clock, 2, s3);
+          this.registerSessionFastestSector(2, s3);
+        }
         if (clock.lap >= 1 && completedLap > 10) {
           clock.lastLap = completedLap;
-          clock.laps.push({ lap: clock.lap, time: completedLap });
+          clock.laps.push({
+            lap: clock.lap,
+            startCompound: clock.lapStartCompound,
+            endCompound: driver.tire.compound,
+            pitted: driver.pitStopIndex > clock.lapStartPitStopIndex,
+            s1,
+            s2,
+            s3,
+            lapTime: completedLap,
+          });
           if (clock.laps.length > this.totalLaps) clock.laps.shift();
         }
         if (clock.lap >= 2 && completedLap > 10) {
@@ -962,9 +985,12 @@ export class CoreRaceGame {
         }
         clock.lap = driver.lap;
         clock.lapStartTime = this.timing.raceTime;
+        clock.lapStartCompound = driver.tire.compound;
+        clock.lapStartPitStopIndex = driver.pitStopIndex;
         clock.lastProgress = driver.progress;
         clock.nextSector = 1;
         clock.sectorStartTime = this.timing.raceTime;
+        clock.sectorTimes = [];
         continue;
       }
 
@@ -973,6 +999,7 @@ export class CoreRaceGame {
         if (clock.lastProgress < threshold && driver.progress >= threshold) {
           const sectorTime = this.timing.raceTime - clock.sectorStartTime;
           if (sectorTime > 0.5) {
+            clock.sectorTimes[clock.nextSector - 1] = sectorTime;
             this.registerAiBestSector(clock, clock.nextSector - 1, sectorTime);
             this.registerSessionFastestSector(clock.nextSector - 1, sectorTime);
           }
@@ -1019,8 +1046,11 @@ export class CoreRaceGame {
     return {
       lap: driver.lap,
       lapStartTime: this.timing.raceTime,
+      lapStartCompound: driver.tire.compound,
+      lapStartPitStopIndex: driver.pitStopIndex,
       laps: [],
       bestSectors: [undefined, undefined, undefined],
+      sectorTimes: [],
       lastProgress: driver.progress,
       nextSector: 1,
       sectorStartTime: this.timing.raceTime,
@@ -1481,7 +1511,7 @@ export class CoreRaceGame {
     const cpuRows = this.ai.map((driver) => {
       const clock = this.aiLapClocks.get(driver.id);
       const laps = clock?.laps.map((lap) =>
-        `<span data-lap="${lap.lap}" data-time="${lap.time.toFixed(6)}"></span>`
+        `<span data-lap="${lap.lap}" data-time="${lap.lapTime.toFixed(6)}"></span>`
       ).join('') ?? '';
       return `<div data-driver="${driver.name}">${laps}</div>`;
     }).join('');
