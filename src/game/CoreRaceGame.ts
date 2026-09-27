@@ -219,6 +219,7 @@ export class CoreRaceGame {
   private racePenaltyNotice = '';
   private racePenaltyNoticeRemaining = 0;
   private readonly impactDamage = new ImpactDamageTracker();
+  private aiImpactDamage: ImpactDamageTracker[] = [];
   private impactDamageNotice = '';
   private impactDamageNoticeRemaining = 0;
   private debugEnabled = false;
@@ -241,6 +242,7 @@ export class CoreRaceGame {
     this.totalLaps = Math.max(6, Math.min(60, Math.round(setup.totalLaps)));
     this.startCompound = setup.startCompound;
     this.ai = createAiField(setup.gridOrder, this.totalLaps);
+    this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
     this.lastTrackProgress = playerGrid.progress;
@@ -521,6 +523,7 @@ export class CoreRaceGame {
       this.lineCandidate.markIneligible();
       this.lineCandidateContact = playerContact;
     }
+    this.applyAiImpactDamage(dt);
     this.updateAiLapTiming();
 
     const afterTrack = projectTrackNear(
@@ -585,6 +588,27 @@ export class CoreRaceGame {
 
     this.trafficPressure = this.estimateTrafficPressure();
     this.updateRaceIntervals();
+  }
+
+  private applyAiImpactDamage(dt: number): void {
+    this.ai.forEach((driver, index) => {
+      const contact = this.physics.aiContactKind(index);
+      let tracker = this.aiImpactDamage[index];
+      if (!tracker) {
+        tracker = new ImpactDamageTracker();
+        this.aiImpactDamage[index] = tracker;
+      }
+
+      const newImpact = tracker.sample(contact, dt);
+      if (contact === 'NONE' || !newImpact) return;
+
+      const impact = applyImpactTireDamage(
+        driver.tire,
+        contact,
+        this.physics.aiImpactSpeed(index),
+      );
+      driver.tire = impact.tire;
+    });
   }
 
   private stepPhysicalPit(dt: number): boolean {
@@ -1360,7 +1384,8 @@ export class CoreRaceGame {
   }
 
   private resetRace(): void {
-    this.ai = createAiField(this.setup.gridOrder);
+    this.ai = createAiField(this.setup.gridOrder, this.totalLaps);
+    this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     this.vehicle = this.startVehicle();
     const selection = selectStartingTyre(this.startCompound);
     this.tire = createTire(selection.startCompound);
