@@ -82,7 +82,7 @@ Do not stop after merely adding logging.
 ### Track limits
 - Ordinary kerb use is legal.
 - Warn only when the visible four-wheel footprint is fully beyond the legal road.
-- Three GP warnings create the pit penalty; do not silently delete the lap.
+- Five GP warnings create the 5-second pit penalty; do not silently delete the lap.
 
 ### Racing-line continuity
 - PLAYER line is periodic through start/finish.
