@@ -142,6 +142,7 @@ interface AiLapClock {
   lapStartTime: number;
   lapStartCompound: Compound;
   lapStartPitStopIndex: number;
+  pittedThisLap: boolean;
   bestLap?: number;
   lastLap?: number;
   laps: AiLapTelemetry[];
@@ -949,12 +950,13 @@ export class CoreRaceGame {
   }
 
   private updateAiLapTiming(): void {
-    for (const driver of this.ai) {
+    for (const [index, driver] of this.ai.entries()) {
       const clock = this.aiLapClocks.get(driver.id);
       if (!clock) {
         this.aiLapClocks.set(driver.id, this.createAiClock(driver));
         continue;
       }
+      if (this.physics.isAiPitting(index)) clock.pittedThisLap = true;
 
       if (driver.lap > clock.lap) {
         const completedLap = this.timing.raceTime - clock.lapStartTime;
@@ -971,7 +973,9 @@ export class CoreRaceGame {
             lap: clock.lap,
             startCompound: clock.lapStartCompound,
             endCompound: driver.tire.compound,
-            pitted: driver.pitStopIndex > clock.lapStartPitStopIndex,
+            pitted:
+              clock.pittedThisLap
+              || driver.pitStopIndex > clock.lapStartPitStopIndex,
             s1,
             s2,
             s3,
@@ -987,6 +991,7 @@ export class CoreRaceGame {
         clock.lapStartTime = this.timing.raceTime;
         clock.lapStartCompound = driver.tire.compound;
         clock.lapStartPitStopIndex = driver.pitStopIndex;
+        clock.pittedThisLap = this.physics.isAiPitting(index);
         clock.lastProgress = driver.progress;
         clock.nextSector = 1;
         clock.sectorStartTime = this.timing.raceTime;
@@ -1048,6 +1053,7 @@ export class CoreRaceGame {
       lapStartTime: this.timing.raceTime,
       lapStartCompound: driver.tire.compound,
       lapStartPitStopIndex: driver.pitStopIndex,
+      pittedThisLap: false,
       laps: [],
       bestSectors: [undefined, undefined, undefined],
       sectorTimes: [],
@@ -1560,9 +1566,12 @@ export class CoreRaceGame {
         }).join('');
 
     const currentWear = Math.round(driver.tire.wear * 100);
-    const nextStop = driver.pitStopIndex >= driver.pitPlan.length
-      ? 'DONE'
-      : `L${driver.pitLap} → ${driver.nextCompound}`;
+    const pittingNow = this.physics.isAiPitting(this.debugAiIndex);
+    const nextStop = pittingNow
+      ? 'IN PIT'
+      : driver.pitStopIndex >= driver.pitPlan.length
+        ? 'DONE'
+        : `L${driver.pitLap} → ${driver.nextCompound}`;
     const execution = control?.debug.driverExecutionFactor;
     const executionText = execution === undefined ? '—' : `${(execution * 100).toFixed(2)}%`;
 
