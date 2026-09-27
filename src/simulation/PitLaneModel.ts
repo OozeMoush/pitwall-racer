@@ -19,7 +19,11 @@ const PIT_ENTRY_OFFSET = 11;
 // inversion on the tighter selectable circuits. With the 7.5 m visual
 // half-width, 27 m leaves the inner pit edge at 19.5 m from track centre.
 const PIT_LANE_OFFSET = 27;
-const PIT_ENTRY_RAMP_T = 0.08;
+// Ease the lane departure over a longer portion of the entry. The previous
+// 0.08 ramp rotated the detached ribbon faster than its own width on Pitwall
+// GP's final bend, flipping the first rendered quad even though the centre path
+// itself stayed continuous.
+const PIT_ENTRY_RAMP_T = 0.12;
 const PIT_EXIT_RAMP_T = 0.10;
 const PIT_BOX_SLOT_START = 0.30;
 const PIT_BOX_SLOT_SPACING = 0.028;
