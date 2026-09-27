@@ -41,7 +41,11 @@ export function installHudEnhancer(hud: HTMLElement): () => void {
       if (currentTyre) {
         tyreNode.dataset.currentTyre = currentTyre;
         if (memory.compounds[memory.compounds.length - 1] !== currentTyre) memory.compounds.push(currentTyre);
-        tyreNode.textContent = memory.compounds.join('›');
+        // Keep the live tower glanceable: show only the tyre fitted right now.
+        // Preserve stint history as metadata so pause/debug views can still
+        // expose the strategic sequence without crowding the racing HUD.
+        tyreNode.textContent = currentTyre;
+        tyreNode.dataset.tyreHistory = memory.compounds.join('›');
         tyreNode.title = `Tyre history: ${memory.compounds.join(' → ')}`;
       }
 
