@@ -6,6 +6,7 @@ import {
   carRelativeImpactSpeed,
 } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
+import { TRACK_BARRIER_OFFSET } from './TrackLimitsModel';
 import { sampleTrack, setActiveTrack } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
@@ -23,6 +24,8 @@ describe('physical player/car impact classification', () => {
       physics.step(DT);
       expect(physics.playerContactKind()).toBe('NONE');
       expect(physics.playerImpactSpeed()).toBe(0);
+      expect(physics.aiContactKind(0)).toBe('NONE');
+      expect(physics.aiImpactSpeed(0)).toBe(0);
     } finally {
       physics.world.free();
     }
@@ -37,6 +40,46 @@ describe('physical player/car impact classification', () => {
         CAR_CONTACT_MIN_RELATIVE_SPEED,
       );
       expect(physics.playerImpactSpeed()).toBeCloseTo(20, 1);
+      expect(physics.aiContactKind(0)).toBe('CAR');
+      expect(physics.aiImpactSpeed(0)).toBeCloseTo(20, 1);
+    } finally {
+      physics.world.free();
+    }
+  });
+
+  it('reports a real CPU wall hit with the wall-normal impact speed', () => {
+    const progress = 0.50;
+    const side = 1;
+    const driver = createAiField()[0];
+    driver.progress = progress;
+    driver.laneOffset = 0;
+    const playerPose = sampleTrack(0.15);
+    const physics = new RapierRacePhysics(
+      createVehicle(playerPose.x, playerPose.y, playerPose.heading),
+      [driver],
+    );
+
+    try {
+      const startLane = side * (TRACK_BARRIER_OFFSET - CAR_COLLIDER_HALF_LENGTH - 2);
+      const pose = sampleTrack(progress, startLane);
+      const outwardHeading = pose.heading + Math.PI / 2;
+      physics.setAiState(0, {
+        ...createVehicle(pose.x, pose.y, outwardHeading),
+        speed: 70,
+      });
+
+      let sawBarrierImpact = false;
+      let maximumImpactSpeed = 0;
+      for (let tick = 0; tick < 1.2 / DT; tick++) {
+        physics.step(DT);
+        if (physics.aiContactKind(0) === 'BARRIER') {
+          sawBarrierImpact = true;
+          maximumImpactSpeed = Math.max(maximumImpactSpeed, physics.aiImpactSpeed(0));
+        }
+      }
+
+      expect(sawBarrierImpact).toBe(true);
+      expect(maximumImpactSpeed).toBeGreaterThan(1);
     } finally {
       physics.world.free();
     }
