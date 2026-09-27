@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CoreRaceGame } from './CoreRaceGame';
 import { createAiField } from '../simulation/RaceModel';
+import { createTire } from '../simulation/TireModel';
 
 describe('CoreRaceGame CPU lap telemetry', () => {
   it('records sectors, tyre transition and pit activity for a selected CPU lap', () => {
@@ -8,7 +9,6 @@ describe('CoreRaceGame CPU lap telemetry', () => {
     driver.lap = 1;
     driver.progress = 0.32;
     driver.pitStopIndex = 0;
-    driver.tire.compound = 'SOFT';
 
     let pitting = false;
     const game = Object.assign(Object.create(CoreRaceGame.prototype), {
@@ -41,7 +41,7 @@ describe('CoreRaceGame CPU lap telemetry', () => {
     driver.lap = 2;
     driver.progress = 0.02;
     driver.pitStopIndex = 1;
-    driver.tire.compound = 'HARD';
+    driver.tire = createTire('HARD');
     game.timing.raceTime = 25;
     game.updateAiLapTiming();
 
