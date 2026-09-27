@@ -7,6 +7,17 @@ interface PauseRow {
   best: string;
 }
 
+interface PauseLap {
+  lap: number;
+  time: number;
+  tyre?: string;
+}
+
+interface PauseCpuHistory {
+  driver: string;
+  laps: PauseLap[];
+}
+
 /**
  * Pause the race without teaching CoreRaceGame about menu state.
  *
@@ -53,6 +64,10 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
 
     const raceTitle = hud.querySelector<HTMLElement>('.race-id span')?.textContent?.trim() ?? 'RACE';
     const rows = readRows(hud);
+    const playerLaps = readPlayerLaps(hud);
+    const timingData = hud.querySelector<HTMLElement>('.pause-timing-data');
+    const debugEnabled = timingData?.dataset.debug === '1';
+    const cpuHistories = debugEnabled ? readCpuLaps(hud) : [];
     const rowHtml = rows.map((row) => `
       <div class="pause-score-row${row.driver === 'YOU' ? ' you' : ''}">
         <i>${escapeHtml(row.position)}</i>
@@ -62,6 +77,21 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
         <b>${escapeHtml(row.last)}</b>
         <b>${escapeHtml(row.best)}</b>
       </div>`).join('');
+    const playerLapHtml = playerLaps.length === 0
+      ? '<div class="pause-empty">NO COMPLETED LAPS YET</div>'
+      : playerLaps.map((lap) => `
+          <div class="pause-lap-row">
+            <i>L${lap.lap}</i>
+            <em>${escapeHtml(lap.tyre ?? '—')}</em>
+            <strong>${formatLapTime(lap.time)}</strong>
+          </div>`).join('');
+    const cpuLapHtml = cpuHistories.map((history) => `
+      <div class="pause-cpu-history">
+        <b>${escapeHtml(history.driver)}</b>
+        <span>${history.laps.length === 0
+          ? '—'
+          : history.laps.map((lap) => `L${lap.lap} ${formatLapTime(lap.time)}`).join(' · ')}</span>
+      </div>`).join('');
 
     overlay.innerHTML = `
       <section class="race-pause-card" role="dialog" aria-label="Race paused">
@@ -69,9 +99,20 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
           <div><small>RACE PAUSED</small><h2>${escapeHtml(raceTitle)}</h2></div>
           <strong>PAUSED</strong>
         </header>
-        <div class="pause-score-head"><i>P</i><i>TYRES</i><i>DRIVER</i><i>GAP</i><i>LAST</i><i>BEST</i></div>
-        <div class="pause-score-list">${rowHtml}</div>
-        <footer>P / ESC · RESUME</footer>
+        <div class="pause-scroll">
+          <div class="pause-score-head"><i>P</i><i>TYRES</i><i>DRIVER</i><i>GAP</i><i>LAST</i><i>BEST</i></div>
+          <div class="pause-score-list">${rowHtml}</div>
+          <section class="pause-history-section">
+            <header><b>YOUR LAP HISTORY</b><span>ALL COMPLETED LAPS</span></header>
+            <div class="pause-player-lap-list">${playerLapHtml}</div>
+          </section>
+          ${debugEnabled ? `
+            <section class="pause-history-section debug-history">
+              <header><b>CPU LAP HISTORY</b><span>F3 DEBUG DATA</span></header>
+              <div class="pause-cpu-lap-list">${cpuLapHtml}</div>
+            </section>` : ''}
+        </div>
+        <footer>P / ESC · RESUME${debugEnabled ? ' · CPU HISTORY ENABLED' : ' · F3 BEFORE PAUSE FOR CPU HISTORY'}</footer>
       </section>`;
     container.appendChild(overlay);
   };
@@ -134,6 +175,40 @@ function readRows(hud: HTMLElement): PauseRow[] {
       best: explicitBest || '—',
     };
   });
+}
+
+function readPlayerLaps(hud: HTMLElement): PauseLap[] {
+  return Array.from(
+    hud.querySelectorAll<HTMLElement>('.pause-player-laps > span'),
+  ).map(readLapNode).filter((lap): lap is PauseLap => lap !== undefined);
+}
+
+function readCpuLaps(hud: HTMLElement): PauseCpuHistory[] {
+  return Array.from(
+    hud.querySelectorAll<HTMLElement>('.pause-cpu-laps > div'),
+  ).map((row) => ({
+    driver: row.dataset.driver ?? 'CPU',
+    laps: Array.from(row.querySelectorAll<HTMLElement>('span'))
+      .map(readLapNode)
+      .filter((lap): lap is PauseLap => lap !== undefined),
+  }));
+}
+
+function readLapNode(node: HTMLElement): PauseLap | undefined {
+  const lap = Number(node.dataset.lap);
+  const time = Number(node.dataset.time);
+  if (!Number.isFinite(lap) || !Number.isFinite(time) || time <= 0) return undefined;
+  return {
+    lap,
+    time,
+    tyre: node.dataset.tyre,
+  };
+}
+
+function formatLapTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds - minutes * 60;
+  return `${minutes}:${remainder.toFixed(3).padStart(6, '0')}`;
 }
 
 function escapeHtml(value: string): string {
