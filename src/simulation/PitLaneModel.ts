@@ -21,6 +21,7 @@ const PIT_EXIT_RAMP_T = 0.10;
 const PIT_BOX_SLOT_START = 0.30;
 const PIT_BOX_SLOT_SPACING = 0.028;
 const PIT_PROJECTION_SAMPLES = 128;
+const PIT_TRACK_TANGENT_METRES = 5.5;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
@@ -295,13 +296,31 @@ function pitLaneCentre(tInput: number): {
   const unwrapped = PIT_ENTRY_PROGRESS + PIT_SPAN * t;
   const raceProgress = unwrapped >= 1 ? unwrapped - 1 : unwrapped;
   const laneOffset = pitLaneOffset(t);
-  const point = sampleTrack(raceProgress, laneOffset);
+
+  // Do not construct the pit centre from sampleTrack(progress, offset)
+  // directly. That function uses the current polyline segment heading; at a
+  // segment boundary a large 34 m offset can jump sideways even though the
+  // centreline itself is visually smooth. The main road hides those tiny
+  // tangent changes, but the detached pit lane amplifies them into zig-zags
+  // and folded ribbon quads. Use a finite-distance centreline tangent instead.
+  const centre = sampleTrack(raceProgress);
+  const tangentProgress = PIT_TRACK_TANGENT_METRES / Math.max(1, TRACK_LENGTH);
+  const before = sampleTrack(raceProgress - tangentProgress);
+  const after = sampleTrack(raceProgress + tangentProgress);
+  const dx = after.x - before.x;
+  const dy = after.y - before.y;
+  const trackHeading = Math.hypot(dx, dy) > 0.0001
+    ? Math.atan2(dy, dx)
+    : centre.heading;
+  const nx = -Math.sin(trackHeading);
+  const ny = Math.cos(trackHeading);
+
   return {
-    x: point.x,
-    y: point.y,
+    x: centre.x + nx * laneOffset,
+    y: centre.y + ny * laneOffset,
     raceProgress,
     laneOffset,
-    trackHeading: point.heading,
+    trackHeading,
   };
 }
 
