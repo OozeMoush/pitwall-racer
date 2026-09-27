@@ -12,9 +12,9 @@ describe('desktop HUD readability', () => {
   });
 
   it('keeps live tyre wear legible in the standings tower', () => {
-    expect(battleTimingCss).toContain('grid-template-columns:31px 82px minmax(82px,1fr) 78px 84px 84px');
+    expect(battleTimingCss).toContain('grid-template-columns:31px 76px minmax(82px,1fr) 78px 84px 84px');
     expect(battleTimingCss).toContain('.tower-wear-value.healthy{color:#45dc82}');
-    expect(battleTimingCss).toContain('.tower-wear-meter{display:block;width:100%;height:3px');
+    expect(battleTimingCss).toContain('.tower-wear-meter{display:block;width:100%;height:4px');
   });
 
   it('uses F1-style purple and green timing states', () => {
