@@ -166,9 +166,10 @@ function readRows(hud: HTMLElement): PauseRow[] {
     const smalls = Array.from(row.querySelectorAll<HTMLElement>('small'));
     const explicitBest = row.querySelector<HTMLElement>('.tower-best')?.textContent?.trim();
     const last = smalls.find((node) => !node.classList.contains('tower-best'))?.textContent?.trim() ?? '—';
+    const tyreNode = row.querySelector<HTMLElement>('em');
     return {
       position: row.querySelector<HTMLElement>('i')?.textContent?.trim() ?? '—',
-      tyres: row.querySelector<HTMLElement>('em')?.textContent?.trim() ?? '—',
+      tyres: tyreNode?.dataset.tyreHistory ?? tyreNode?.textContent?.trim() ?? '—',
       driver: row.querySelector<HTMLElement>('strong')?.textContent?.trim() ?? '—',
       gap: row.querySelector<HTMLElement>('b')?.textContent?.trim() ?? '—',
       last,
