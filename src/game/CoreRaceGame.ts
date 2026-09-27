@@ -1912,12 +1912,25 @@ export class CoreRaceGame {
           ?? estimatedSignedGapSeconds(playerStanding, driver, referenceLap);
       const gapClass = gap < -TIMING_EPSILON ? 'gap-ahead' : gap > TIMING_EPSILON ? 'gap-behind' : 'gap-self';
       const aiIndex = this.ai.findIndex((entry) => entry.id === driver.id);
+      const wear = driver.id === 'player'
+        ? this.tire.wear
+        : this.ai[aiIndex]?.tire.wear ?? 0;
+      const towerWearPct = Math.max(0, Math.min(100, Math.round(wear * 100)));
+      const towerWearClass = towerWearPct >= 80
+        ? 'critical'
+        : towerWearPct >= 58
+          ? 'warning'
+          : 'healthy';
       const carColor = aiIndex >= 0 ? AI_COLORS[aiIndex] ?? 0xffffff : 0x31b9ef;
       const carColorHex = `#${carColor.toString(16).padStart(6, '0')}`;
       const carBadge = driver.id === 'player'
         ? ''
         : `<u title="CAR ${aiIndex + 1}" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-right:6px;padding:0 3px;border-radius:4px;background:${carColorHex};color:#071014;text-decoration:none;font-size:10px;font-weight:950;line-height:1">${aiIndex + 1}</u>`;
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
+      const tyreCell = `<div class="tower-tyre" aria-label="${compound} tyre wear ${towerWearPct} percent">
+        <div class="tower-tyre-top"><em class="tyre-${compound.toLowerCase()}" data-current-tyre="${compound[0]}">${compound[0]}</em><u class="tower-wear-value ${towerWearClass}">${towerWearPct}%</u></div>
+        <u class="tower-wear-meter ${towerWearClass}" aria-hidden="true"><i style="width:${towerWearPct}%"></i></u>
+      </div>`;
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i>${tyreCell}<strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
     const pauseTimingData = this.renderPauseTimingData();
