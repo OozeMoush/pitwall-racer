@@ -136,8 +136,6 @@ export class RapierRacePhysics {
     this.aiPitStops = ai.map(() => createPitStopState());
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
-    this.aiContactKindValues = ai.map(() => 'NONE');
-    this.aiImpactSpeedValues = ai.map(() => 0);
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
     this.aiPreDriveSpeeds = ai.map(() => undefined);
@@ -383,6 +381,8 @@ export class RapierRacePhysics {
     this.latestAiControls = [];
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiContactKindValues = ai.map(() => 'NONE');
+    this.aiImpactSpeedValues = ai.map(() => 0);
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
     this.aiPreDriveSpeeds = ai.map(() => undefined);
