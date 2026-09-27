@@ -14,6 +14,7 @@ export interface TrackDefinition {
   name: string;
   subtitle: string;
   controls: readonly TrackPoint[];
+  geometry?: 'smooth' | 'street';
 }
 
 export interface TrackProjection {
@@ -102,21 +103,24 @@ const SERRA_CIRCUIT_SOURCE: readonly TrackPoint[] = [
   { x: 365, y: 470 }, { x: 310, y: 595 }, { x: 350, y: 720 }, { x: 445, y: 825 },
 ];
 
-// Baku-inspired street layout. The official circuit is a 6.003 km, 20-turn
-// street track; this miniature preserves the defining rhythm rather than
-// literal scale: huge waterfront straight, square city blocks, a tight castle
-// sequence, then the fast descent back toward the sea.
+// Baku City Circuit silhouette, simplified from the MIT-licensed
+// bacinger/f1-circuits az-2016 GeoJSON and transformed into Pitwall's source
+// coordinate space. Unlike the old invented loop, this keeps the real circuit's
+// long flat-out waterfront run, city-block braking zones, castle approach and
+// fast return sequence. The street-specific interpolator below rounds only the
+// immediate corner vertices instead of Catmull-Rom overshooting across nearby
+// streets.
 const BAKU_STREET_SOURCE: readonly TrackPoint[] = [
-  { x: 587, y: 884 }, { x: 465, y: 933 }, { x: 343, y: 982 }, { x: 216, y: 974 },
-  { x: 138, y: 889 }, { x: 228, y: 800 }, { x: 343, y: 736 }, { x: 463, y: 682 },
-  { x: 584, y: 632 }, { x: 708, y: 588 }, { x: 836, y: 561 }, { x: 963, y: 583 },
-  { x: 1094, y: 569 }, { x: 1222, y: 541 }, { x: 1351, y: 535 }, { x: 1478, y: 503 },
-  { x: 1602, y: 461 }, { x: 1638, y: 374 }, { x: 1660, y: 287 }, { x: 1706, y: 200 },
-  { x: 1827, y: 148 }, { x: 1954, y: 116 }, { x: 2085, y: 115 }, { x: 2214, y: 139 },
-  { x: 2332, y: 194 }, { x: 2390, y: 307 }, { x: 2339, y: 418 }, { x: 2212, y: 449 },
-  { x: 2082, y: 463 }, { x: 1950, y: 467 }, { x: 1820, y: 451 }, { x: 1690, y: 462 },
-  { x: 1564, y: 498 }, { x: 1440, y: 541 }, { x: 1317, y: 587 }, { x: 1196, y: 637 },
-  { x: 1074, y: 688 }, { x: 953, y: 738 }, { x: 831, y: 788 }, { x: 709, y: 836 },
+  { x: 1246, y: 578 }, { x: 2255, y: 143 }, { x: 2268, y: 119 }, { x: 2236, y: 31 },
+  { x: 2146, y: -159 }, { x: 2130, y: -165 }, { x: 1823, y: -44 }, { x: 1393, y: 151 },
+  { x: 1380, y: 165 }, { x: 1380, y: 183 }, { x: 1445, y: 365 }, { x: 1435, y: 377 },
+  { x: 1258, y: 465 }, { x: 1172, y: 521 }, { x: 1166, y: 528 }, { x: 1182, y: 579 },
+  { x: 898, y: 806 }, { x: 884, y: 806 }, { x: 873, y: 793 }, { x: 821, y: 640 },
+  { x: 774, y: 620 }, { x: 726, y: 614 }, { x: 709, y: 568 }, { x: 696, y: 556 },
+  { x: 601, y: 584 }, { x: 469, y: 649 }, { x: 364, y: 715 }, { x: 338, y: 759 },
+  { x: 293, y: 924 }, { x: 311, y: 1138 }, { x: 322, y: 1150 }, { x: 500, y: 1244 },
+  { x: 578, y: 1276 }, { x: 611, y: 1276 }, { x: 632, y: 1258 }, { x: 713, y: 1117 },
+  { x: 879, y: 959 }, { x: 899, y: 850 }, { x: 916, y: 814 }, { x: 1151, y: 631 },
 ];
 
 function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
@@ -141,7 +145,7 @@ export const TRACKS: readonly TrackDefinition[] = [
   { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES },
   { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE },
   { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT },
-  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'AZERBAIJAN-STYLE · CITY WALLS · LONG STRAIGHT', controls: BAKU_STREET },
+  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'BAKU CITY CIRCUIT · CASTLE · LONG STRAIGHT', controls: BAKU_STREET, geometry: 'street' },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;
@@ -154,14 +158,14 @@ export let RACING_LINE: readonly TrackPoint[] = [];
 export let TRACK_LENGTH = 0;
 let segments: Segment[] = [];
 
-rebuildTrack(PITWALL_GP);
+rebuildTrack(PITWALL_GP, 'smooth');
 
 export function setActiveTrack(id: TrackId): void {
   const definition = TRACKS.find((track) => track.id === id);
   if (!definition) throw new Error(`Unknown track: ${id}`);
   activeTrackId = id;
   TRACK_CONTROLS = definition.controls;
-  rebuildTrack(definition.controls);
+  rebuildTrack(definition.controls, definition.geometry ?? 'smooth');
 }
 
 export function getActiveTrack(): TrackDefinition {
@@ -302,8 +306,13 @@ function circularProgressDistance(a: number, b: number): number {
   return Math.min(delta, 1 - delta);
 }
 
-function rebuildTrack(controls: readonly TrackPoint[]): void {
-  RACING_LINE = buildClosedCatmullRom(controls, SAMPLES_PER_CONTROL);
+function rebuildTrack(
+  controls: readonly TrackPoint[],
+  geometry: 'smooth' | 'street' = 'smooth',
+): void {
+  RACING_LINE = geometry === 'street'
+    ? buildClosedRoundedStreet(controls, SAMPLES_PER_CONTROL)
+    : buildClosedCatmullRom(controls, SAMPLES_PER_CONTROL);
   const nextSegments: Segment[] = [];
   let total = 0;
   for (let i = 0; i < RACING_LINE.length; i++) {
@@ -328,6 +337,77 @@ function segmentAtDistance(distance: number): Segment {
     else return segment;
   }
   return segments[segments.length - 1];
+}
+
+function buildClosedRoundedStreet(
+  points: readonly TrackPoint[],
+  samplesPerControl: number,
+): TrackPoint[] {
+  const count = points.length;
+  const entries: TrackPoint[] = [];
+  const exits: TrackPoint[] = [];
+  const cornerRadius = 16;
+
+  for (let i = 0; i < count; i++) {
+    const previous = points[(i - 1 + count) % count];
+    const current = points[i];
+    const next = points[(i + 1) % count];
+    const inX = previous.x - current.x;
+    const inY = previous.y - current.y;
+    const outX = next.x - current.x;
+    const outY = next.y - current.y;
+    const inLength = Math.hypot(inX, inY);
+    const outLength = Math.hypot(outX, outY);
+    if (inLength < 0.001 || outLength < 0.001) {
+      entries.push({ ...current });
+      exits.push({ ...current });
+      continue;
+    }
+
+    const cut = Math.min(cornerRadius, inLength * 0.28, outLength * 0.28);
+    entries.push({
+      x: current.x + inX / inLength * cut,
+      y: current.y + inY / inLength * cut,
+    });
+    exits.push({
+      x: current.x + outX / outLength * cut,
+      y: current.y + outY / outLength * cut,
+    });
+  }
+
+  const result: TrackPoint[] = [];
+  const curveSamples = Math.max(5, Math.round(samplesPerControl * 0.40));
+  const straightSamples = Math.max(3, samplesPerControl - curveSamples);
+
+  for (let i = 0; i < count; i++) {
+    const entry = entries[i];
+    const corner = points[i];
+    const exit = exits[i];
+    const nextEntry = entries[(i + 1) % count];
+
+    for (let sample = 0; sample < curveSamples; sample++) {
+      const t = sample / curveSamples;
+      const oneMinusT = 1 - t;
+      result.push({
+        x: oneMinusT * oneMinusT * entry.x
+          + 2 * oneMinusT * t * corner.x
+          + t * t * exit.x,
+        y: oneMinusT * oneMinusT * entry.y
+          + 2 * oneMinusT * t * corner.y
+          + t * t * exit.y,
+      });
+    }
+
+    for (let sample = 0; sample < straightSamples; sample++) {
+      const t = sample / straightSamples;
+      result.push({
+        x: exit.x + (nextEntry.x - exit.x) * t,
+        y: exit.y + (nextEntry.y - exit.y) * t,
+      });
+    }
+  }
+
+  return result;
 }
 
 function buildClosedCatmullRom(points: readonly TrackPoint[], samplesPerControl: number): TrackPoint[] {
