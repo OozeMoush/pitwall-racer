@@ -343,15 +343,20 @@ function buildClosedRoundedStreet(
   points: readonly TrackPoint[],
   samplesPerControl: number,
 ): TrackPoint[] {
-  const count = points.length;
+  // Real street-circuit traces contain clusters of survey points around the
+  // same physical corner. Treating every one as a separate vertex creates
+  // 70-90 degree heading snaps after miniature scaling. Collapse only very
+  // close neighbours first; the major Baku corners remain distinct.
+  const streetPoints = mergeNearbyStreetControls(points, 10);
+  const count = streetPoints.length;
   const entries: TrackPoint[] = [];
   const exits: TrackPoint[] = [];
-  const cornerRadius = 16;
+  const cornerRadius = 28;
 
   for (let i = 0; i < count; i++) {
-    const previous = points[(i - 1 + count) % count];
-    const current = points[i];
-    const next = points[(i + 1) % count];
+    const previous = streetPoints[(i - 1 + count) % count];
+    const current = streetPoints[i];
+    const next = streetPoints[(i + 1) % count];
     const inX = previous.x - current.x;
     const inY = previous.y - current.y;
     const outX = next.x - current.x;
@@ -364,7 +369,7 @@ function buildClosedRoundedStreet(
       continue;
     }
 
-    const cut = Math.min(cornerRadius, inLength * 0.28, outLength * 0.28);
+    const cut = Math.min(cornerRadius, inLength * 0.35, outLength * 0.35);
     entries.push({
       x: current.x + inX / inLength * cut,
       y: current.y + inY / inLength * cut,
@@ -381,7 +386,7 @@ function buildClosedRoundedStreet(
 
   for (let i = 0; i < count; i++) {
     const entry = entries[i];
-    const corner = points[i];
+    const corner = streetPoints[i];
     const exit = exits[i];
     const nextEntry = entries[(i + 1) % count];
 
@@ -407,6 +412,35 @@ function buildClosedRoundedStreet(
     }
   }
 
+  return result;
+}
+
+function mergeNearbyStreetControls(
+  points: readonly TrackPoint[],
+  minimumSpacing: number,
+): TrackPoint[] {
+  if (points.length <= 3) return points.map((point) => ({ ...point }));
+
+  const result: TrackPoint[] = [];
+  for (const point of points) {
+    const previous = result[result.length - 1];
+    if (
+      !previous
+      || Math.hypot(point.x - previous.x, point.y - previous.y) >= minimumSpacing
+    ) {
+      result.push({ ...point });
+    }
+  }
+
+  if (
+    result.length > 3
+    && Math.hypot(
+      result[0].x - result[result.length - 1].x,
+      result[0].y - result[result.length - 1].y,
+    ) < minimumSpacing
+  ) {
+    result.pop();
+  }
   return result;
 }
 
