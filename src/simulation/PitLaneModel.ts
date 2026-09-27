@@ -15,7 +15,10 @@ export const PIT_LIMIT_END_T = 0.90;
 const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
 const MAINLINE_REFERENCE_SPEED = 80;
 const PIT_ENTRY_OFFSET = 11;
-const PIT_LANE_OFFSET = 34;
+// Keep the detached lane outside the 17 m road while avoiding offset-curve
+// inversion on the tighter selectable circuits. With the 7.5 m visual
+// half-width, 27 m leaves the inner pit edge at 19.5 m from track centre.
+const PIT_LANE_OFFSET = 27;
 const PIT_ENTRY_RAMP_T = 0.08;
 const PIT_EXIT_RAMP_T = 0.10;
 const PIT_BOX_SLOT_START = 0.30;
