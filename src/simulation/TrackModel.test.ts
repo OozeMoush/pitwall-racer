@@ -35,12 +35,21 @@ describe('TrackModel', () => {
     expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
   });
 
-  it('includes a Baku-style long street circuit with a dense city section', () => {
+  it('includes a Baku street circuit with the real long-straight/city silhouette', () => {
     setActiveTrack('baku-street');
     const circuit = TRACKS.find((entry) => entry.id === 'baku-street');
+    expect(circuit?.geometry).toBe('street');
     expect(circuit?.controls.length).toBeGreaterThanOrEqual(30);
-    expect(TRACK_LENGTH).toBeGreaterThan(2100);
+    expect(TRACK_LENGTH).toBeGreaterThan(2250);
     expect(TRACK_LENGTH).toBeLessThan(2450);
+
+    const samples = Array.from({ length: 240 }, (_, index) => sampleTrack(index / 240));
+    expect(hasNonAdjacentCrossing(samples)).toBe(false);
+
+    const xs = samples.map((point) => point.x);
+    const ys = samples.map((point) => point.y);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(700);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(500);
   });
 
   it('has no discontinuous heading jumps around every closed circuit', () => {
@@ -123,3 +132,35 @@ describe('TrackModel', () => {
     }
   });
 });
+function hasNonAdjacentCrossing(points: readonly { x: number; y: number }[]): boolean {
+  const count = points.length;
+  for (let i = 0; i < count; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % count];
+    for (let j = i + 2; j < count; j++) {
+      if (i === 0 && j === count - 1) continue;
+      const c = points[j];
+      const d = points[(j + 1) % count];
+      if (segmentsCross(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
+
+function segmentsCross(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number },
+): boolean {
+  const cross = (
+    p: { x: number; y: number },
+    q: { x: number; y: number },
+    r: { x: number; y: number },
+  ) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const abC = cross(a, b, c);
+  const abD = cross(a, b, d);
+  const cdA = cross(c, d, a);
+  const cdB = cross(c, d, b);
+  return abC * abD < -1e-6 && cdA * cdB < -1e-6;
+}
