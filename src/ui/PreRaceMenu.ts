@@ -12,7 +12,7 @@ import {
   selectedRacingLineSource,
   type SelectableRacingLineSource,
 } from '../simulation/RacingLineSelectionStore';
-import { TRACKS, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
+import { TRACKS, trackCentreline, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
 import type { Compound } from '../simulation/TireModel';
 
 export function showPreRaceMenu(
@@ -193,7 +193,7 @@ function tyreButton(compound: Compound, subtitle: string, selected: boolean): st
 }
 
 function trackPreview(track: TrackDefinition): string {
-  const points = track.controls;
+  const points = trackCentreline(track.id);
   const minX = Math.min(...points.map((p) => p.x));
   const maxX = Math.max(...points.map((p) => p.x));
   const minY = Math.min(...points.map((p) => p.y));
