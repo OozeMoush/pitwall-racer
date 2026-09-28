@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   PIT_BOX_T,
   PIT_ENTRY_MIN_LANE_OFFSET,
@@ -8,6 +8,9 @@ import {
   beginPitStop,
   isPitActive,
   pitBoxTForSlot,
+  pitEntryProgress,
+  pitExitProgress,
+  pitLaneLengthMetres,
   pitLaneOffset,
   pitLanePose,
   pitLaneSpeedLimitActive,
@@ -19,6 +22,9 @@ import {
   stepPlayerPitStop,
 } from './PitLaneModel';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
+import { setActiveTrack } from './TrackModel';
+
+afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('PitLaneModel', () => {
   it('only commits a requested player that actually takes the pit-entry side', () => {
@@ -88,6 +94,20 @@ describe('PitLaneModel', () => {
   it('keeps different cars on different longitudinal pit boxes', () => {
     expect(pitBoxTForSlot(1)).toBeGreaterThan(pitBoxTForSlot(0));
     expect(pitBoxTForSlot(7)).toBeGreaterThan(pitBoxTForSlot(6));
+  });
+
+  it('keeps pit travel distance physical instead of scaling with circuit length', () => {
+    setActiveTrack('pitwall-gp');
+    const pitwallLength = pitLaneLengthMetres();
+    const pitwallDuration = pitStopDurationSeconds();
+    const pitwallExit = pitExitProgress();
+
+    setActiveTrack('baku-street');
+    expect(pitLaneLengthMetres()).toBeCloseTo(pitwallLength, 6);
+    expect(pitStopDurationSeconds()).toBeCloseTo(pitwallDuration, 6);
+    expect(pitEntryProgress()).toBeCloseTo(PIT_ENTRY_PROGRESS, 6);
+    // The same physical lane occupies a different fraction of a different circuit.
+    expect(pitExitProgress()).not.toBeCloseTo(pitwallExit, 3);
   });
 
   it('makes the pit lane a substantial strategy cost', () => {
