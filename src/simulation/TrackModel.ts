@@ -25,6 +25,8 @@ export interface TrackDefinition {
   controls: readonly TrackPoint[];
   geometry?: 'smooth' | 'street' | 'pitwall-grand-prix';
   referenceLaneMode?: 'optimized' | 'centerline';
+  /** Metre conversion for gameplay lookaheads; 1 for race-scale layouts. */
+  distanceScale?: number;
   /** Current representative clean-lap time used to turn race duration into laps. */
   referenceLapSeconds?: number;
   pitLane?: PitLaneDefinition;
@@ -45,16 +47,16 @@ export interface TrackProjection {
   y: number;
 }
 
-// Pitwall Racer is intentionally a miniature racing game rather than a
-// kilometre-for-kilometre circuit simulator. Shortening the physical circuit
-// keeps 40-60 lap races in a compact play session and makes trackside objects
-// sweep past quickly without inflating the speedometer into nonsense.
+// Legacy circuits still use the original miniature scale while Pitwall GP 2.0
+// is authored at race scale. Gameplay lookaheads therefore follow the active
+// circuit instead of silently shrinking every real-world metre by 0.42.
 export const MINIATURE_TRACK_SCALE = 0.42;
+export let TRACK_DISTANCE_SCALE = 1;
 export const TRACK_CENTRE_X = 1110;
 export const TRACK_CENTRE_Y = 600;
 
 export function raceScaleDistance(metres: number): number {
-  return metres * MINIATURE_TRACK_SCALE;
+  return metres * TRACK_DISTANCE_SCALE;
 }
 
 const PITWALL_GP_SOURCE: readonly TrackPoint[] = [
@@ -165,6 +167,7 @@ export const TRACKS: readonly TrackDefinition[] = [
     controls: PITWALL_GP,
     geometry: 'pitwall-grand-prix',
     referenceLaneMode: 'centerline',
+    distanceScale: 1,
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -178,7 +181,7 @@ export const TRACKS: readonly TrackDefinition[] = [
 
 const SAMPLES_PER_CONTROL = 28;
 
-const PITWALL_GP_STRAIGHT_EXTENSION = 2500;
+const PITWALL_GP_STRAIGHT_EXTENSION = 3000;
 const PITWALL_GP_STRETCH_OUT_START = 0.05;
 const PITWALL_GP_STRETCH_OUT_END = 0.25;
 const PITWALL_GP_STRETCH_BACK_START = 0.42;
@@ -199,6 +202,7 @@ export function setActiveTrack(id: TrackId): void {
   const definition = TRACKS.find((track) => track.id === id);
   if (!definition) throw new Error(`Unknown track: ${id}`);
   activeTrackId = id;
+  TRACK_DISTANCE_SCALE = definition.distanceScale ?? MINIATURE_TRACK_SCALE;
   TRACK_CONTROLS = definition.controls;
   rebuildTrack(definition);
 }
