@@ -1,7 +1,12 @@
-import { sampleTrack, TRACK_LENGTH } from './TrackModel';
+import {
+  DEFAULT_PIT_LANE_DEFINITION,
+  getActiveTrack,
+  sampleTrack,
+  TRACK_LENGTH,
+} from './TrackModel';
 
-export const PIT_ENTRY_PROGRESS = 0.91;
-export const PIT_EXIT_PROGRESS = 0.075;
+/** Default entry retained for tests/tools that need the Pitwall GP baseline. */
+export const PIT_ENTRY_PROGRESS = DEFAULT_PIT_LANE_DEFINITION.entryProgress;
 export const PIT_ENTRY_MIN_LANE_OFFSET = 8;
 export const PIT_SERVICE_SECONDS = 2.5;
 
@@ -12,15 +17,13 @@ export const PIT_SPEED = 80 / 3.6;
 export const PIT_LIMIT_START_T = 0.10;
 export const PIT_LIMIT_END_T = 0.90;
 
-const PIT_SPAN = (1 - PIT_ENTRY_PROGRESS) + PIT_EXIT_PROGRESS;
 const MAINLINE_REFERENCE_SPEED = 80;
 const PIT_ENTRY_OFFSET = 11;
-const PIT_LANE_OFFSET = 34;
 const PIT_ENTRY_RAMP_T = 0.08;
 const PIT_EXIT_RAMP_T = 0.10;
 const PIT_BOX_SLOT_START = 0.30;
 const PIT_BOX_SLOT_SPACING = 0.028;
-const PIT_PROJECTION_SAMPLES = 128;
+const PIT_PROJECTION_SPACING_METRES = 3;
 const PIT_TRACK_TANGENT_METRES = 5.5;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
@@ -99,16 +102,38 @@ export function shouldEnterPit(
 ): boolean {
   if (!requested || distanceFromLine > 48) return false;
   if (laneOffset !== undefined && laneOffset < PIT_ENTRY_MIN_LANE_OFFSET) return false;
-  return previousProgress < PIT_ENTRY_PROGRESS && currentProgress >= PIT_ENTRY_PROGRESS;
+  const entryProgress = pitEntryProgress();
+  return previousProgress < entryProgress && currentProgress >= entryProgress;
+}
+
+export function pitLaneLengthMetres(): number {
+  return Math.max(
+    120,
+    getActiveTrack().pitLane?.lengthMetres ?? DEFAULT_PIT_LANE_DEFINITION.lengthMetres,
+  );
+}
+
+export function pitEntryProgress(): number {
+  return wrap01(
+    getActiveTrack().pitLane?.entryProgress ?? DEFAULT_PIT_LANE_DEFINITION.entryProgress,
+  );
+}
+
+export function pitExitProgress(): number {
+  return wrap01(pitEntryProgress() + pitLaneSpanProgress());
 }
 
 export function pitStopDurationSeconds(): number {
-  return (PIT_SPAN * TRACK_LENGTH) / PIT_SPEED + PIT_SERVICE_SECONDS;
+  return pitLaneLengthMetres() / PIT_SPEED + PIT_SERVICE_SECONDS;
 }
 
 export function pitStopTimeLossEstimateSeconds(): number {
-  const mainlineSeconds = (PIT_SPAN * TRACK_LENGTH) / MAINLINE_REFERENCE_SPEED;
-  return Math.max(PIT_SERVICE_SECONDS, pitStopDurationSeconds() - mainlineSeconds);
+  const laneLength = pitLaneLengthMetres();
+  const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
+  return Math.max(
+    PIT_SERVICE_SECONDS,
+    pitStopDurationSeconds() - mainlineSeconds,
+  );
 }
 
 /**
@@ -129,7 +154,7 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
     };
   }
 
-  const pitTRate = PIT_SPEED / Math.max(1, PIT_SPAN * TRACK_LENGTH);
+  const pitTRate = PIT_SPEED / pitLaneLengthMetres();
   const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= state.boxT) {
     return {
@@ -230,8 +255,10 @@ export function pitLaneOffset(tInput: number): number {
   const t = clamp01(tInput);
   const inRamp = smoothstep(clamp01(t / PIT_ENTRY_RAMP_T));
   const outRamp = smoothstep(clamp01((1 - t) / PIT_EXIT_RAMP_T));
+  const laneOffset = getActiveTrack().pitLane?.laneOffset
+    ?? DEFAULT_PIT_LANE_DEFINITION.laneOffset;
   return PIT_ENTRY_OFFSET
-    + (PIT_LANE_OFFSET - PIT_ENTRY_OFFSET) * Math.min(inRamp, outRamp);
+    + (laneOffset - PIT_ENTRY_OFFSET) * Math.min(inRamp, outRamp);
 }
 
 export function projectPitLane(
@@ -248,7 +275,10 @@ export function projectPitLane(
   const minT = Math.max(0, reference - 0.12);
   const maxT = Math.min(1, reference + 0.18);
   const range = Math.max(0.001, maxT - minT);
-  const samples = Math.max(24, Math.ceil(PIT_PROJECTION_SAMPLES * range));
+  const fullLaneSamples = Math.ceil(
+    pitLaneLengthMetres() / PIT_PROJECTION_SPACING_METRES,
+  );
+  const samples = Math.max(24, Math.ceil(fullLaneSamples * range));
 
   let previousT = minT;
   let previous = pitLaneCentre(previousT);
@@ -293,8 +323,8 @@ function pitLaneCentre(tInput: number): {
   trackHeading: number;
 } {
   const t = clamp01(tInput);
-  const unwrapped = PIT_ENTRY_PROGRESS + PIT_SPAN * t;
-  const raceProgress = unwrapped >= 1 ? unwrapped - 1 : unwrapped;
+  const unwrapped = pitEntryProgress() + pitLaneSpanProgress() * t;
+  const raceProgress = wrap01(unwrapped);
   const laneOffset = pitLaneOffset(t);
 
   // Do not construct the pit centre from sampleTrack(progress, offset)
@@ -322,6 +352,14 @@ function pitLaneCentre(tInput: number): {
     laneOffset,
     trackHeading,
   };
+}
+
+function pitLaneSpanProgress(): number {
+  return pitLaneLengthMetres() / Math.max(1, TRACK_LENGTH);
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 function smoothstep(t: number): number {
