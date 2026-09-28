@@ -132,6 +132,10 @@ export function pitRibbonGeometry(
   const rightOffset = Math.min(offsetA, offsetB);
   const vertices: number[] = [];
   const indices: number[] = [];
+
+  // Build the complete vertex strip first. Winding correction needs the next
+  // row's coordinates; inspecting i2/i3 while still appending row i reads
+  // undefined future vertices and silently defeats the normal check.
   for (let i = 0; i <= SAMPLES; i++) {
     const t = i / SAMPLES;
     const pose = pitLanePose(t);
@@ -140,14 +144,15 @@ export function pitRibbonGeometry(
     const lw = toWorld(left.x, left.y, height);
     const rw = toWorld(right.x, right.y, height);
     vertices.push(lw.x, lw.y, lw.z, rw.x, rw.y, rw.z);
-    if (i < SAMPLES) {
-      const i0 = i * 2;
-      const i1 = i0 + 1;
-      const i2 = i0 + 2;
-      const i3 = i0 + 3;
-      pushUpwardTriangle(indices, vertices, i0, i2, i1);
-      pushUpwardTriangle(indices, vertices, i1, i2, i3);
-    }
+  }
+
+  for (let i = 0; i < SAMPLES; i++) {
+    const i0 = i * 2;
+    const i1 = i0 + 1;
+    const i2 = i0 + 2;
+    const i3 = i0 + 3;
+    pushUpwardTriangle(indices, vertices, i0, i2, i1);
+    pushUpwardTriangle(indices, vertices, i1, i2, i3);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
