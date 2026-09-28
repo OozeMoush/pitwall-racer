@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   PIT_BOX_T,
   PIT_ENTRY_MIN_LANE_OFFSET,
-  PIT_ENTRY_PROGRESS,
   PIT_SERVICE_SECONDS,
   PIT_SPEED,
   beginPitStop,
@@ -28,8 +27,9 @@ afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('PitLaneModel', () => {
   it('only commits a requested player that actually takes the pit-entry side', () => {
-    const before = PIT_ENTRY_PROGRESS - 0.01;
-    const after = PIT_ENTRY_PROGRESS + 0.001;
+    const entryProgress = pitEntryProgress();
+    const before = entryProgress - 0.01;
+    const after = entryProgress + 0.001;
     expect(shouldEnterPit(before, after, 20, true, PIT_ENTRY_MIN_LANE_OFFSET + 1)).toBe(true);
     expect(shouldEnterPit(before, after, 20, true, PIT_ENTRY_MIN_LANE_OFFSET - 1)).toBe(false);
     expect(shouldEnterPit(before, after, 20, false, PIT_ENTRY_MIN_LANE_OFFSET + 1)).toBe(false);
@@ -105,7 +105,7 @@ describe('PitLaneModel', () => {
     setActiveTrack('baku-street');
     expect(pitLaneLengthMetres()).toBeCloseTo(pitwallLength, 6);
     expect(pitStopDurationSeconds()).toBeCloseTo(pitwallDuration, 6);
-    expect(pitEntryProgress()).toBeCloseTo(PIT_ENTRY_PROGRESS, 6);
+    expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
     // The same physical lane occupies a different fraction of a different circuit.
     expect(pitExitProgress()).not.toBeCloseTo(pitwallExit, 3);
   });

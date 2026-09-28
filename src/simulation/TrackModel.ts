@@ -23,7 +23,8 @@ export interface TrackDefinition {
   name: string;
   subtitle: string;
   controls: readonly TrackPoint[];
-  geometry?: 'smooth' | 'street';
+  geometry?: 'smooth' | 'street' | 'pitwall-grand-prix';
+  referenceLaneMode?: 'optimized' | 'centerline';
   /** Current representative clean-lap time used to turn race duration into laps. */
   referenceLapSeconds?: number;
   pitLane?: PitLaneDefinition;
@@ -157,7 +158,16 @@ const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
 const BAKU_STREET = miniature(BAKU_STREET_SOURCE);
 
 export const TRACKS: readonly TrackDefinition[] = [
-  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP, referenceLapSeconds: 26.691, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'pitwall-gp',
+    name: 'PITWALL GP',
+    subtitle: 'GRAND PRIX · HIGH-SPEED FLOW · TECHNICAL CORE',
+    controls: PITWALL_GP,
+    geometry: 'pitwall-grand-prix',
+    referenceLaneMode: 'centerline',
+    referenceLapSeconds: 90,
+    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+  },
   { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK, referenceLapSeconds: 19.764, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING, referenceLapSeconds: 21.192, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES, referenceLapSeconds: 21.896, pitLane: DEFAULT_PIT_LANE_DEFINITION },
@@ -176,14 +186,14 @@ export let RACING_LINE: readonly TrackPoint[] = [];
 export let TRACK_LENGTH = 0;
 let segments: Segment[] = [];
 
-rebuildTrack(PITWALL_GP, 'smooth');
+rebuildTrack(TRACKS[0]);
 
 export function setActiveTrack(id: TrackId): void {
   const definition = TRACKS.find((track) => track.id === id);
   if (!definition) throw new Error(`Unknown track: ${id}`);
   activeTrackId = id;
   TRACK_CONTROLS = definition.controls;
-  rebuildTrack(definition.controls, definition.geometry ?? 'smooth');
+  rebuildTrack(definition);
 }
 
 export function getActiveTrack(): TrackDefinition {
@@ -354,11 +364,8 @@ function circularProgressDistance(a: number, b: number): number {
   return Math.min(delta, 1 - delta);
 }
 
-function rebuildTrack(
-  controls: readonly TrackPoint[],
-  geometry: 'smooth' | 'street' = 'smooth',
-): void {
-  RACING_LINE = buildTrackCentreline({ id: activeTrackId, name: '', subtitle: '', controls, geometry });
+function rebuildTrack(definition: TrackDefinition): void {
+  RACING_LINE = buildTrackCentreline(definition);
   const nextSegments: Segment[] = [];
   let total = 0;
   for (let i = 0; i < RACING_LINE.length; i++) {
@@ -373,9 +380,13 @@ function rebuildTrack(
 }
 
 function buildTrackCentreline(definition: TrackDefinition): readonly TrackPoint[] {
-  return definition.geometry === 'street'
-    ? buildClosedRoundedStreet(definition.controls, SAMPLES_PER_CONTROL)
-    : buildClosedCatmullRom(definition.controls, SAMPLES_PER_CONTROL);
+  if (definition.geometry === 'street') {
+    return buildClosedRoundedStreet(definition.controls, SAMPLES_PER_CONTROL);
+  }
+  const smooth = buildClosedCatmullRom(definition.controls, SAMPLES_PER_CONTROL);
+  return definition.geometry === 'pitwall-grand-prix'
+    ? stretchPitwallGrandPrix(smooth)
+    : smooth;
 }
 
 function segmentAtDistance(distance: number): Segment {
@@ -389,6 +400,65 @@ function segmentAtDistance(distance: number): Segment {
     else return segment;
   }
   return segments[segments.length - 1];
+}
+
+const PITWALL_GP_STRAIGHT_EXTENSION = 2500;
+const PITWALL_GP_STRETCH_OUT_START = 0.05;
+const PITWALL_GP_STRETCH_OUT_END = 0.25;
+const PITWALL_GP_STRETCH_BACK_START = 0.42;
+const PITWALL_GP_STRETCH_BACK_END = 0.50;
+
+/**
+ * Pitwall GP 2.0 preserves the existing corner geometry and adds distance by
+ * stretching the two naturally straight portions around the opening complex.
+ *
+ * The old lap is first generated unchanged. A smooth X translation then grows
+ * along the opening straight, stays constant through the first corner complex,
+ * and is removed along the following westbound straight. Everything after
+ * 50% of the old lap therefore retains its original coordinates exactly.
+ */
+function stretchPitwallGrandPrix(base: readonly TrackPoint[]): TrackPoint[] {
+  if (base.length < 2) return base.map((point) => ({ ...point }));
+
+  const segmentLengths = base.map((point, index) => {
+    const next = base[(index + 1) % base.length];
+    return Math.hypot(next.x - point.x, next.y - point.y);
+  });
+  const baseLength = segmentLengths.reduce((sum, value) => sum + value, 0);
+  let along = 0;
+
+  return base.map((point, index) => {
+    const progress = baseLength <= 0 ? 0 : along / baseLength;
+    const weight = pitwallStretchWeight(progress);
+    along += segmentLengths[index];
+    return {
+      x: point.x + PITWALL_GP_STRAIGHT_EXTENSION * weight,
+      y: point.y,
+    };
+  });
+}
+
+function pitwallStretchWeight(progress: number): number {
+  if (progress <= PITWALL_GP_STRETCH_OUT_START) return 0;
+  if (progress < PITWALL_GP_STRETCH_OUT_END) {
+    return smoothstep01(
+      (progress - PITWALL_GP_STRETCH_OUT_START)
+      / (PITWALL_GP_STRETCH_OUT_END - PITWALL_GP_STRETCH_OUT_START),
+    );
+  }
+  if (progress <= PITWALL_GP_STRETCH_BACK_START) return 1;
+  if (progress < PITWALL_GP_STRETCH_BACK_END) {
+    return 1 - smoothstep01(
+      (progress - PITWALL_GP_STRETCH_BACK_START)
+      / (PITWALL_GP_STRETCH_BACK_END - PITWALL_GP_STRETCH_BACK_START),
+    );
+  }
+  return 0;
+}
+
+function smoothstep01(value: number): number {
+  const t = Math.max(0, Math.min(1, value));
+  return t * t * (3 - 2 * t);
 }
 
 function buildClosedRoundedStreet(
