@@ -96,17 +96,17 @@ describe('PitLaneModel', () => {
     expect(pitBoxTForSlot(7)).toBeGreaterThan(pitBoxTForSlot(6));
   });
 
-  it('keeps pit travel distance physical instead of scaling with circuit length', () => {
+  it('uses per-circuit physical pit lengths instead of a lap percentage', () => {
     setActiveTrack('pitwall-gp');
     const pitwallLength = pitLaneLengthMetres();
     const pitwallDuration = pitStopDurationSeconds();
     const pitwallExit = pitExitProgress();
+    expect(pitwallLength).toBeCloseTo(480, 6);
+    expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
 
     setActiveTrack('baku-street');
-    expect(pitLaneLengthMetres()).toBeCloseTo(pitwallLength, 6);
-    expect(pitStopDurationSeconds()).toBeCloseTo(pitwallDuration, 6);
-    expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
-    // The same physical lane occupies a different fraction of a different circuit.
+    expect(pitLaneLengthMetres()).toBeCloseTo(342, 6);
+    expect(pitStopDurationSeconds()).not.toBeCloseTo(pitwallDuration, 3);
     expect(pitExitProgress()).not.toBeCloseTo(pitwallExit, 3);
   });
 
