@@ -1,6 +1,6 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { PIT_ENTRY_PROGRESS, pitStopDurationSeconds } from './PitLaneModel';
+import { pitEntryProgress, pitStopDurationSeconds } from './PitLaneModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
@@ -17,7 +17,7 @@ describe('physical AI pit stops', () => {
   it('drives an AI car down pit lane, services it, and rejoins on the same shared timing model', () => {
     const [driver] = createAiField();
     driver.lap = driver.pitLap;
-    driver.progress = PIT_ENTRY_PROGRESS - 0.004;
+    driver.progress = pitEntryProgress() - 0.004;
     driver.speed = 88;
 
     const playerPose = sampleTrack(0.5);
