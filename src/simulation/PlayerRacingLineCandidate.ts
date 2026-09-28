@@ -2,9 +2,15 @@ import type {
   RacingLineAsset,
   RacingLinePoint,
 } from './RacingLineAsset';
-import { sampleTrack, type TrackId } from './TrackModel';
+import {
+  sampleTrack,
+  samplesForDistance,
+  trackLengthFor,
+  type TrackId,
+} from './TrackModel';
 
-const SAMPLE_COUNT = 320;
+const MIN_SAMPLE_COUNT = 320;
+const SAMPLE_SPACING_METRES = 7;
 const STORAGE_KEY = 'pitwall-racer:racing-line-candidates:v1';
 
 interface RawSample {
@@ -117,9 +123,15 @@ export class PlayerRacingLineCandidateRecorder {
       return undefined;
     }
 
+    const sampleCount = samplesForDistance(
+      trackLengthFor(this.trackId),
+      SAMPLE_SPACING_METRES,
+      MIN_SAMPLE_COUNT,
+      1600,
+    );
     const points: RacingLinePoint[] = Array.from(
-      { length: SAMPLE_COUNT },
-      (_, index) => interpolateSample(ordered, index / SAMPLE_COUNT),
+      { length: sampleCount },
+      (_, index) => interpolateSample(ordered, index / sampleCount),
     );
 
     return {

@@ -11,7 +11,12 @@ import {
   TRACK_RUNOFF_HALF_WIDTH,
 } from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
-import { sampleTrack, TRACK_LENGTH } from '../simulation/TrackModel';
+import {
+  RACING_LINE,
+  sampleTrack,
+  samplesForDistance,
+  TRACK_LENGTH,
+} from '../simulation/TrackModel';
 import { headingToYaw, toWorld, WORLD_SCALE } from './WorldTransform';
 
 export const ROAD_HALF_WIDTH = TRACK_ROAD_HALF_WIDTH;
@@ -22,7 +27,8 @@ export const SPEED_REFERENCE_SPACING_METRES = 12;
 
 const RUNOFF_HALF_WIDTH = TRACK_RUNOFF_HALF_WIDTH;
 const RUBBERED_HALF_WIDTH = 10.5;
-const SAMPLE_COUNT = 460;
+const MIN_TRACK_MESH_SAMPLES = 460;
+const TRACK_MESH_SPACING_METRES = 5;
 const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
 const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
 const SPEED_REFERENCE_OFFSET = TRACK_BARRIER_OFFSET + 2.4;
@@ -30,12 +36,13 @@ const SPEED_REFERENCE_OFFSET = TRACK_BARRIER_OFFSET + 2.4;
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
 
+  const ground = trackGroundBounds();
   const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(820, 470, 1, 1),
+    new THREE.PlaneGeometry(ground.width, ground.depth, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0x23472f, roughness: 1, metalness: 0 }),
   );
   grass.rotation.x = -Math.PI / 2;
-  grass.position.y = -0.07;
+  grass.position.copy(ground.center);
   grass.receiveShadow = true;
   root.add(grass);
 
@@ -55,6 +62,34 @@ export function createTrack3D(): THREE.Group {
   return root;
 }
 
+export function trackMeshSampleCount(): number {
+  return samplesForDistance(
+    TRACK_LENGTH,
+    TRACK_MESH_SPACING_METRES,
+    MIN_TRACK_MESH_SAMPLES,
+    2400,
+  );
+}
+
+function trackGroundBounds(): {
+  width: number;
+  depth: number;
+  center: THREE.Vector3;
+} {
+  const xs = RACING_LINE.map((point) => point.x);
+  const ys = RACING_LINE.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const paddingMetres = 180;
+  return {
+    width: Math.max(820, (maxX - minX + paddingMetres * 2) * WORLD_SCALE),
+    depth: Math.max(470, (maxY - minY + paddingMetres * 2) * WORLD_SCALE),
+    center: toWorld((minX + maxX) / 2, (minY + maxY) / 2, -0.07),
+  };
+}
+
 function addRibbon(root: THREE.Group, halfWidth: number, height: number, color: number, roughness: number): void {
   const mesh = new THREE.Mesh(
     ribbonGeometry(halfWidth, height),
@@ -68,15 +103,16 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
   const vertices: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
-  for (let i = 0; i <= SAMPLE_COUNT; i++) {
-    const p = i / SAMPLE_COUNT;
+  const sampleCount = trackMeshSampleCount();
+  for (let i = 0; i <= sampleCount; i++) {
+    const p = i / sampleCount;
     const left = sampleTrack(p, halfWidth);
     const right = sampleTrack(p, -halfWidth);
     const lw = toWorld(left.x, left.y, height);
     const rw = toWorld(right.x, right.y, height);
     vertices.push(lw.x, lw.y, lw.z, rw.x, rw.y, rw.z);
     uvs.push(0, p * 36, 1, p * 36);
-    if (i < SAMPLE_COUNT) {
+    if (i < sampleCount) {
       const a = i * 2;
       const b = a + 1;
       const c = a + 2;
@@ -95,7 +131,16 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
 function offsetRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
   const vertices: number[] = [];
   const indices: number[] = [];
-  appendOffsetStrip(vertices, indices, 0, 1, offsetA, offsetB, height, SAMPLE_COUNT);
+  appendOffsetStrip(
+    vertices,
+    indices,
+    0,
+    1,
+    offsetA,
+    offsetB,
+    height,
+    trackMeshSampleCount(),
+  );
   return finishGeometry(vertices, indices);
 }
 

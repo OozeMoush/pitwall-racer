@@ -199,6 +199,31 @@ export function trackCentreline(id: TrackId): readonly TrackPoint[] {
   return buildTrackCentreline(definition);
 }
 
+export function trackLengthFor(id: TrackId): number {
+  const points = trackCentreline(id);
+  let total = 0;
+  for (let index = 0; index < points.length; index++) {
+    total += Math.hypot(
+      points[(index + 1) % points.length].x - points[index].x,
+      points[(index + 1) % points.length].y - points[index].y,
+    );
+  }
+  return total;
+}
+
+export function samplesForDistance(
+  distanceMetres: number,
+  spacingMetres: number,
+  minimum: number,
+  maximum = 2400,
+): number {
+  const spacing = Math.max(0.5, spacingMetres);
+  return Math.max(
+    minimum,
+    Math.min(maximum, Math.ceil(Math.max(0, distanceMetres) / spacing)),
+  );
+}
+
 export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { heading: number } {
   const p = ((progress % 1) + 1) % 1;
   const distance = p * TRACK_LENGTH;

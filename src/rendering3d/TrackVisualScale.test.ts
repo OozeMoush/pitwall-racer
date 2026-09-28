@@ -1,14 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   BARRIER_SEGMENT_METRES,
   EDGE_LINE_WIDTH_METRES,
   KERB_SEGMENT_METRES,
   ROAD_HALF_WIDTH,
   SPEED_REFERENCE_SPACING_METRES,
+  trackMeshSampleCount,
 } from './Track3D';
+import { samplesForDistance, setActiveTrack } from '../simulation/TrackModel';
+
+afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('track visual scale', () => {
-  it('uses kerb blocks sized for the miniature lap rather than the old full-size circuit', () => {
+  it('scales road-mesh resolution with circuit metres', () => {
+    setActiveTrack('pitwall-gp');
+    const pitwallSamples = trackMeshSampleCount();
+    setActiveTrack('baku-street');
+    const bakuSamples = trackMeshSampleCount();
+    expect(pitwallSamples).toBeGreaterThanOrEqual(460);
+    expect(bakuSamples).toBeGreaterThanOrEqual(pitwallSamples);
+    expect(samplesForDistance(7000, 5, 460)).toBe(1400);
+  });
+
+  it('uses kerb blocks sized for the current circuit scale', () => {
     expect(KERB_SEGMENT_METRES).toBeGreaterThanOrEqual(2.5);
     expect(KERB_SEGMENT_METRES).toBeLessThanOrEqual(6);
   });

@@ -2,7 +2,12 @@ import { controlArcadeCar } from './ArcadeCarController';
 import type { RacingLineAsset } from './RacingLineAsset';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 import { FREE_KERB_DISTANCE } from './TrackLimitsModel';
-import { trackCentreline, type TrackId, type TrackPoint } from './TrackModel';
+import {
+  samplesForDistance,
+  trackCentreline,
+  type TrackId,
+  type TrackPoint,
+} from './TrackModel';
 
 export interface ReferenceLapSample {
   progress: number;
@@ -31,7 +36,8 @@ export const REFERENCE_POWER_BOOST = 0.22;
  */
 export const REFERENCE_LANE_LIMIT = FREE_KERB_DISTANCE - 2.4;
 
-const PLAN_SAMPLES = 320;
+const MIN_PLAN_SAMPLES = 320;
+const PLAN_SAMPLE_SPACING_METRES = 7;
 const GRIP_BUCKET = 0.025;
 const PHYSICS_STEP_SECONDS = 1 / 120;
 
@@ -82,11 +88,16 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   if (cached) return cached;
 
   const geometry = buildGeometry(trackCentreline(trackId));
-  // The optimizer dump is rounded for source control. Normalizing it on a
-  // circular parameter also makes the bake robust if a logging/copy step omits
-  // a handful of adjacent samples; the trajectory shape is preserved while the
-  // runtime envelope always operates on the solver's canonical 320 points.
-  const lanes = resampleCircular(OPTIMIZED_REFERENCE_LANES[trackId], PLAN_SAMPLES);
+  // Keep the compact 320-point baseline on today's short circuits, then grow
+  // resolution by physical distance so 5–7 km layouts do not degrade into
+  // 15–20 m reference chunks.
+  const planSamples = samplesForDistance(
+    geometry.length,
+    PLAN_SAMPLE_SPACING_METRES,
+    MIN_PLAN_SAMPLES,
+    1600,
+  );
+  const lanes = resampleCircular(OPTIMIZED_REFERENCE_LANES[trackId], planSamples);
 
   const envelope = evaluateLanes(geometry, lanes, bucketedGrip, 10);
   const controls = controlTrace(
@@ -97,7 +108,7 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   );
 
   const samples: ReferenceLapSample[] = envelope.speeds.map((targetSpeed, index) => ({
-    progress: index / PLAN_SAMPLES,
+    progress: index / planSamples,
     laneOffset: lanes[index],
     targetSpeed,
     curvature: envelope.curvature[index],
@@ -198,9 +209,10 @@ function evaluateLanes(
   tireGrip: number,
   passes: number,
 ): EnvelopeResult {
+  const sampleCount = Math.max(1, lanes.length);
   const points = lanes.map((laneOffset, index) => sampleGeometry(
     geometry,
-    index / PLAN_SAMPLES,
+    index / sampleCount,
     laneOffset,
   ));
   const curvature = points.map((_, index) => pathCurvature(points, index));
@@ -214,8 +226,8 @@ function evaluateLanes(
   const speeds = [...localLimits];
 
   for (let pass = 0; pass < passes; pass++) {
-    for (let i = 0; i < PLAN_SAMPLES; i++) {
-      const next = (i + 1) % PLAN_SAMPLES;
+    for (let i = 0; i < sampleCount; i++) {
+      const next = (i + 1) % sampleCount;
       const ds = segmentLengths[i];
       const steerDemand = steeringDemand(speeds[i], curvature[i], tireGrip);
       const acceleration = Math.max(0, longitudinalAcceleration(
@@ -225,8 +237,8 @@ function evaluateLanes(
       speeds[next] = Math.min(speeds[next], localLimits[next], reachable);
     }
 
-    for (let i = PLAN_SAMPLES - 1; i >= 0; i--) {
-      const next = (i + 1) % PLAN_SAMPLES;
+    for (let i = sampleCount - 1; i >= 0; i--) {
+      const next = (i + 1) % sampleCount;
       const ds = segmentLengths[i];
       const probeSpeed = Math.max(speeds[i], speeds[next]);
       const steerDemand = steeringDemand(probeSpeed, curvature[i], tireGrip);
@@ -239,8 +251,8 @@ function evaluateLanes(
   }
 
   let lapSeconds = 0;
-  for (let i = 0; i < PLAN_SAMPLES; i++) {
-    const next = (i + 1) % PLAN_SAMPLES;
+  for (let i = 0; i < sampleCount; i++) {
+    const next = (i + 1) % sampleCount;
     lapSeconds += (2 * segmentLengths[i]) / Math.max(8, speeds[i] + speeds[next]);
   }
 
@@ -253,8 +265,9 @@ function controlTrace(
   segmentLengths: readonly number[],
   tireGrip: number,
 ): { throttle: number; brake: number }[] {
+  const sampleCount = Math.max(1, speeds.length);
   return speeds.map((speed, index) => {
-    const next = (index + 1) % PLAN_SAMPLES;
+    const next = (index + 1) % sampleCount;
     const ds = segmentLengths[index];
     const desiredAcceleration = (speeds[next] * speeds[next] - speed * speed) / (2 * ds);
     const steer = steeringDemand(speed, curvature[index], tireGrip);

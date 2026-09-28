@@ -42,6 +42,14 @@ describe('machine-limit reference driver', () => {
     expect(asset.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
   });
 
+  it('adds reference samples as circuit distance grows', () => {
+    const grip = compoundPeakGrip('SOFT', 'PUSH');
+    const pitwall = referenceRacingLineAsset('pitwall-gp', grip);
+    const baku = referenceRacingLineAsset('baku-street', grip);
+    expect(pitwall.points).toHaveLength(320);
+    expect(baku.points.length).toBeGreaterThan(pitwall.points.length);
+  });
+
   it('makes tyre grip change the physical reference instead of changing engine power', () => {
     const soft = referenceLap('pitwall-gp', compoundPeakGrip('SOFT', 'PUSH'));
     const hard = referenceLap('pitwall-gp', compoundPeakGrip('HARD', 'PUSH'));
