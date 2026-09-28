@@ -131,7 +131,7 @@ export class PlayerRacingLineCandidateRecorder {
     );
     const points: RacingLinePoint[] = Array.from(
       { length: sampleCount },
-      (_, index) => interpolateSample(ordered, index / sampleCount),
+      (_, index) => interpolateSample(ordered, index / sampleCount, sampleCount),
     );
 
     return {
@@ -229,6 +229,7 @@ function loadStore(storage: RacingLineCandidateStorage): CandidateStore {
 function interpolateSample(
   samples: readonly RawSample[],
   progress: number,
+  outputSampleCount = MIN_SAMPLE_COUNT,
 ): RacingLinePoint {
   let high = 0;
   while (high < samples.length && samples[high].progress < progress) high += 1;
@@ -263,7 +264,8 @@ function interpolateSample(
   // Missing start/finish samples must follow the intervening road arc. A
   // world-space chord across a sparse wrap cuts the final corner and becomes
   // a bogus target after uniform resampling hides the original sample gap.
-  const sparseWrap = (a.progress < 0 || b.progress >= 1) && span > 2 / SAMPLE_COUNT;
+  const sparseWrap = (a.progress < 0 || b.progress >= 1)
+    && span > 2 / Math.max(1, outputSampleCount);
   const bridge = sparseWrap ? sampleTrack(progress, lerp(a.laneOffset, b.laneOffset, t * t * (3 - 2 * t))) : undefined;
   const worldX = bridge?.x ?? lerp(a.worldX, b.worldX, t);
   const worldY = bridge?.y ?? lerp(a.worldY, b.worldY, t);
