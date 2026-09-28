@@ -10,26 +10,32 @@ import {
   projectTrack,
   projectTrackNear,
   sampleTrack,
+  samplesForDistance,
   setActiveTrack,
 } from './TrackModel';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('TrackModel', () => {
-  it('densifies a miniature circuit into a smooth racing line', () => {
+  it('builds Pitwall GP as a full race-scale circuit while retaining dense geometry', () => {
     expect(MINIATURE_TRACK_SCALE).toBeGreaterThanOrEqual(0.35);
     expect(MINIATURE_TRACK_SCALE).toBeLessThanOrEqual(0.5);
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
-    expect(TRACK_LENGTH).toBeGreaterThan(1800);
-    expect(TRACK_LENGTH).toBeLessThan(2400);
+    expect(TRACK_LENGTH).toBeGreaterThan(7800);
+    expect(TRACK_LENGTH).toBeLessThan(8400);
   });
 
-  it('ships multiple genuinely different miniature circuits', () => {
+  it('supports a full-scale flagship alongside legacy miniature circuits', () => {
     const lengths = TRACKS.map((track) => {
       setActiveTrack(track.id);
       expect(RACING_LINE.length).toBeGreaterThan(track.controls.length * 10);
-      expect(TRACK_LENGTH).toBeGreaterThan(1400);
-      expect(TRACK_LENGTH).toBeLessThan(2600);
+      if (track.id === 'pitwall-gp') {
+        expect(TRACK_LENGTH).toBeGreaterThan(7800);
+        expect(TRACK_LENGTH).toBeLessThan(8400);
+      } else {
+        expect(TRACK_LENGTH).toBeGreaterThan(1400);
+        expect(TRACK_LENGTH).toBeLessThan(2600);
+      }
       return Math.round(TRACK_LENGTH);
     });
     expect(new Set(lengths).size).toBeGreaterThanOrEqual(3);
@@ -56,9 +62,10 @@ describe('TrackModel', () => {
     for (const track of TRACKS) {
       setActiveTrack(track.id);
       let worst = 0;
-      for (let i = 0; i < 240; i++) {
-        const a = sampleTrack(i / 240);
-        const b = sampleTrack((i + 1) / 240);
+      const sampleCount = samplesForDistance(TRACK_LENGTH, 8, 240, 2000);
+      for (let i = 0; i < sampleCount; i++) {
+        const a = sampleTrack(i / sampleCount);
+        const b = sampleTrack((i + 1) / sampleCount);
         let delta = Math.abs(a.heading - b.heading);
         if (delta > Math.PI) delta = Math.PI * 2 - delta;
         worst = Math.max(worst, delta);
@@ -83,15 +90,15 @@ describe('TrackModel', () => {
     }
   });
 
-  it('keeps a displaced car on its current branch when nearby track sections overlap spatially', () => {
+  it('keeps a displaced car on the correct branch of the spread-out Pitwall layout', () => {
     const sourceProgress = 0.56;
     const point = sampleTrack(sourceProgress, -24);
     const globalProjection = projectTrack(point.x, point.y);
     const localProjection = projectTrackNear(point.x, point.y, sourceProgress);
 
-    // The miniature Pitwall GP folds another part of the circuit close enough
-    // that nearest-point projection legitimately finds the wrong branch here.
-    expect(Math.abs(globalProjection.progress - sourceProgress)).toBeGreaterThan(0.01);
+    // Pitwall GP 2.0 deliberately separates the formerly overlapping branches.
+    // Both global and continuity-aware projection should now agree on the road.
+    expect(Math.abs(globalProjection.progress - sourceProgress)).toBeLessThan(0.006);
     expect(Math.abs(localProjection.progress - sourceProgress)).toBeLessThan(0.006);
     expect(localProjection.laneOffset).toBeLessThan(-18);
   });
