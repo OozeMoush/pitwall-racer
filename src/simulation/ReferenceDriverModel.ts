@@ -3,6 +3,7 @@ import type { RacingLineAsset } from './RacingLineAsset';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 import { FREE_KERB_DISTANCE } from './TrackLimitsModel';
 import {
+  getTrackDefinition,
   samplesForDistance,
   trackCentreline,
   type TrackId,
@@ -97,7 +98,10 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
     MIN_PLAN_SAMPLES,
     1600,
   );
-  const lanes = resampleCircular(OPTIMIZED_REFERENCE_LANES[trackId], planSamples);
+  const laneSource = getTrackDefinition(trackId).referenceLaneMode === 'centerline'
+    ? [0]
+    : OPTIMIZED_REFERENCE_LANES[trackId];
+  const lanes = resampleCircular(laneSource, planSamples);
 
   const envelope = evaluateLanes(geometry, lanes, bucketedGrip, 10);
   const controls = controlTrace(
