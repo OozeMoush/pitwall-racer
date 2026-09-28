@@ -67,20 +67,6 @@ interface EnvelopeResult {
 }
 
 /**
- * Convert the old opaque skill number into an execution percentage of the
- * machine-limit reference. Nobody gets extra power or grip: the difference is
- * how closely the driver follows the same reference braking/line/speed plan.
- * The best drivers may reach 100% of the shared reference, but never exceed
- * it. The whole field is deliberately kept very close to the demonstrated
- * reference: driver identity should now come mostly from tyre strategy,
- * traffic/racecraft and small execution differences rather than leaving a
- * large amount of clean-air lap time unused.
- */
-export function referenceExecutionForSkill(skill: number): number {
-  return clamp(0.997 + (skill - 1.127) * 0.35, 0.994, 1.0);
-}
-
-/**
  * Build the player-independent machine-limit lap.
  *
  * The lane trajectory is the deterministic result of an offline whole-lap

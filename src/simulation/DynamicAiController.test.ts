@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  aiExplicitPaceForSkill,
   aiGripMultiplier,
   aiPaceCheatForSkill,
   aiPowerBoostForSkill,
@@ -103,7 +102,7 @@ describe('dynamicAiControl', () => {
     expect(control.targetLane).toBeGreaterThan(6.5);
   });
 
-  it('keeps explicit player pace within the fixed CPU difficulty boost', () => {
+  it('treats explicit PLAYER pace as a best-lap reference rather than a constant target', () => {
     const driver = createAiField()[0];
     driver.progress = 0.56;
     const p = sampleTrack(driver.progress, 0);
@@ -122,8 +121,8 @@ describe('dynamicAiControl', () => {
 
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.lineSource).toBe('PLAYER');
-    expect(control.targetSpeed).toBeGreaterThan(64 * 1.01);
-    expect(control.targetSpeed).toBeLessThan(72);
+    expect(control.targetSpeed).toBeLessThan(64);
+    expect(control.targetSpeed).toBeGreaterThan(60);
   });
 
   it('corrects overspeed more aggressively when PLAYER dynamics are demonstrated', () => {
@@ -430,9 +429,7 @@ describe('dynamicAiControl', () => {
   });
 
 
-  it('runs every race CPU above the demonstrated PLAYER pace and gives the top car more hardware', () => {
-    expect(aiExplicitPaceForSkill(1.118)).toBeCloseTo(1.000, 5);
-    expect(aiExplicitPaceForSkill(1.136)).toBeCloseTo(1.000, 5);
+  it('keeps stronger-driver hardware differences separate from live execution form', () => {
     expect(aiSkillGripMultiplier(1.118)).toBeCloseTo(1.0, 6);
     expect(aiSkillGripMultiplier(1.136)).toBeCloseTo(1.010, 6);
     expect(aiPowerBoostForSkill(1.118)).toBeCloseTo(0.065, 6);

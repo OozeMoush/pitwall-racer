@@ -2,8 +2,8 @@ import { sampleRacingLineAsset } from './RacingLineAsset';
 import { explicitLineFollower } from './ExplicitLineFollower';
 import { predictiveAiSteer } from './PredictiveAiSteering';
 import { predictiveExplicitLineSteer } from './PredictiveExplicitLineSteering';
+import { driverPerformanceAt } from './DriverPerformanceModel';
 import { raceDistance, type BattleState, type DriverState, type RaceTrafficCar } from './RaceModel';
-import { referenceExecutionForSkill } from './ReferenceDriverModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
@@ -43,6 +43,7 @@ export interface DynamicAiDebug {
   targetYawRate?: number;
   pathHeadingError: number;
   bearingError: number;
+  driverExecutionFactor: number;
 }
 
 export interface DynamicAiControl {
@@ -59,8 +60,6 @@ const AHEAD_SEARCH_LATERAL = 10.0;
 const BLOCKING_LANE_WIDTH = 5.4;
 const AI_PACE_CHEAT_MIN = 1.055;
 const AI_PACE_CHEAT_MAX = 1.085;
-const AI_EXPLICIT_PACE_MIN = 1.000;
-const AI_EXPLICIT_PACE_MAX = 1.000;
 const AI_SKILL_GRIP_MAX = 1.010;
 const AI_POWER_BONUS_MIN = 0.065;
 const AI_POWER_BONUS_MAX = 0.115;
@@ -69,12 +68,6 @@ export function aiPaceCheatForSkill(skill: number): number {
   const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
   return AI_PACE_CHEAT_MIN
     + (AI_PACE_CHEAT_MAX - AI_PACE_CHEAT_MIN) * t;
-}
-
-export function aiExplicitPaceForSkill(skill: number): number {
-  const t = clamp((skill - 1.118) / (1.136 - 1.118), 0, 1);
-  return AI_EXPLICIT_PACE_MIN
-    + (AI_EXPLICIT_PACE_MAX - AI_EXPLICIT_PACE_MIN) * t;
 }
 
 export function aiGripMultiplier(compound: DriverState['tire']['compound']): number {
@@ -128,6 +121,9 @@ export function dynamicAiControl(
     ? 1
     : aiPaceCheatForSkill(driver.skill);
   const profile = trackProfile(projection.progress, 1, controlGrip);
+  const driverPerformance = referenceGhost
+    ? undefined
+    : driverPerformanceAt(driver, projection.progress, profile.severity);
   const driverDistance = raceDistance(driver.lap, projection.progress) * TRACK_LENGTH;
 
   let ahead: RaceTrafficCar | undefined;
@@ -153,7 +149,6 @@ export function dynamicAiControl(
     laneBlocked && aheadGap < 40 ? 'FOLLOW' : 'CLEAR';
 
   const trackId = getActiveTrack().id;
-  const execution = referenceExecutionForSkill(driver.skill);
   const speed = vehicle.speed;
   const lineAsset = runtimeRacingLine(trackId);
   const highFidelityLine = lineAsset?.source === 'PLAYER' || lineAsset?.source === 'EDITOR';
@@ -290,17 +285,18 @@ export function dynamicAiControl(
     ?? driver.tire.grip;
   const hasForwardAccelerationTrace =
     longitudinalSample?.forwardAcceleration !== undefined;
-  // PLAYER/EDITOR targetSpeed is the demonstrated plan. Race CPUs may ask for
-  // a small >=100% pace uplift, but the meaningful constructor hierarchy lives
-  // in their fixed grip/power advantages; pushing the speed trace itself too
-  // far makes the controller miss the demonstrated path rather than look fast.
+  // PLAYER/EDITOR is a best-lap reference, not a metronome. Race CPUs request
+  // slightly less than the demonstrated pace most of the time, with a smooth
+  // driver-specific form/consistency wave. Hardware, tyres, tow and braking
+  // phase can still make the physical result faster than the recorded lap.
+  const liveExecution = driverPerformance?.executionFactor ?? 1;
   const nominalTargetSpeed = speedReference.targetSpeed
     * (
       referenceGhost
         ? 1
         : highFidelityLine
-          ? aiExplicitPaceForSkill(driver.skill)
-          : execution * paceCheat
+          ? liveExecution
+          : paceCheat * liveExecution
     );
   let targetSpeed = nominalTargetSpeed;
   let cornerAttackConfidence = 0;
@@ -540,6 +536,7 @@ export function dynamicAiControl(
       targetYawRate: explicitFollower?.targetYawRate,
       pathHeadingError: explicitFollower?.pathHeadingError ?? headingError,
       bearingError: explicitFollower?.bearingError ?? bearingError,
+      driverExecutionFactor: liveExecution,
     },
   };
 }
