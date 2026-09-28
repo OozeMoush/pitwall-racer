@@ -5,7 +5,7 @@ import { RapierRacePhysics } from '../simulation/RapierRacePhysics';
 import { createVehicle } from '../simulation/VehicleModel';
 import { createTire } from '../simulation/TireModel';
 import { createTiming } from '../simulation/TimingModel';
-import { createPitStopState } from '../simulation/PitLaneModel';
+import { createPitStopState, pitStopDurationSeconds } from '../simulation/PitLaneModel';
 import { LapValidityTracker } from '../simulation/LapValidityModel';
 import { ImpactDamageTracker } from '../simulation/ImpactDamageTracker';
 import { PlayerRacingLineCandidateRecorder } from '../simulation/PlayerRacingLineCandidate';
@@ -112,11 +112,12 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     }
     expect(game.pitStop.phase).toBe('TRANSIT_IN');
     game.keys.add('KeyW');
-    for (let tick = 0; tick < 5000 && game.pitStop.phase !== 'SERVICE'; tick++) game.stepSimulation(1 / 120);
+    const pitDeadlineTicks = Math.ceil((pitStopDurationSeconds() + 20) * 120);
+    for (let tick = 0; tick < pitDeadlineTicks && game.pitStop.phase !== 'SERVICE'; tick++) game.stepSimulation(1 / 120);
     expect(game.pitStop.phase).toBe('SERVICE');
     expect(game.pitStop.serviceRemaining).toBeGreaterThan(7);
     expect(game.trackLimitPenalty.pendingPitSeconds).toBe(0);
-    for (let tick = 0; tick < 7000 && game.pitStop.phase !== 'IDLE'; tick++) game.stepSimulation(1 / 120);
+    for (let tick = 0; tick < pitDeadlineTicks * 2 && game.pitStop.phase !== 'IDLE'; tick++) game.stepSimulation(1 / 120);
     game.keys.delete('KeyW');
     expect(game.pitStop.phase).toBe('IDLE');
     expect(game.tire.compound).toBe('MEDIUM');

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { referenceTarget } from './ReferenceDriverModel';
-import { sampleTrack } from './TrackModel';
+import { sampleTrack, trackLengthFor } from './TrackModel';
 import {
   activeReferenceTarget,
   racingLineBrakeIntent,
@@ -31,7 +31,8 @@ describe('RacingLineRuntime', () => {
     const seconds = racingLineTraceLapSeconds(asset);
     expect(seconds).toBeDefined();
     expect(seconds!).toBeGreaterThan(5);
-    expect(seconds!).toBeLessThan(100);
+    const expected = trackLengthFor('pitwall-gp') / 70;
+    expect(Math.abs(seconds! - expected) / expected).toBeLessThan(0.03);
   });
 
   it('interpolates demonstrated absolute heading continuously across start/finish', () => {

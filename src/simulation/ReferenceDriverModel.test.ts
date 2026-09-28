@@ -13,7 +13,12 @@ describe('machine-limit reference driver', () => {
     const telemetry = TRACKS.map((track) => {
       const lap = referenceLap(track.id, grip);
       expect(lap.lapSeconds).toBeGreaterThan(15);
-      expect(lap.lapSeconds).toBeLessThan(55);
+      if (track.id === 'pitwall-gp') {
+        expect(lap.lapSeconds).toBeGreaterThan(75);
+        expect(lap.lapSeconds).toBeLessThan(105);
+      } else {
+        expect(lap.lapSeconds).toBeLessThan(60);
+      }
       expect(lap.straightLimit).toBeGreaterThan(80);
       expect(lap.straightLimit).toBeLessThan(125);
       expect(Math.max(...lap.samples.map((sample) => Math.abs(sample.laneOffset))))
@@ -38,7 +43,7 @@ describe('machine-limit reference driver', () => {
     );
 
     expect(asset.source).toBe('OPTIMIZER');
-    expect(asset.points).toHaveLength(320);
+    expect(asset.points.length).toBeGreaterThan(1000);
     expect(asset.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
   });
 
@@ -46,8 +51,9 @@ describe('machine-limit reference driver', () => {
     const grip = compoundPeakGrip('SOFT', 'PUSH');
     const pitwall = referenceRacingLineAsset('pitwall-gp', grip);
     const baku = referenceRacingLineAsset('baku-street', grip);
-    expect(pitwall.points).toHaveLength(320);
-    expect(baku.points.length).toBeGreaterThan(pitwall.points.length);
+    expect(pitwall.points.length).toBeGreaterThan(1000);
+    expect(pitwall.points.length).toBeGreaterThan(baku.points.length);
+    expect(baku.points.length).toBeGreaterThanOrEqual(320);
   });
 
   it('makes tyre grip change the physical reference instead of changing engine power', () => {

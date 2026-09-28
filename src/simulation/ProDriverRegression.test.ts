@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, raceDistance } from './RaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
-import { projectTrackNear, sampleTrack } from './TrackModel';
+import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
@@ -58,7 +58,8 @@ describe('professional AI driving regression', () => {
 
     // A quick car can now cross the start line inside this window, so compare
     // total race distance rather than raw progress modulo one lap.
-    expect(raceDistance(driver.lap, driver.progress) - startDistance).toBeGreaterThan(0.80);
+    const travelledMetres = (raceDistance(driver.lap, driver.progress) - startDistance) * TRACK_LENGTH;
+    expect(travelledMetres).toBeGreaterThan(2500);
     expect(deepCuts / samples).toBeLessThan(0.025);
     // The racing line legitimately crosses the circuit between corners, but it
     // should not reverse direction every few tenths like a driver sawing at the

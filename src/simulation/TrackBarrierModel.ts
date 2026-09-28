@@ -21,7 +21,7 @@ const MIN_OTHER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 // pieces can still read as a faceted polygon on this tiny circuit. Keep every
 // physical/visual wall chord close to 3 m so curves look round and wall brushes
 // do not meet a visibly sharp corner.
-const MAX_BARRIER_CHORD_LENGTH = 3.5;
+const MAX_BARRIER_CHORD_LENGTH = 2.25;
 
 /**
  * Build wall pieces from chords between consecutive offset samples.
