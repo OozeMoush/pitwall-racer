@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sampleTrack } from './TrackModel';
+import { sampleTrack, samplesForDistance, trackLengthFor } from './TrackModel';
 import {
   PlayerRacingLineCandidateRecorder,
   loadPlayerRacingLineCandidate,
@@ -41,7 +41,9 @@ describe('player racing-line candidates', () => {
     const candidate = recordedLap(24.5);
     expect(candidate).toBeDefined();
     expect(candidate?.source).toBe('PLAYER');
-    expect(candidate?.points).toHaveLength(320);
+    expect(candidate?.points).toHaveLength(
+      samplesForDistance(trackLengthFor('pitwall-gp'), 7, 320, 1600),
+    );
     expect(candidate?.points[0].progress).toBe(0);
     expect(candidate?.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
   });
