@@ -157,9 +157,10 @@ describe('dynamic field playtest telemetry', () => {
 
     console.log(`PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    expect(metrics.trackLength).toBeGreaterThan(1800);
-    expect(metrics.trackLength).toBeLessThan(2400);
-    expect(metrics.estimatedLapSeconds).toBeLessThan(42);
+    expect(metrics.trackLength).toBeGreaterThan(7800);
+    expect(metrics.trackLength).toBeLessThan(8400);
+    expect(metrics.estimatedLapSeconds).toBeGreaterThan(65);
+    expect(metrics.estimatedLapSeconds).toBeLessThan(125);
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(270);
     expect(metrics.maxPlayerKmh).toBeLessThan(390);
     expect(metrics.maxAiKmh).toBeGreaterThan(285);
