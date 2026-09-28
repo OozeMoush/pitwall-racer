@@ -8,7 +8,7 @@ export interface TrackLimitWarningResult {
   penaltyAwarded: number;
 }
 
-const WARNINGS_PER_PENALTY = 3;
+export const WARNINGS_PER_PENALTY = 5;
 const PIT_PENALTY_SECONDS = 5;
 
 export function createTrackLimitPenaltyState(): TrackLimitPenaltyState {

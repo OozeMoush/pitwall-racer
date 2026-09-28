@@ -2,7 +2,7 @@ import { controlArcadeCar } from './ArcadeCarController';
 import type { RacingLineAsset } from './RacingLineAsset';
 import { OPTIMIZED_REFERENCE_LANES } from './ReferenceTrajectoryData';
 import { FREE_KERB_DISTANCE } from './TrackLimitsModel';
-import { getTrackDefinition, type TrackId, type TrackPoint } from './TrackModel';
+import { trackCentreline, type TrackId, type TrackPoint } from './TrackModel';
 
 export interface ReferenceLapSample {
   progress: number;
@@ -32,7 +32,6 @@ export const REFERENCE_POWER_BOOST = 0.22;
 export const REFERENCE_LANE_LIMIT = FREE_KERB_DISTANCE - 2.4;
 
 const PLAN_SAMPLES = 320;
-const CENTRELINE_SAMPLES_PER_CONTROL = 28;
 const GRIP_BUCKET = 0.025;
 const PHYSICS_STEP_SECONDS = 1 / 120;
 
@@ -82,7 +81,7 @@ export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   const cached = cache.get(key);
   if (cached) return cached;
 
-  const geometry = buildGeometry(getTrackDefinition(trackId).controls);
+  const geometry = buildGeometry(trackCentreline(trackId));
   // The optimizer dump is rounded for source control. Normalizing it on a
   // circular parameter also makes the bake robust if a logging/copy step omits
   // a handful of adjacent samples; the trajectory shape is preserved while the
@@ -122,7 +121,7 @@ export function referenceRacingLineAsset(
   tireGrip: number,
 ): RacingLineAsset {
   const lap = referenceLap(trackId, tireGrip);
-  const geometry = buildGeometry(getTrackDefinition(trackId).controls);
+  const geometry = buildGeometry(trackCentreline(trackId));
   const points = lap.samples.map((sample, index) => {
     const previous = lap.samples[(index - 1 + lap.samples.length) % lap.samples.length];
     const next = lap.samples[(index + 1) % lap.samples.length];
@@ -390,8 +389,7 @@ function rapierDampingFactor(damping: number, dt: number): number {
   return 1 / (1 + Math.max(0, damping) * Math.max(0, dt));
 }
 
-function buildGeometry(controls: readonly TrackPoint[]): Geometry {
-  const points = buildClosedCatmullRom(controls, CENTRELINE_SAMPLES_PER_CONTROL);
+function buildGeometry(points: readonly TrackPoint[]): Geometry {
   const segments: Segment[] = [];
   let length = 0;
   for (let i = 0; i < points.length; i++) {
@@ -457,27 +455,6 @@ function pathCurvature(points: readonly TrackPoint[], index: number): number {
   const denominator = ab * bc * ac;
   if (denominator < 0.0001) return 0;
   return (2 * cross) / denominator;
-}
-
-function buildClosedCatmullRom(points: readonly TrackPoint[], samplesPerControl: number): TrackPoint[] {
-  const result: TrackPoint[] = [];
-  const count = points.length;
-  for (let i = 0; i < count; i++) {
-    const p0 = points[(i - 1 + count) % count];
-    const p1 = points[i];
-    const p2 = points[(i + 1) % count];
-    const p3 = points[(i + 2) % count];
-    for (let sample = 0; sample < samplesPerControl; sample++) {
-      const t = sample / samplesPerControl;
-      const t2 = t * t;
-      const t3 = t2 * t;
-      result.push({
-        x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
-        y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
-      });
-    }
-  }
-  return result;
 }
 
 function wrapAngle(angle: number): number {

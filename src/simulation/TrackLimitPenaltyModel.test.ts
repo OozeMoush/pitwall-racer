@@ -6,19 +6,22 @@ import {
 } from './TrackLimitPenaltyModel';
 
 describe('TrackLimitPenaltyModel', () => {
-  it('awards five seconds on every third warning', () => {
+  it('awards five seconds on every fifth warning', () => {
     let state = createTrackLimitPenaltyState();
-    state = registerTrackLimitWarning(state).state;
-    state = registerTrackLimitWarning(state).state;
-    const third = registerTrackLimitWarning(state);
-    expect(third.penaltyAwarded).toBe(5);
-    expect(third.state.warnings).toBe(0);
-    expect(third.state.pendingPitSeconds).toBe(5);
+    for (let i = 0; i < 4; i++) {
+      const warning = registerTrackLimitWarning(state);
+      expect(warning.penaltyAwarded).toBe(0);
+      state = warning.state;
+    }
+    const fifth = registerTrackLimitWarning(state);
+    expect(fifth.penaltyAwarded).toBe(5);
+    expect(fifth.state.warnings).toBe(0);
+    expect(fifth.state.pendingPitSeconds).toBe(5);
   });
 
   it('serves accumulated penalties in the pit box', () => {
     let state = createTrackLimitPenaltyState();
-    for (let i = 0; i < 6; i++) state = registerTrackLimitWarning(state).state;
+    for (let i = 0; i < 10; i++) state = registerTrackLimitWarning(state).state;
     const served = serveTrackLimitPitPenalty(state);
     expect(served.seconds).toBe(10);
     expect(served.state.pendingPitSeconds).toBe(0);

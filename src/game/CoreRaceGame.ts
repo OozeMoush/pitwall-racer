@@ -72,6 +72,7 @@ import {
   createTrackLimitPenaltyState,
   registerTrackLimitWarning,
   serveTrackLimitPitPenalty,
+  WARNINGS_PER_PENALTY,
   type TrackLimitPenaltyState,
 } from '../simulation/TrackLimitPenaltyModel';
 import {
@@ -125,11 +126,28 @@ interface LapTelemetry {
   lapTime: number;
 }
 
+interface AiLapTelemetry {
+  lap: number;
+  startCompound: Compound;
+  endCompound: Compound;
+  pitted: boolean;
+  s1: number;
+  s2: number;
+  s3: number;
+  lapTime: number;
+}
+
 interface AiLapClock {
   lap: number;
   lapStartTime: number;
+  lapStartCompound: Compound;
+  lapStartPitStopIndex: number;
+  pittedThisLap: boolean;
   bestLap?: number;
   lastLap?: number;
+  laps: AiLapTelemetry[];
+  bestSectors: Array<number | undefined>;
+  sectorTimes: number[];
   lastProgress: number;
   nextSector: number;
   sectorStartTime: number;
@@ -201,6 +219,7 @@ export class CoreRaceGame {
   private racePenaltyNotice = '';
   private racePenaltyNoticeRemaining = 0;
   private readonly impactDamage = new ImpactDamageTracker();
+  private aiImpactDamage: ImpactDamageTracker[] = [];
   private impactDamageNotice = '';
   private impactDamageNoticeRemaining = 0;
   private debugEnabled = false;
@@ -223,6 +242,7 @@ export class CoreRaceGame {
     this.totalLaps = Math.max(6, Math.min(60, Math.round(setup.totalLaps)));
     this.startCompound = setup.startCompound;
     this.ai = createAiField(setup.gridOrder, this.totalLaps);
+    this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
     this.lastTrackProgress = playerGrid.progress;
@@ -503,6 +523,7 @@ export class CoreRaceGame {
       this.lineCandidate.markIneligible();
       this.lineCandidateContact = playerContact;
     }
+    this.applyAiImpactDamage(dt);
     this.updateAiLapTiming();
 
     const afterTrack = projectTrackNear(
@@ -530,7 +551,7 @@ export class CoreRaceGame {
         this.trackLimitPenalty = result.state;
         this.racePenaltyNotice = result.penaltyAwarded
           ? `TRACK LIMITS · +${result.penaltyAwarded}s PIT PENALTY · BOX TO SERVE`
-          : `TRACK LIMIT WARNING · ${this.trackLimitPenalty.warnings}/3`;
+          : `TRACK LIMIT WARNING · ${this.trackLimitPenalty.warnings}/${WARNINGS_PER_PENALTY}`;
         this.racePenaltyNoticeRemaining = result.penaltyAwarded ? 5.0 : 2.8;
       }
 
@@ -567,6 +588,27 @@ export class CoreRaceGame {
 
     this.trafficPressure = this.estimateTrafficPressure();
     this.updateRaceIntervals();
+  }
+
+  private applyAiImpactDamage(dt: number): void {
+    this.ai.forEach((driver, index) => {
+      const contact = this.physics.aiContactKind(index);
+      let tracker = this.aiImpactDamage[index];
+      if (!tracker) {
+        tracker = new ImpactDamageTracker();
+        this.aiImpactDamage[index] = tracker;
+      }
+
+      const newImpact = tracker.sample(contact, dt);
+      if (contact === 'NONE' || !newImpact) return;
+
+      const impact = applyImpactTireDamage(
+        driver.tire,
+        contact,
+        this.physics.aiImpactSpeed(index),
+      );
+      driver.tire = impact.tire;
+    });
   }
 
   private stepPhysicalPit(dt: number): boolean {
@@ -932,29 +974,52 @@ export class CoreRaceGame {
   }
 
   private updateAiLapTiming(): void {
-    for (const driver of this.ai) {
+    for (const [index, driver] of this.ai.entries()) {
       const clock = this.aiLapClocks.get(driver.id);
       if (!clock) {
         this.aiLapClocks.set(driver.id, this.createAiClock(driver));
         continue;
       }
+      if (this.physics.isAiPitting(index)) clock.pittedThisLap = true;
 
       if (driver.lap > clock.lap) {
-        if (clock.lap >= 1) {
-          const s3 = this.timing.raceTime - clock.sectorStartTime;
-          if (s3 > 0.5) this.registerSessionFastestSector(2, s3);
-        }
         const completedLap = this.timing.raceTime - clock.lapStartTime;
-        if (clock.lap >= 1 && completedLap > 10) clock.lastLap = completedLap;
+        const s1 = clock.sectorTimes[0] ?? completedLap / 3;
+        const s2 = clock.sectorTimes[1] ?? completedLap / 3;
+        const s3 = Math.max(0, completedLap - s1 - s2);
+        if (clock.lap >= 1 && s3 > 0.5) {
+          this.registerAiBestSector(clock, 2, s3);
+          this.registerSessionFastestSector(2, s3);
+        }
+        if (clock.lap >= 1 && completedLap > 10) {
+          clock.lastLap = completedLap;
+          clock.laps.push({
+            lap: clock.lap,
+            startCompound: clock.lapStartCompound,
+            endCompound: driver.tire.compound,
+            pitted:
+              clock.pittedThisLap
+              || driver.pitStopIndex > clock.lapStartPitStopIndex,
+            s1,
+            s2,
+            s3,
+            lapTime: completedLap,
+          });
+          if (clock.laps.length > this.totalLaps) clock.laps.shift();
+        }
         if (clock.lap >= 2 && completedLap > 10) {
           clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
           this.registerSessionFastest(completedLap);
         }
         clock.lap = driver.lap;
         clock.lapStartTime = this.timing.raceTime;
+        clock.lapStartCompound = driver.tire.compound;
+        clock.lapStartPitStopIndex = driver.pitStopIndex;
+        clock.pittedThisLap = this.physics.isAiPitting(index);
         clock.lastProgress = driver.progress;
         clock.nextSector = 1;
         clock.sectorStartTime = this.timing.raceTime;
+        clock.sectorTimes = [];
         continue;
       }
 
@@ -962,7 +1027,11 @@ export class CoreRaceGame {
         const threshold = SECTOR_BOUNDARIES[clock.nextSector - 1];
         if (clock.lastProgress < threshold && driver.progress >= threshold) {
           const sectorTime = this.timing.raceTime - clock.sectorStartTime;
-          if (sectorTime > 0.5) this.registerSessionFastestSector(clock.nextSector - 1, sectorTime);
+          if (sectorTime > 0.5) {
+            clock.sectorTimes[clock.nextSector - 1] = sectorTime;
+            this.registerAiBestSector(clock, clock.nextSector - 1, sectorTime);
+            this.registerSessionFastestSector(clock.nextSector - 1, sectorTime);
+          }
           clock.sectorStartTime = this.timing.raceTime;
           clock.nextSector += 1;
         }
@@ -995,10 +1064,23 @@ export class CoreRaceGame {
     return 'neutral';
   }
 
+  private registerAiBestSector(clock: AiLapClock, index: number, sectorTime: number): void {
+    const previous = clock.bestSectors[index];
+    clock.bestSectors[index] = previous === undefined
+      ? sectorTime
+      : Math.min(previous, sectorTime);
+  }
+
   private createAiClock(driver: DriverState): AiLapClock {
     return {
       lap: driver.lap,
       lapStartTime: this.timing.raceTime,
+      lapStartCompound: driver.tire.compound,
+      lapStartPitStopIndex: driver.pitStopIndex,
+      pittedThisLap: false,
+      laps: [],
+      bestSectors: [undefined, undefined, undefined],
+      sectorTimes: [],
       lastProgress: driver.progress,
       nextSector: 1,
       sectorStartTime: this.timing.raceTime,
@@ -1302,7 +1384,8 @@ export class CoreRaceGame {
   }
 
   private resetRace(): void {
-    this.ai = createAiField(this.setup.gridOrder);
+    this.ai = createAiField(this.setup.gridOrder, this.totalLaps);
+    this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     this.vehicle = this.startVehicle();
     const selection = selectStartingTyre(this.startCompound);
     this.tire = createTire(selection.startCompound);
@@ -1430,6 +1513,115 @@ export class CoreRaceGame {
       this.lapHistory.filter((row) => row.valid).map((row) => row[key]),
     );
   }
+
+  private playerBestSectorIncludingCurrent(
+    index: number,
+  ): number | undefined {
+    const key = (['s1', 's2', 's3'] as const)[index];
+    const historical = this.playerBestSector(key);
+    const live = this.sectorTimes[index];
+    if (live === undefined) return historical;
+    return historical === undefined ? live : Math.min(historical, live);
+  }
+
+  private playerSectorRank(index: number, playerBest: number | undefined): number | undefined {
+    if (playerBest === undefined) return undefined;
+    const rivals = this.aiLapClocks.values();
+    let faster = 0;
+    for (const clock of rivals) {
+      const best = clock.bestSectors[index];
+      if (best !== undefined && best < playerBest - TIMING_EPSILON) faster += 1;
+    }
+    return faster + 1;
+  }
+
+  private renderPauseTimingData(): string {
+    const playerRows = this.lapHistory.map((row) =>
+      `<span data-lap="${row.lap}" data-time="${row.lapTime.toFixed(6)}" data-tyre="${lapTyreLabel(row.startCompound, row.endCompound, row.pitted)}"></span>`
+    ).join('');
+    const cpuRows = this.ai.map((driver) => {
+      const clock = this.aiLapClocks.get(driver.id);
+      const laps = clock?.laps.map((lap) =>
+        `<span data-lap="${lap.lap}" data-time="${lap.lapTime.toFixed(6)}"></span>`
+      ).join('') ?? '';
+      return `<div data-driver="${driver.name}">${laps}</div>`;
+    }).join('');
+    return `<div class="pause-timing-data" hidden data-debug="${this.debugEnabled ? '1' : '0'}"><div class="pause-player-laps">${playerRows}</div><div class="pause-cpu-laps">${cpuRows}</div></div>`;
+  }
+
+  private renderDebugLapHistory(): string {
+    const driver = this.ai[this.debugAiIndex];
+    if (!driver) return '';
+    const clock = this.aiLapClocks.get(driver.id);
+    const control = this.physics.aiControls()[this.debugAiIndex];
+    const laps = clock?.laps ?? [];
+    const bestLap = minimumPositive(laps.map((lap) => lap.lapTime));
+    const currentSector = Math.min(3, clock?.nextSector ?? 1);
+    const currentSectorElapsed = clock === undefined
+      ? undefined
+      : Math.max(0, this.timing.raceTime - clock.sectorStartTime);
+    const liveSectorText = [0, 1, 2].map((index) => {
+      const complete = clock?.sectorTimes[index];
+      if (complete !== undefined) return formatShortTime(complete);
+      if (index === currentSector - 1 && driver.lap >= 1 && currentSectorElapsed !== undefined) {
+        return `${formatShortTime(currentSectorElapsed)}*`;
+      }
+      return '—';
+    });
+
+    const rows = laps.length === 0
+      ? '<div style="padding:8px;color:#83918b">NO COMPLETED LAPS YET</div>'
+      : laps.map((lap) => {
+          const tyreLabel = lapTyreLabel(lap.startCompound, lap.endCompound, lap.pitted);
+          const lapBest = bestLap !== undefined && Math.abs(lap.lapTime - bestLap) < TIMING_EPSILON;
+          const sectorCell = (index: number, value: number): string => {
+            const best = clock?.bestSectors[index];
+            const isBest = best !== undefined && Math.abs(value - best) < TIMING_EPSILON;
+            return `<span style="color:${isBest ? '#45dc82' : '#dce9e4'}">${formatShortTime(value)}</span>`;
+          };
+          return `<div style="display:grid;grid-template-columns:34px 54px 66px 66px 66px 76px 42px;gap:6px;align-items:center;padding:4px 0;border-top:1px solid rgba(255,255,255,.055);font-variant-numeric:tabular-nums">
+            <b>L${lap.lap}</b>
+            <span class="tyre-${lap.endCompound.toLowerCase()}">${tyreLabel}</span>
+            ${sectorCell(0, lap.s1)}
+            ${sectorCell(1, lap.s2)}
+            ${sectorCell(2, lap.s3)}
+            <strong style="color:${lapBest ? '#45dc82' : '#f1f5f3'}">${formatLapTime(lap.lapTime)}</strong>
+            <span style="color:${lap.pitted ? '#68d7ff' : '#6f7c76'}">${lap.pitted ? 'PIT' : '—'}</span>
+          </div>`;
+        }).join('');
+
+    const currentWear = Math.round(driver.tire.wear * 100);
+    const pittingNow = this.physics.isAiPitting(this.debugAiIndex);
+    const nextStop = pittingNow
+      ? 'IN PIT'
+      : driver.pitStopIndex >= driver.pitPlan.length
+        ? 'DONE'
+        : `L${driver.pitLap} → ${driver.nextCompound}`;
+    const execution = control?.debug.driverExecutionFactor;
+    const executionText = execution === undefined ? '—' : `${(execution * 100).toFixed(2)}%`;
+
+    return `<section style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.12)">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:6px">
+        <b style="color:#ffc94d">SELECTED CPU TIMING · ${driver.name}</b>
+        <span style="color:#9aa7a1">L${driver.lap} · ${driver.tire.compound} ${currentWear}% WEAR</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px 10px;margin-bottom:8px;padding:7px;background:rgba(255,201,77,.035)">
+        <span>EXEC <b>${executionText}</b></span>
+        <span>PACE <b>${driver.pace}</b></span>
+        <span>STRATEGY <b>${driver.strategyIntent}</b></span>
+        <span>NEXT PIT <b>${nextStop}</b></span>
+      </div>
+      <div style="display:grid;grid-template-columns:34px 54px 66px 66px 66px 76px 42px;gap:6px;color:#7f8c86;font-size:10px;font-weight:900;letter-spacing:.06em">
+        <span>LAP</span><span>TYRE</span><span>S1</span><span>S2</span><span>S3</span><span>TIME</span><span>PIT</span>
+      </div>
+      ${rows}
+      <div style="display:grid;grid-template-columns:88px repeat(3,66px);gap:6px;margin-top:7px;padding-top:6px;border-top:1px solid rgba(255,255,255,.08);font-variant-numeric:tabular-nums">
+        <b style="color:#9aa7a1">LIVE L${driver.lap}</b>
+        <span>${liveSectorText[0]}</span><span>${liveSectorText[1]}</span><span>${liveSectorText[2]}</span>
+      </div>
+    </section>`;
+  }
+
 
   private timingClass(tone: TimingTone): string {
     return tone === 'session-best' ? 'timing-purple' : tone === 'personal-best' ? 'timing-green' : '';
@@ -1608,6 +1800,7 @@ export class CoreRaceGame {
           </div>
         </section>
       </div>
+      ${this.renderDebugLapHistory()}
     </div>`;
   }
 
@@ -1654,35 +1847,43 @@ export class CoreRaceGame {
     const slideSeverity = this.physics.playerSlideSeverity();
     const raceState = this.trackLimitPenalty.pendingPitSeconds > 0
       ? `PENALTY ${this.trackLimitPenalty.pendingPitSeconds}s · BOX TO SERVE`
-      : this.trackLimitPenalty.warnings > 0
-        ? `TRACK LIMITS ${this.trackLimitPenalty.warnings}/3`
-        : slideSeverity > 0.15
-          ? 'REAR SLIDE'
-      : surface.label !== 'TRACK'
-        ? surface.label
-        : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
-          ? 'SIDE BY SIDE · CLEAN AIR'
-          : aero.dirtyAir > 0.01
-            ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
-            : aero.tow > 0.01
-              ? 'SLIPSTREAM'
-              : 'CLEAN AIR';
+      : slideSeverity > 0.15
+        ? 'REAR SLIDE'
+        : surface.label !== 'TRACK'
+          ? surface.label
+          : this.trafficPressure > 0.18 && aero.dirtyAir < 0.025
+            ? 'SIDE BY SIDE · CLEAN AIR'
+            : aero.dirtyAir > 0.01
+              ? `DIRTY AIR ${(aero.dirtyAir * 100).toFixed(0)}%`
+              : aero.tow > 0.01
+                ? 'SLIPSTREAM'
+                : 'CLEAN AIR';
 
-    const currentSector = Math.min(3, this.nextSector);
-    const currentSectorElapsed = Math.max(0, this.timing.raceTime - this.sectorStartTime);
-    const sectorDisplay = [1, 2, 3].map((sector) => {
-      const completed = this.sectorTimes[sector - 1];
-      if (completed !== undefined) {
-        const best = this.playerBestSector((['s1', 's2', 's3'] as const)[sector - 1]);
-        return {
-          text: formatShortTime(completed),
-          tone: liveTimingTone(completed, best, this.sessionFastestSectors[sector - 1]),
-        };
-      }
-      if (this.lap >= 1 && currentSector === sector && this.flow.phase === 'RACING') {
-        return { text: formatShortTime(currentSectorElapsed), tone: 'neutral' as TimingTone };
-      }
-      return { text: '—', tone: 'neutral' as TimingTone };
+    const trackLimitIcons = Array.from({ length: WARNINGS_PER_PENALTY }, (_, index) =>
+      `<i class="${index < this.trackLimitPenalty.warnings ? 'active' : ''}" aria-hidden="true">!</i>`
+    ).join('');
+    const trackLimitPenaltyBadge = this.trackLimitPenalty.pendingPitSeconds > 0
+      ? `<em>+${this.trackLimitPenalty.pendingPitSeconds}s</em>`
+      : '';
+    const trackLimitMeterHtml = `<span class="track-limit-meter ${this.trackLimitPenalty.pendingPitSeconds > 0 ? 'penalty' : ''}" aria-label="track limit warnings ${this.trackLimitPenalty.warnings} of ${WARNINGS_PER_PENALTY}">
+      <u>LIMITS</u><b>${trackLimitIcons}</b>${trackLimitPenaltyBadge}
+    </span>`;
+
+    const sectorDisplay = [0, 1, 2].map((index) => {
+      const best = this.playerBestSectorIncludingCurrent(index);
+      const rank = this.playerSectorRank(index, best);
+      const sessionBest = this.sessionFastestSectors[index];
+      const tone: TimingTone = best === undefined
+        ? 'neutral'
+        : sessionBest !== undefined && best <= sessionBest + TIMING_EPSILON
+          ? 'session-best'
+          : 'personal-best';
+      return {
+        text: best === undefined
+          ? '—'
+          : `${formatShortTime(best)}${rank === undefined ? '' : ` (P${rank})`}`,
+        tone,
+      };
     });
 
     const playerBest = this.playerBestLap();
@@ -1736,18 +1937,32 @@ export class CoreRaceGame {
           ?? estimatedSignedGapSeconds(playerStanding, driver, referenceLap);
       const gapClass = gap < -TIMING_EPSILON ? 'gap-ahead' : gap > TIMING_EPSILON ? 'gap-behind' : 'gap-self';
       const aiIndex = this.ai.findIndex((entry) => entry.id === driver.id);
+      const wear = driver.id === 'player'
+        ? this.tire.wear
+        : this.ai[aiIndex]?.tire.wear ?? 0;
+      const towerWearPct = Math.max(0, Math.min(100, Math.round(wear * 100)));
+      const towerWearClass = towerWearPct >= 80
+        ? 'critical'
+        : towerWearPct >= 58
+          ? 'warning'
+          : 'healthy';
       const carColor = aiIndex >= 0 ? AI_COLORS[aiIndex] ?? 0xffffff : 0x31b9ef;
       const carColorHex = `#${carColor.toString(16).padStart(6, '0')}`;
       const carBadge = driver.id === 'player'
         ? ''
         : `<u title="CAR ${aiIndex + 1}" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;margin-right:6px;padding:0 3px;border-radius:4px;background:${carColorHex};color:#071014;text-decoration:none;font-size:10px;font-weight:950;line-height:1">${aiIndex + 1}</u>`;
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i><em class="tyre-${compound.toLowerCase()}">${compound[0]}</em><strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
+      const tyreCell = `<div class="tower-tyre" aria-label="${compound} tyre wear ${towerWearPct} percent">
+        <div class="tower-tyre-top"><em class="tyre-${compound.toLowerCase()}" data-current-tyre="${compound[0]}">${compound[0]}</em><u class="tower-wear-value ${towerWearClass}">${towerWearPct}%</u></div>
+        <u class="tower-wear-meter ${towerWearClass}" aria-hidden="true"><i style="width:${towerWearPct}%"></i></u>
+      </div>`;
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i>${tyreCell}<strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
     }).join('');
 
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}
+    const pauseTimingData = this.renderPauseTimingData();
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}${pauseTimingData}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
-        <div class="timing-strip"><span>S1 <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
+        <div class="timing-strip"><span>S1 BEST <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 BEST <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 BEST <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
       <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i></div>${towerHtml}</div>
       <div class="race-telemetry">
@@ -1760,7 +1975,7 @@ export class CoreRaceGame {
           <div class="tyre-wear-card"><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound} <em class="tyre-wear-value ${tyreWearClass}">WEAR ${wearPct}%</em></b><span class="tyre-wear-meter ${tyreWearClass}" aria-label="tyre wear ${wearPct} percent"><i style="width:${wearPct}%"></i></span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
           <div class="tow-card ${towPct > 0 ? 'active' : ''}" title="Slipstream strength relative to the strongest usable tow"><small>SLIPSTREAM</small><b>${towPct > 0 ? `TOW ${towPct}%` : 'NO TOW'}</b><span class="tow-meter" aria-label="tow strength ${towPct} percent"><i style="width:${towPct}%"></i></span></div>
-          <div><small>RACE</small><b>${raceState}</b><span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
+          <div class="race-status-card"><small>RACE</small><b>${raceState}</b>${trackLimitMeterHtml}<span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
         </div>
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER · F3 AI DEBUG · F4 NEXT AI</div>`;

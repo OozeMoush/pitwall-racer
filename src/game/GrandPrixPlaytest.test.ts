@@ -91,10 +91,11 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     expect(clean.s1).toBeCloseTo(10, 1);
     expect(clean.s2).toBeCloseTo(10, 1);
     expect(clean.s3).toBeCloseTo(10, 1);
-    // Three distinct all-wheel excursions disqualify the line, never the lap.
+    // Five distinct all-wheel excursions award the 5s GP penalty. The line
+    // becomes ineligible earlier, but the physical lap itself still counts.
     for (let tick = 1; tick <= 3600; tick++) {
       const p = tick / 3600;
-      const outside = [0.12, 0.2, 0.27].some(at => Math.abs(p - at) < 0.003);
+      const outside = [0.12, 0.2, 0.27, 0.45, 0.61].some(at => Math.abs(p - at) < 0.003);
       traverse(p, outside ? 21 : 0);
     }
     expect(game.trackLimitPenalty.pendingPitSeconds).toBe(5);

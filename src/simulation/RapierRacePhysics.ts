@@ -90,9 +90,12 @@ export class RapierRacePhysics {
   private readonly playerBody: RAPIER.RigidBody;
   private playerCollider?: RAPIER.Collider;
   private readonly aiColliderIndexByHandle = new Map<number, number>();
+  private readonly aiColliders: Array<RAPIER.Collider | undefined> = [];
   private readonly barrierColliderHeadings = new Map<number, number>();
   private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
   private playerImpactSpeedValue = 0;
+  private aiContactKindValues: Array<'NONE' | 'CAR' | 'BARRIER'>;
+  private aiImpactSpeedValues: number[];
   private readonly aiBodies: RAPIER.RigidBody[];
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
@@ -128,6 +131,8 @@ export class RapierRacePhysics {
     });
     this.aiLaps = ai.map((driver) => driver.lap);
     this.lastAiProgress = ai.map((driver) => driver.progress);
+    this.aiContactKindValues = ai.map(() => 'NONE');
+    this.aiImpactSpeedValues = ai.map(() => 0);
     this.aiPitStops = ai.map(() => createPitStopState());
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
@@ -157,6 +162,14 @@ export class RapierRacePhysics {
 
   playerImpactSpeed(): number {
     return this.playerImpactSpeedValue;
+  }
+
+  aiContactKind(index: number): 'NONE' | 'CAR' | 'BARRIER' {
+    return this.aiContactKindValues[index] ?? 'NONE';
+  }
+
+  aiImpactSpeed(index: number): number {
+    return this.aiImpactSpeedValues[index] ?? 0;
   }
 
   syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
@@ -299,6 +312,11 @@ export class RapierRacePhysics {
       playerVelocityBeforeStep.y,
       aiVelocitiesBeforeStep,
     );
+    this.updateAiContactKinds(
+      playerVelocityBeforeStep.x,
+      playerVelocityBeforeStep.y,
+      aiVelocitiesBeforeStep,
+    );
 
     this.limitSpin(this.playerBody, 1.45);
     for (const body of this.aiBodies) this.limitSpin(body, 1.45);
@@ -342,6 +360,8 @@ export class RapierRacePhysics {
     this.aiLongitudinalAccelerationValues[index] = 0;
     this.aiNetSpeedAccelerationValues[index] = 0;
     this.aiPreDriveSpeeds[index] = undefined;
+    this.aiContactKindValues[index] = 'NONE';
+    this.aiImpactSpeedValues[index] = 0;
   }
 
   stopPlayer(): void {
@@ -361,6 +381,8 @@ export class RapierRacePhysics {
     this.latestAiControls = [];
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiContactKindValues = ai.map(() => 'NONE');
+    this.aiImpactSpeedValues = ai.map(() => 0);
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
     this.aiPreDriveSpeeds = ai.map(() => undefined);
@@ -616,6 +638,7 @@ export class RapierRacePhysics {
     } else {
       if (aiIndex !== undefined) {
         this.aiColliderIndexByHandle.set(createdCollider.handle, aiIndex);
+        this.aiColliders[aiIndex] = createdCollider;
       }
     }
     return body;
@@ -671,6 +694,61 @@ export class RapierRacePhysics {
           barrierNormalSpeed(preStepVx, preStepVy, barrierHeading),
         );
       }
+    });
+  }
+
+  private updateAiContactKinds(
+    playerPreStepVx: number,
+    playerPreStepVy: number,
+    aiVelocitiesBeforeStep: readonly { x: number; y: number }[],
+  ): void {
+    this.aiContactKindValues.fill('NONE');
+    this.aiImpactSpeedValues.fill(0);
+
+    this.aiColliders.forEach((aiCollider, index) => {
+      if (!aiCollider) return;
+      const before = aiVelocitiesBeforeStep[index];
+      const body = this.aiBodies[index];
+      if (!before || !body) return;
+
+      this.world.contactPairsWith(aiCollider, (otherCollider) => {
+        if (otherCollider.handle === this.playerCollider?.handle) {
+          const relativeSpeed = carRelativeImpactSpeed(
+            before.x,
+            before.y,
+            playerPreStepVx,
+            playerPreStepVy,
+          );
+          if (relativeSpeed < CAR_CONTACT_MIN_RELATIVE_SPEED) return;
+          this.aiContactKindValues[index] = 'CAR';
+          this.aiImpactSpeedValues[index] = Math.max(
+            this.aiImpactSpeedValues[index] ?? 0,
+            relativeSpeed,
+          );
+          return;
+        }
+
+        if (this.aiContactKindValues[index] === 'CAR') return;
+        const barrierHeading = this.barrierColliderHeadings.get(otherCollider.handle);
+        if (barrierHeading === undefined) return;
+
+        const postStepVelocity = body.linvel();
+        if (
+          isPhysicalBarrierImpact(
+            before.x,
+            before.y,
+            postStepVelocity.x,
+            postStepVelocity.y,
+            barrierHeading,
+          )
+        ) {
+          this.aiContactKindValues[index] = 'BARRIER';
+          this.aiImpactSpeedValues[index] = Math.max(
+            this.aiImpactSpeedValues[index] ?? 0,
+            barrierNormalSpeed(before.x, before.y, barrierHeading),
+          );
+        }
+      });
     });
   }
 
