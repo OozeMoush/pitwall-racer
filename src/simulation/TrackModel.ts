@@ -15,6 +15,8 @@ export interface TrackDefinition {
   subtitle: string;
   controls: readonly TrackPoint[];
   geometry?: 'smooth' | 'street';
+  /** Current representative clean-lap time used to turn race duration into laps. */
+  referenceLapSeconds?: number;
 }
 
 export interface TrackProjection {
@@ -139,13 +141,13 @@ const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
 const BAKU_STREET = miniature(BAKU_STREET_SOURCE);
 
 export const TRACKS: readonly TrackDefinition[] = [
-  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP },
-  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK },
-  { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING },
-  { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES },
-  { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE },
-  { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT },
-  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'BAKU CITY CIRCUIT · CASTLE · LONG STRAIGHT', controls: BAKU_STREET, geometry: 'street' },
+  { id: 'pitwall-gp', name: 'PITWALL GP', subtitle: 'MINIATURE · BALANCED · FAST LAP', controls: PITWALL_GP, referenceLapSeconds: 26.691 },
+  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK, referenceLapSeconds: 19.764 },
+  { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING, referenceLapSeconds: 21.192 },
+  { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES, referenceLapSeconds: 21.896 },
+  { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE, referenceLapSeconds: 31.156 },
+  { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT, referenceLapSeconds: 23.119 },
+  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'BAKU CITY CIRCUIT · CASTLE · LONG STRAIGHT', controls: BAKU_STREET, geometry: 'street', referenceLapSeconds: 37.426 },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;

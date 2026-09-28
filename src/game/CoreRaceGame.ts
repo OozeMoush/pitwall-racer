@@ -239,7 +239,7 @@ export class CoreRaceGame {
     this.container = container;
     this.hud = hud;
     this.setup = setup;
-    this.totalLaps = Math.max(6, Math.min(60, Math.round(setup.totalLaps)));
+    this.totalLaps = Math.max(6, Math.round(setup.totalLaps));
     this.startCompound = setup.startCompound;
     this.ai = createAiField(setup.gridOrder, this.totalLaps);
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());

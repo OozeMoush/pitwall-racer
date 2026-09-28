@@ -1,10 +1,14 @@
 import type { Compound } from '../simulation/TireModel';
-import type { TrackId } from '../simulation/TrackModel';
+import { getTrackDefinition, type TrackId } from '../simulation/TrackModel';
+
+export type RaceLengthPreset = 'SHORT' | 'STANDARD' | 'LONG';
 
 export interface RaceSetup {
   trackId: TrackId;
   startCompound: Compound;
   totalLaps: number;
+  /** Duration preset used to derive totalLaps for the selected circuit. */
+  raceLength?: RaceLengthPreset;
   /** P1..P8 driver ids produced by the one-shot qualifying session. */
   gridOrder?: readonly string[];
   qualifyingTime?: number;
@@ -14,10 +18,36 @@ export interface RaceSetup {
   timeTrial?: boolean;
 }
 
+export interface RaceLengthOption {
+  id: RaceLengthPreset;
+  label: string;
+  targetMinutes: number;
+}
+
+export const RACE_LENGTH_OPTIONS: readonly RaceLengthOption[] = [
+  { id: 'SHORT', label: 'SHORT', targetMinutes: 18 },
+  { id: 'STANDARD', label: 'STANDARD', targetMinutes: 27 },
+  { id: 'LONG', label: 'LONG', targetMinutes: 36 },
+];
+
+export const DEFAULT_RACE_LENGTH: RaceLengthPreset = 'STANDARD';
+
+export function raceLapsForPreset(
+  trackId: TrackId,
+  preset: RaceLengthPreset,
+): number {
+  const option = RACE_LENGTH_OPTIONS.find((entry) => entry.id === preset)
+    ?? RACE_LENGTH_OPTIONS[1];
+  const lapSeconds = Math.max(
+    15,
+    getTrackDefinition(trackId).referenceLapSeconds ?? 90,
+  );
+  return Math.max(6, Math.round(option.targetMinutes * 60 / lapSeconds));
+}
+
 export const DEFAULT_RACE_SETUP: RaceSetup = {
   trackId: 'pitwall-gp',
   startCompound: 'MEDIUM',
-  totalLaps: 50,
+  raceLength: DEFAULT_RACE_LENGTH,
+  totalLaps: raceLapsForPreset('pitwall-gp', DEFAULT_RACE_LENGTH),
 };
-
-export const LAP_OPTIONS = [40, 50, 60] as const;

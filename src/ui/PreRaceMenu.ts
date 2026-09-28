@@ -1,4 +1,11 @@
-import { DEFAULT_RACE_SETUP, LAP_OPTIONS, type RaceSetup } from '../game/RaceSetup';
+import {
+  DEFAULT_RACE_LENGTH,
+  DEFAULT_RACE_SETUP,
+  RACE_LENGTH_OPTIONS,
+  raceLapsForPreset,
+  type RaceLengthPreset,
+  type RaceSetup,
+} from '../game/RaceSetup';
 import { loadPlayerRacingLineCandidate } from '../simulation/PlayerRacingLineCandidate';
 import {
   saveSelectedRacingLineSource,
@@ -18,7 +25,10 @@ export function showPreRaceMenu(
     selectedTrack,
   );
   let selectedCompound: Compound = initial.startCompound;
-  let selectedLaps = initial.totalLaps;
+  let selectedRaceLength: RaceLengthPreset = initial.raceLength ?? DEFAULT_RACE_LENGTH;
+  let selectedLaps = initial.raceLength
+    ? raceLapsForPreset(selectedTrack, selectedRaceLength)
+    : initial.totalLaps;
 
   root.innerHTML = `<div class="pre-race-shell">
     <div class="pre-race-panel">
@@ -58,9 +68,9 @@ export function showPreRaceMenu(
           </div>
         </div>
         <div class="setup-section">
-          <div class="setup-title"><b>04 · DISTANCE</b><span>Long enough for tyre strategy to matter.</span></div>
+          <div class="setup-title"><b>04 · RACE LENGTH</b><span>Target elapsed time; lap count adapts to the selected circuit.</span></div>
           <div class="lap-choice-row">
-            ${LAP_OPTIONS.map((laps) => `<button class="lap-choice ${laps === selectedLaps ? 'selected' : ''}" data-laps="${laps}"><strong>${laps}</strong><span>LAPS</span></button>`).join('')}
+            ${RACE_LENGTH_OPTIONS.map((option) => `<button class="lap-choice ${option.id === selectedRaceLength ? 'selected' : ''}" data-race-length="${option.id}"><strong>${option.label}</strong><span>${option.targetMinutes} MIN</span></button>`).join('')}
           </div>
         </div>
       </section>
@@ -80,7 +90,7 @@ export function showPreRaceMenu(
     const refreshSelected = (): void => {
       root.querySelectorAll<HTMLElement>('[data-track]').forEach((node) => node.classList.toggle('selected', node.dataset.track === selectedTrack));
       root.querySelectorAll<HTMLElement>('[data-compound]').forEach((node) => node.classList.toggle('selected', node.dataset.compound === selectedCompound));
-      root.querySelectorAll<HTMLElement>('[data-laps]').forEach((node) => node.classList.toggle('selected', Number(node.dataset.laps) === selectedLaps));
+      root.querySelectorAll<HTMLElement>('[data-race-length]').forEach((node) => node.classList.toggle('selected', node.dataset.raceLength === selectedRaceLength));
       root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
         node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
       });
@@ -104,6 +114,7 @@ export function showPreRaceMenu(
           window.localStorage,
           selectedTrack,
         );
+        selectedLaps = raceLapsForPreset(selectedTrack, selectedRaceLength);
         refreshSelected();
       });
     });
@@ -125,9 +136,10 @@ export function showPreRaceMenu(
         refreshSelected();
       });
     });
-    root.querySelectorAll<HTMLButtonElement>('[data-laps]').forEach((button) => {
+    root.querySelectorAll<HTMLButtonElement>('[data-race-length]').forEach((button) => {
       button.addEventListener('click', () => {
-        selectedLaps = Number(button.dataset.laps);
+        selectedRaceLength = button.dataset.raceLength as RaceLengthPreset;
+        selectedLaps = raceLapsForPreset(selectedTrack, selectedRaceLength);
         refreshSelected();
       });
     });
@@ -142,6 +154,7 @@ export function showPreRaceMenu(
         trackId: selectedTrack,
         startCompound: selectedCompound,
         totalLaps: selectedLaps,
+        raceLength: selectedRaceLength,
         skipQualifying,
         timeTrial,
       });
