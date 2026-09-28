@@ -178,6 +178,13 @@ export const TRACKS: readonly TrackDefinition[] = [
 
 const SAMPLES_PER_CONTROL = 28;
 
+const PITWALL_GP_STRAIGHT_EXTENSION = 2500;
+const PITWALL_GP_STRETCH_OUT_START = 0.05;
+const PITWALL_GP_STRETCH_OUT_END = 0.25;
+const PITWALL_GP_STRETCH_BACK_START = 0.42;
+const PITWALL_GP_STRETCH_BACK_END = 0.50;
+
+
 interface Segment { a: TrackPoint; b: TrackPoint; length: number; start: number }
 
 let activeTrackId: TrackId = 'pitwall-gp';
@@ -401,12 +408,6 @@ function segmentAtDistance(distance: number): Segment {
   }
   return segments[segments.length - 1];
 }
-
-const PITWALL_GP_STRAIGHT_EXTENSION = 2500;
-const PITWALL_GP_STRETCH_OUT_START = 0.05;
-const PITWALL_GP_STRETCH_OUT_END = 0.25;
-const PITWALL_GP_STRETCH_BACK_START = 0.42;
-const PITWALL_GP_STRETCH_BACK_END = 0.50;
 
 /**
  * Pitwall GP 2.0 preserves the existing corner geometry and adds distance by
