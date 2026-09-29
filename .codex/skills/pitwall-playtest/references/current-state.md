@@ -1,4 +1,4 @@
-# Current playtest state — 2026-09-26
+# Current playtest state — 2026-09-29
 
 This is a handoff snapshot, not a permanent balance specification. Prefer fresh measurements when available.
 
@@ -16,15 +16,26 @@ Do not assume an old failure is still present. Reproduce it against the current 
 
 ## Current playable shape
 
-- seven selectable miniature circuits, including Baku Street;
-- 40 / 50 / 60 lap Grand Prix distances, default 50;
+- race-scale Pitwall GP 2.0 plus six selectable legacy miniature circuits, including Baku Street;
+- SHORT / STANDARD / LONG Grand Prix duration presets with per-circuit derived lap counts; Pitwall STANDARD is currently 18 laps / 27 reference minutes;
 - standalone Time Trial that returns to the setup menu;
 - one-shot qualifying or optional P8 qualifying skip;
 - AUTO / PLAYER BEST CPU racing-line selection;
 - compact two-column starting grid near the timing line;
 - physical 80 km/h pit lane and separate pit boxes;
-- tyre strategy including an aggressive two-stop CPU plan;
+- duration-scale tyre strategy with competitive one-stop and two-stop CPU families; Pitwall net pit loss is ~18.1 s;
 - REFERENCE GHOST remains the unassisted calibration baseline.
+
+## Race-scale checkpoint
+
+Main CI #849 is green after the #85 scale/strategy pass:
+
+- Pitwall GP length: ~8069 m;
+- dynamic field estimate: ~89.4 s/lap;
+- machine reference: 82.061 s;
+- STANDARD strategy benchmark: 18 laps, ~27.95 min fastest legal race;
+- fastest one-stop and two-stop benchmarks are separated by ~0.05 s;
+- live CPU plans are constrained to the competitive strategy envelope.
 
 ## Recently closed regressions
 
