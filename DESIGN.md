@@ -48,9 +48,9 @@ The setup screen supports three session paths:
 
 Grand Prix setup includes:
 
-- seven miniature circuits;
+- Pitwall GP 2.0 at race scale plus six legacy miniature circuits;
 - Soft / Medium / Hard starting tyre;
-- 40 / 50 / 60 lap distance, with 50 laps as the default;
+- SHORT / STANDARD / LONG duration presets targeting roughly 18 / 27 / 36 minutes, with lap count derived per circuit;
 - AUTO or PLAYER BEST CPU racing-line source.
 
 The current circuit set is Pitwall GP, Velocity Park, Switchback Ring, Sakura Esses, Harbor Chicane, Serra Circuit and Baku Street.
@@ -132,8 +132,8 @@ There are no live energy-mode keys in the current core-race build.
 - standalone Time Trial ✅
 - one-shot qualifying / skip-qualifying flow ✅
 - starting tyre selection ✅
-- 40 / 50 / 60-lap distances ✅
-- seven miniature circuits ✅
+- duration-based SHORT / STANDARD / LONG race lengths ✅
+- race-scale Pitwall GP plus six legacy miniature circuits ✅
 - AUTO / PLAYER BEST CPU racing-line selection ✅
 - compact qualifying-derived starting grid ✅
 - unified road edge / runoff / barrier language ✅ first model
@@ -171,7 +171,7 @@ These are not priorities until the basic race is demonstrably fun:
 
 1. More speed is useful only if braking points and track readability remain understandable.
 2. AI must be hard because it drives well, not because it owns a different engine.
-3. Long 40-60 lap races must create meaningful stints without turning old tyres into undriveable switches.
+3. Duration-based races must create meaningful stints without turning old tyres into undriveable switches.
 4. PLAYER BEST and AUTO lines must remain physically coherent across compounds and through the start/finish seam.
 5. All seven circuits must remain valid for projection, pits, compact grids, CPU driving and camera — not just render different shapes.
 6. The fixed camera must preserve GeneRally-style clarity while still selling 300+ km/h.
