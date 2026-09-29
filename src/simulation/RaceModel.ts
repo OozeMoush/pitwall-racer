@@ -68,7 +68,8 @@ export function createAiField(
 ): DriverState[] {
   // Most cars run one stop, but one deliberately aggressive strategy adds a
   // second stop. KITE attacks on Soft, uses Medium for the middle stint, then
-  // returns to Soft for the finish. Stop fractions scale across 40/50/60 laps.
+  // returns to Soft for the finish. Stop fractions scale with the selected
+  // duration-derived race lap count.
   const plans: Array<[
     string,
     Compound,
@@ -256,8 +257,8 @@ function choosePitStrategy(
     return { pitLap: driver.pitLap, intent: driver.strategyIntent };
   }
 
-  // Let long races breathe: a strategy can move two laps either way rather than
-  // the old one-lap window that was designed around twelve-lap sprints.
+  // Let duration-derived races breathe: a strategy can move two laps either way
+  // rather than pinning every car to one exact scheduled stop lap.
   const earliest = Math.max(4, driver.plannedPitLap - 2);
   const latest = Math.min(totalLaps - 3, driver.plannedPitLap + 2);
 

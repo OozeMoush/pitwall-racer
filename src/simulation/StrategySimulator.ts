@@ -1,13 +1,35 @@
-import { pitStopTimeLossEstimateSeconds } from './PitLaneModel';
-import { createTire, gripRatioToMedium, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
-import { REPRESENTATIVE_SLIDE_PENALTY_SECONDS, tyreSlideRisk } from './TyrePerformanceModel';
+import { pitStopTimeLossEstimateSecondsFor } from './PitLaneModel';
+import { getTrackDefinition, type TrackId } from './TrackModel';
+import {
+  createTire,
+  gripRatioToMedium,
+  stepTire,
+  type Compound,
+  type PaceMode,
+  type TireState,
+} from './TireModel';
+import {
+  REPRESENTATIVE_SLIDE_PENALTY_SECONDS,
+  tyreSlideRisk,
+} from './TyrePerformanceModel';
+
+export interface StrategyStop {
+  afterLap: number;
+  compound: Compound;
+}
 
 export interface StrategyPlan {
   name: string;
   startCompound: Compound;
-  stopAfterLap?: number;
-  nextCompound?: Compound;
+  stops?: readonly StrategyStop[];
   paceForLap: (lap: number, tire: TireState) => PaceMode;
+}
+
+export interface StrategyRaceProfile {
+  trackId: TrackId;
+  totalLaps: number;
+  representativeLapSeconds: number;
+  pitLossSeconds: number;
 }
 
 export interface SimulatedLap {
@@ -29,18 +51,20 @@ export interface StrategyResult {
 
 export interface BalanceSnapshot {
   fastest: StrategyResult;
+  fastestOneStop: StrategyResult;
+  fastestTwoStop: StrategyResult;
+  oneStopResults: StrategyResult[];
+  twoStopResults: StrategyResult[];
   legalResults: StrategyResult[];
   competitiveResults: StrategyResult[];
   spreadToSecond: number;
 }
 
-// The current miniature circuits run in the low/mid-20-second range. Keep
-// this harness on the same time scale so wear accumulated per "lap" represents
-// the 40/50/60-lap game rather than the retired 10/12/16-lap format.
-const BASE_LAP_SECONDS = 24;
-const REPRESENTATIVE_SECONDS_PER_LAP = 24;
+// Pitwall GP 2.0 preserved the old technical core and gained most of its lap
+// time through long straights. Keep the old ~10.8 s technical-corner budget
+// instead of multiplying tyre grip advantage by the entire ~90 s lap.
+const MAX_REPRESENTATIVE_CORNER_SECONDS = 10.8;
 const DT = 0.5;
-const CORNER_TIME_FRACTION = 0.45;
 const GRIP_RESPONSE_EXPONENT = 0.85;
 const COMPOUNDS: readonly Compound[] = ['SOFT', 'MEDIUM', 'HARD'];
 
@@ -56,20 +80,49 @@ const modeLapAdjustment: Record<PaceMode, number> = {
   PUSH: -1.15,
 };
 
-export function simulateStrategy(plan: StrategyPlan, totalLaps = 50): StrategyResult {
+export function strategyRaceProfile(
+  trackId: TrackId,
+  totalLaps: number,
+): StrategyRaceProfile {
+  return {
+    trackId,
+    totalLaps: Math.max(1, Math.round(totalLaps)),
+    representativeLapSeconds: Math.max(
+      15,
+      getTrackDefinition(trackId).referenceLapSeconds ?? 90,
+    ),
+    pitLossSeconds: pitStopTimeLossEstimateSecondsFor(trackId),
+  };
+}
+
+export function simulateStrategy(
+  plan: StrategyPlan,
+  race: StrategyRaceProfile,
+): StrategyResult {
   let tire = createTire(plan.startCompound);
   const usedCompounds = new Set<Compound>([plan.startCompound]);
   const laps: SimulatedLap[] = [];
   let totalTime = 0;
 
-  for (let lap = 1; lap <= totalLaps; lap++) {
+  const stops = [...(plan.stops ?? [])]
+    .filter((stop) => stop.afterLap >= 1 && stop.afterLap < race.totalLaps)
+    .sort((a, b) => a.afterLap - b.afterLap);
+  const stopsByLap = new Map<number, StrategyStop>();
+  for (const stop of stops) stopsByLap.set(stop.afterLap, stop);
+
+  for (let lap = 1; lap <= race.totalLaps; lap++) {
     const pace = plan.paceForLap(lap, tire);
     let gripSum = 0;
     let slideRiskSum = 0;
     let samples = 0;
 
-    for (let elapsed = 0; elapsed < REPRESENTATIVE_SECONDS_PER_LAP; elapsed += DT) {
-      tire = stepTire(tire, pace, modeLoad[pace], DT);
+    for (
+      let elapsed = 0;
+      elapsed < race.representativeLapSeconds;
+      elapsed += DT
+    ) {
+      const dt = Math.min(DT, race.representativeLapSeconds - elapsed);
+      tire = stepTire(tire, pace, modeLoad[pace], dt);
       gripSum += tire.grip;
       slideRiskSum += tyreSlideRisk(tire.wear);
       samples += 1;
@@ -77,31 +130,41 @@ export function simulateStrategy(plan: StrategyPlan, totalLaps = 50): StrategyRe
 
     const gripAverage = gripSum / Math.max(1, samples);
     const slideRiskAverage = slideRiskSum / Math.max(1, samples);
-    // Compounds still separate through the cornering share of the lap. Wear is
-    // evaluated separately as the expected time cost of short rear-slide
-    // events, matching live play: ageing increases how often mistakes happen
-    // rather than permanently switching the steering to a worse mode.
-    const straightSeconds = BASE_LAP_SECONDS * (1 - CORNER_TIME_FRACTION);
-    const cornerSeconds = BASE_LAP_SECONDS * CORNER_TIME_FRACTION;
+    const cornerSeconds = Math.min(
+      MAX_REPRESENTATIVE_CORNER_SECONDS,
+      race.representativeLapSeconds * 0.45,
+    );
+    const straightSeconds = race.representativeLapSeconds - cornerSeconds;
     const relativeGrip = Math.max(0.56, gripRatioToMedium(gripAverage));
     const lapTime = straightSeconds
       + cornerSeconds / Math.pow(relativeGrip, GRIP_RESPONSE_EXPONENT)
       + slideRiskAverage * REPRESENTATIVE_SLIDE_PENALTY_SECONDS
       + modeLapAdjustment[pace];
     totalTime += lapTime;
-    laps.push({ lap, compound: tire.compound, pace, lapTime, wearAtEnd: tire.wear, gripAverage });
+    laps.push({
+      lap,
+      compound: tire.compound,
+      pace,
+      lapTime,
+      wearAtEnd: tire.wear,
+      gripAverage,
+    });
 
-    if (plan.stopAfterLap === lap && plan.nextCompound) {
-      // Strategy tooling must use the live pit model's *net* race-time loss,
-      // not the full duration spent moving through pit lane. The main-route
-      // travel time would have elapsed even if the car stayed out.
-      totalTime += pitStopTimeLossEstimateSeconds();
-      tire = createTire(plan.nextCompound);
-      usedCompounds.add(plan.nextCompound);
+    const stop = stopsByLap.get(lap);
+    if (stop) {
+      totalTime += race.pitLossSeconds;
+      tire = createTire(stop.compound);
+      usedCompounds.add(stop.compound);
     }
   }
 
-  return { name: plan.name, totalTime, legal: usedCompounds.size >= 2, usedCompounds, laps };
+  return {
+    name: plan.name,
+    totalTime,
+    legal: usedCompounds.size >= 2,
+    usedCompounds,
+    laps,
+  };
 }
 
 export function balancedPace(_: number, tire: TireState): PaceMode {
@@ -120,81 +183,170 @@ interface BalancedStintTable {
 
 function balancedStintTable(
   compound: Compound,
-  totalLaps: number,
+  race: StrategyRaceProfile,
 ): BalancedStintTable {
-  // benchmarkStrategies only evaluates balanced one-stop plans. Simulate each
-  // fresh-compound stint once, then reuse its exact lap-by-lap result for every
-  // candidate stop window instead of re-running the 0.5 s tyre loop hundreds
-  // of times.
   const result = simulateStrategy({
     name: `${compound} benchmark stint`,
     startCompound: compound,
     paceForLap: balancedPace,
-  }, totalLaps);
+  }, race);
 
   const cumulativeTime = [0];
   for (const lap of result.laps) {
-    cumulativeTime.push(cumulativeTime[cumulativeTime.length - 1] + lap.lapTime);
+    cumulativeTime.push(
+      cumulativeTime[cumulativeTime.length - 1] + lap.lapTime,
+    );
   }
   return { laps: result.laps, cumulativeTime };
 }
 
-export function benchmarkStrategies(totalLaps = 50): BalanceSnapshot {
-  // Evaluate every legal one-stop compound pairing at every possible stop lap.
-  // The live game also contains one deliberately aggressive two-stop CPU, but
-  // this harness answers the simpler baseline question: can a legal one-stop
-  // strategy remain competitive across the selectable 40/50/60-lap races?
+export function benchmarkStrategies(
+  race: StrategyRaceProfile,
+): BalanceSnapshot {
+  if (race.totalLaps < 3) {
+    throw new Error('Strategy benchmark requires at least three laps');
+  }
+
   const stintTables = new Map(
     COMPOUNDS.map((compound) => [
       compound,
-      balancedStintTable(compound, totalLaps),
+      balancedStintTable(compound, race),
     ] as const),
   );
-  const pitLoss = pitStopTimeLossEstimateSeconds();
-  const legalResults: StrategyResult[] = [];
 
+  const oneStopResults: StrategyResult[] = [];
   for (const start of COMPOUNDS) {
-    const startTable = stintTables.get(start)!;
     for (const next of COMPOUNDS) {
       if (start === next) continue;
-      const nextTable = stintTables.get(next)!;
-
-      for (let stopAfterLap = 1; stopAfterLap < totalLaps; stopAfterLap++) {
-        const secondStintLaps = totalLaps - stopAfterLap;
-        const firstLaps = startTable.laps
-          .slice(0, stopAfterLap)
-          .map((lap) => ({ ...lap }));
-        const secondLaps = nextTable.laps
-          .slice(0, secondStintLaps)
-          .map((lap, index) => ({
-            ...lap,
-            lap: stopAfterLap + index + 1,
-          }));
-
-        legalResults.push({
-          name: `${start[0]}→${next[0]} lap${stopAfterLap}`,
-          totalTime:
-            startTable.cumulativeTime[stopAfterLap]
-            + pitLoss
-            + nextTable.cumulativeTime[secondStintLaps],
-          legal: true,
-          usedCompounds: new Set<Compound>([start, next]),
-          laps: [...firstLaps, ...secondLaps],
-        });
+      for (let stopAfterLap = 1; stopAfterLap < race.totalLaps; stopAfterLap++) {
+        oneStopResults.push(buildCachedStrategy(
+          stintTables,
+          race,
+          start,
+          [{ afterLap: stopAfterLap, compound: next }],
+        ));
       }
     }
   }
 
-  legalResults.sort((a, b) => a.totalTime - b.totalTime);
+  const twoStopResults: StrategyResult[] = [];
+  for (const start of COMPOUNDS) {
+    for (const middle of COMPOUNDS) {
+      if (start === middle) continue;
+      for (const finish of COMPOUNDS) {
+        if (middle === finish) continue;
+        for (
+          let firstStop = 1;
+          firstStop < race.totalLaps - 1;
+          firstStop++
+        ) {
+          for (
+            let secondStop = firstStop + 1;
+            secondStop < race.totalLaps;
+            secondStop++
+          ) {
+            twoStopResults.push(buildCachedStrategy(
+              stintTables,
+              race,
+              start,
+              [
+                { afterLap: firstStop, compound: middle },
+                { afterLap: secondStop, compound: finish },
+              ],
+            ));
+          }
+        }
+      }
+    }
+  }
+
+  oneStopResults.sort((a, b) => a.totalTime - b.totalTime);
+  twoStopResults.sort((a, b) => a.totalTime - b.totalTime);
+  const legalResults = [...oneStopResults, ...twoStopResults]
+    .sort((a, b) => a.totalTime - b.totalTime);
 
   const fastest = legalResults[0];
+  const fastestOneStop = oneStopResults[0];
+  const fastestTwoStop = twoStopResults[0];
   const second = legalResults[1] ?? fastest;
-  const competitiveResults = legalResults.filter((result) => result.totalTime - fastest.totalTime <= 12);
+  const competitiveResults = legalResults.filter(
+    (result) => result.totalTime - fastest.totalTime <= 12,
+  );
 
   return {
     fastest,
+    fastestOneStop,
+    fastestTwoStop,
+    oneStopResults,
+    twoStopResults,
     legalResults,
     competitiveResults,
     spreadToSecond: second.totalTime - fastest.totalTime,
   };
+}
+
+function buildCachedStrategy(
+  tables: ReadonlyMap<Compound, BalancedStintTable>,
+  race: StrategyRaceProfile,
+  startCompound: Compound,
+  stops: readonly StrategyStop[],
+): StrategyResult {
+  let compound = startCompound;
+  let previousStopLap = 0;
+  let totalTime = 0;
+  const laps: SimulatedLap[] = [];
+  const usedCompounds = new Set<Compound>([startCompound]);
+
+  for (const stop of stops) {
+    appendCachedStint(
+      tables.get(compound)!,
+      stop.afterLap - previousStopLap,
+      previousStopLap,
+      laps,
+    );
+    totalTime += tables.get(compound)!
+      .cumulativeTime[stop.afterLap - previousStopLap];
+    totalTime += race.pitLossSeconds;
+    compound = stop.compound;
+    usedCompounds.add(compound);
+    previousStopLap = stop.afterLap;
+  }
+
+  const finalStintLaps = race.totalLaps - previousStopLap;
+  appendCachedStint(
+    tables.get(compound)!,
+    finalStintLaps,
+    previousStopLap,
+    laps,
+  );
+  totalTime += tables.get(compound)!.cumulativeTime[finalStintLaps];
+
+  const route = [startCompound, ...stops.map((stop) => stop.compound)]
+    .map((entry) => entry[0])
+    .join('→');
+  const stopLabel = stops.length === 1
+    ? `lap${stops[0].afterLap}`
+    : `laps${stops.map((stop) => stop.afterLap).join('/')}`;
+
+  return {
+    name: `${route} ${stopLabel}`,
+    totalTime,
+    legal: usedCompounds.size >= 2,
+    usedCompounds,
+    laps,
+  };
+}
+
+function appendCachedStint(
+  table: BalancedStintTable,
+  stintLaps: number,
+  completedLaps: number,
+  target: SimulatedLap[],
+): void {
+  target.push(
+    ...table.laps.slice(0, stintLaps).map((lap, index) => ({
+      ...lap,
+      lap: completedLaps + index + 1,
+    })),
+  );
 }

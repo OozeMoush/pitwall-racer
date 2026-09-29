@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { simulateStrategy, type StrategyPlan } from './StrategySimulator';
+import { simulateStrategy, strategyRaceProfile, type StrategyPlan } from './StrategySimulator';
 
 function oneLap(compound: 'SOFT' | 'MEDIUM' | 'HARD') {
   const plan: StrategyPlan = {
@@ -7,7 +7,7 @@ function oneLap(compound: 'SOFT' | 'MEDIUM' | 'HARD') {
     startCompound: compound,
     paceForLap: () => 'BALANCED',
   };
-  return simulateStrategy(plan, 1).laps[0];
+  return simulateStrategy(plan, strategyRaceProfile('pitwall-gp', 1)).laps[0];
 }
 
 describe('compound contrast', () => {
