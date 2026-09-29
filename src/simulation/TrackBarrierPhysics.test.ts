@@ -16,7 +16,8 @@ import {
   hasSafetyBarrier,
   shouldPlaceSafetyBarrier,
 } from './TrackLimitsModel';
-import { projectTrack, sampleTrack } from './TrackModel';
+import { pitEntryProgress, pitExitProgress } from './PitLaneModel';
+import { projectTrack, sampleTrack, setActiveTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
 import { createVehicle } from './VehicleModel';
 
@@ -27,14 +28,19 @@ describe('physical safety barriers', () => {
     await RAPIER.init();
   });
 
-  it('leaves only narrow physical doors at pit entry and exit', () => {
+  it('leaves only narrow physical doors at the active pit entry and exit', () => {
+    setActiveTrack('pitwall-gp');
+    const entry = pitEntryProgress();
+    const exit = pitExitProgress();
+    const outsideDoor = 70 / TRACK_LENGTH;
+
     expect(hasSafetyBarrier(0.50, 1)).toBe(true);
     expect(hasSafetyBarrier(0.50, -1)).toBe(true);
-    expect(hasSafetyBarrier(0.91, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.07, 1)).toBe(false);
-    expect(hasSafetyBarrier(0.95, 1)).toBe(true);
-    expect(hasSafetyBarrier(0.02, 1)).toBe(true);
-    expect(hasSafetyBarrier(0.91, -1)).toBe(true);
+    expect(hasSafetyBarrier(entry, 1)).toBe(false);
+    expect(hasSafetyBarrier(exit, 1)).toBe(false);
+    expect(hasSafetyBarrier(entry - outsideDoor, 1)).toBe(true);
+    expect(hasSafetyBarrier(exit + outsideDoor, 1)).toBe(true);
+    expect(hasSafetyBarrier(entry, -1)).toBe(true);
   });
 
   it('does not classify a shallow wall/kerb brush as a wall-impact trace failure', () => {
