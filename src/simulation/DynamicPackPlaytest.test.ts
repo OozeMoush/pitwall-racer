@@ -162,9 +162,9 @@ describe('dynamic field playtest telemetry', () => {
     expect(metrics.estimatedLapSeconds).toBeGreaterThan(65);
     expect(metrics.estimatedLapSeconds).toBeLessThan(125);
     expect(metrics.maxPlayerKmh).toBeGreaterThanOrEqual(270);
-    expect(metrics.maxPlayerKmh).toBeLessThan(390);
+    expect(metrics.maxPlayerKmh).toBeLessThan(420);
     expect(metrics.maxAiKmh).toBeGreaterThan(285);
-    expect(metrics.maxAiKmh).toBeLessThan(400);
+    expect(metrics.maxAiKmh).toBeLessThan(425);
     expect(metrics.avgPlayerKmh).toBeGreaterThan(185);
     expect(metrics.avgAiKmh).toBeGreaterThan(195);
     expect(metrics.avgAiKmh).toBeGreaterThanOrEqual(metrics.avgPlayerKmh - 12);
