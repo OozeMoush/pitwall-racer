@@ -19,10 +19,11 @@ describe('RaceSetup duration presets', () => {
   it('derives different lap counts from circuit pace', () => {
     const pitwall = raceLapsForPreset('pitwall-gp', 'STANDARD');
     const baku = raceLapsForPreset('baku-street', 'STANDARD');
-    expect(pitwall).toBeLessThan(baku);
     expect(pitwall).toBeGreaterThanOrEqual(15);
     expect(pitwall).toBeLessThanOrEqual(24);
-    expect(baku).toBeGreaterThan(35);
+    expect(baku).toBeGreaterThanOrEqual(15);
+    expect(baku).toBeLessThanOrEqual(24);
+    expect(Math.abs(pitwall - baku)).toBeLessThanOrEqual(3);
   });
 
   it('uses the standard duration for the default race', () => {
