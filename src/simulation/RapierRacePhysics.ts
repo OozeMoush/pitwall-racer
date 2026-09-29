@@ -105,6 +105,7 @@ export class RapierRacePhysics {
   private playerSlideSeverityValue = 0;
   private playerLongitudinalAccelerationValue = 0;
   private aiSlideStates: TyreSlideState[];
+  private aiSlideSeverityValues: number[];
   private aiLongitudinalAccelerationValues: number[];
   private aiNetSpeedAccelerationValues: number[];
   private aiPreDriveSpeeds: Array<number | undefined>;
@@ -136,6 +137,7 @@ export class RapierRacePhysics {
     this.aiPitStops = ai.map(() => createPitStopState());
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiSlideSeverityValues = ai.map(() => 0);
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
     this.aiNetSpeedAccelerationValues = ai.map(() => 0);
     this.aiPreDriveSpeeds = ai.map(() => undefined);
@@ -270,6 +272,7 @@ export class RapierRacePhysics {
     const state = this.aiSlideStates[index] ?? createTyreSlideState(index + 1.13);
     const step = this.driveBody(body, input, dt, 1, state);
     this.aiSlideStates[index] = step.state;
+    this.aiSlideSeverityValues[index] = step.severity;
     this.aiLongitudinalAccelerationValues[index] = step.longitudinalAcceleration;
   }
 
@@ -335,6 +338,11 @@ export class RapierRacePhysics {
     return this.latestAiControls;
   }
 
+  /** Debug/telemetry view of the same wear-driven slide signal used by AI physics. */
+  aiSlideSeverity(index: number): number {
+    return this.aiSlideSeverityValues[index] ?? 0;
+  }
+
   aiRecoveryPhase(index: number): AiRecoveryPhase {
     return this.aiRecoveryStates[index]?.phase ?? 'NORMAL';
   }
@@ -357,6 +365,7 @@ export class RapierRacePhysics {
     if (!body) return;
     this.setBodyState(body, state, velocityHeading);
     this.aiSlideStates[index] = createTyreSlideState(index + 1.13);
+    this.aiSlideSeverityValues[index] = 0;
     this.aiLongitudinalAccelerationValues[index] = 0;
     this.aiNetSpeedAccelerationValues[index] = 0;
     this.aiPreDriveSpeeds[index] = undefined;
@@ -381,6 +390,7 @@ export class RapierRacePhysics {
     this.latestAiControls = [];
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
+    this.aiSlideSeverityValues = ai.map(() => 0);
     this.aiContactKindValues = ai.map(() => 'NONE');
     this.aiImpactSpeedValues = ai.map(() => 0);
     this.aiLongitudinalAccelerationValues = ai.map(() => 0);
