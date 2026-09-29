@@ -122,6 +122,10 @@ it('runs a full physical STANDARD race through H/M/S wear, slides, and real pit 
       if (tick % 10 === 0) {
         const states = physics.aiStates();
         states.forEach((state, index) => {
+          // The dedicated pit lane is intentionally outside the main-road
+          // track-limit envelope. Do not misclassify a legal physical pit stop
+          // as a deep cut.
+          if (physics.isAiPitting(index)) return;
           const driver = field[index];
           const projection = projectTrackNear(
             state.x,
