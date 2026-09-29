@@ -12,21 +12,21 @@ import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
 beforeAll(async () => { await RAPIER.init(); });
-afterEach(() => { setRuntimeRacingLine('sakura-esses', undefined); });
+afterEach(() => { setRuntimeRacingLine('serra-circuit', undefined); });
 
 it('executes a demonstrated PLAYER line for multiple laps on every race compound on a compact reference circuit', () => {
-  setActiveTrack('sakura-esses');
-  setRuntimeRacingLine('sakura-esses', undefined);
+  setActiveTrack('serra-circuit');
+  setRuntimeRacingLine('serra-circuit', undefined);
   // Keep the expensive multi-compound replay on a compact circuit while Pitwall GP is race-scale.
   // Starting directly from the stored lap-start state is valid, but the first
   // lap still contains convergence transients large enough to produce a PLAYER
   // asset with materially worse replay path error.
-  const source = new AiReferenceGhost(0, 'sakura-esses');
+  const source = new AiReferenceGhost(0, 'serra-circuit');
   for (let tick = 0; tick < 100 / DT && source.warmupLapsRemaining() > 0; tick++) {
     source.step(DT);
   }
   const recorder = new PlayerRacingLineCandidateRecorder();
-  recorder.begin('sakura-esses', source.driver.tire.grip);
+  recorder.begin('serra-circuit', source.driver.tire.grip);
   let time = 0;
   for (let tick = 0; tick < 45 / DT; tick++) {
     source.step(DT);
@@ -41,15 +41,15 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
   const asset = recorder.finish(time)!;
   expect(asset).toBeDefined();
   source.physics.world.free();
-  setRuntimeRacingLine('sakura-esses', asset);
+  setRuntimeRacingLine('serra-circuit', asset);
   const results = [];
   for (const compound of ['GHOST', 'SOFT', 'MEDIUM', 'HARD'] as const) {
-    const ghost = compound === 'GHOST' ? new AiReferenceGhost(0, 'sakura-esses', true) : undefined;
+    const ghost = compound === 'GHOST' ? new AiReferenceGhost(0, 'serra-circuit', true) : undefined;
     const driver = ghost?.driver ?? { ...createAiField()[1], progress: 0, lap: 1,
       tire: createTire(compound as Compound), pitLap: 999, plannedPitLap: 999 };
     const physics = ghost?.physics ?? new RapierRacePhysics(createVehicle(-10000, -10000, 0), [driver]);
     if (!ghost) {
-      const pose = sampleRuntimeRacingLinePose('sakura-esses', 0);
+      const pose = sampleRuntimeRacingLinePose('serra-circuit', 0);
       physics.setAiState(0, { ...createVehicle(pose.x, pose.y, pose.heading),
         speed: pose.targetSpeed, yawRate: asset.points[0].yawRate ?? 0 }, pose.trajectoryHeading);
     }
@@ -101,7 +101,7 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
   const brakePoint = asset.points.reduce((a, b) => (b.forwardAcceleration ?? 0) < (a.forwardAcceleration ?? 0) ? b : a);
   const stopped = { ...createAiField()[0], progress: brakePoint.progress, lap: 1, pitLap: 999 };
   const recovery = new RapierRacePhysics(createVehicle(-10000, -10000, 0), [stopped]);
-  const stopPose = sampleRuntimeRacingLinePose('sakura-esses', brakePoint.progress);
+  const stopPose = sampleRuntimeRacingLinePose('serra-circuit', brakePoint.progress);
   recovery.setAiState(0, createVehicle(stopPose.x, stopPose.y, stopPose.heading));
   let recoveryStall = 0, maxRecoveryStall = 0;
   try {
