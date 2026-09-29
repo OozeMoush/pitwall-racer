@@ -29,7 +29,7 @@ const PIT_PROJECTION_SPACING_METRES = 3;
 // Sample a little beyond one road-mesh chord so detached 34 m pit offsets
 // do not amplify small centreline tangent changes into visible metre-scale
 // jumps on race-scale layouts such as Harbor Chicane.
-const PIT_TRACK_TANGENT_METRES = 8;
+const PIT_TRACK_TANGENT_METRES = 12;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
