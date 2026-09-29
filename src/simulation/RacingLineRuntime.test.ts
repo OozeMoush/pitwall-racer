@@ -73,12 +73,16 @@ describe('RacingLineRuntime', () => {
 
   it('derives early braking from a player speed profile instead of the old machine brake trace', () => {
     const grip = 1.1;
+    const trackLength = trackLengthFor('pitwall-gp');
+    const brakeProbe = 0.30;
+    const slowStart = brakeProbe + 120 / trackLength;
+    const slowEnd = slowStart + 160 / trackLength;
     const points = Array.from({ length: 160 }, (_, index) => {
       const progress = index / 160;
       return {
         progress,
         laneOffset: 0,
-        targetSpeed: progress >= 0.34 && progress <= 0.48 ? 34 : 82,
+        targetSpeed: progress >= slowStart && progress <= slowEnd ? 34 : 82,
       };
     });
     setRuntimeRacingLine('pitwall-gp', {
@@ -89,7 +93,7 @@ describe('RacingLineRuntime', () => {
       points,
     });
 
-    const brake = racingLineBrakeIntent('pitwall-gp', 0.30, grip, 82);
+    const brake = racingLineBrakeIntent('pitwall-gp', brakeProbe, grip, 82);
     expect(brake).toBeGreaterThan(0.15);
   });
 
@@ -472,12 +476,13 @@ describe('RacingLineRuntime', () => {
       }),
     });
 
-    const before = activeReferenceTarget('pitwall-gp', 0.999, grip);
-    const after = activeReferenceTarget('pitwall-gp', 0.001, grip);
+    const seamProbe = 2 / trackLengthFor('pitwall-gp');
+    const before = activeReferenceTarget('pitwall-gp', 1 - seamProbe, grip);
+    const after = activeReferenceTarget('pitwall-gp', seamProbe, grip);
     expect(Math.abs(after.laneOffset - before.laneOffset)).toBeLessThan(4);
 
-    const beforePose = sampleRuntimeRacingLinePose('pitwall-gp', 0.999);
-    const afterPose = sampleRuntimeRacingLinePose('pitwall-gp', 0.001);
+    const beforePose = sampleRuntimeRacingLinePose('pitwall-gp', 1 - seamProbe);
+    const afterPose = sampleRuntimeRacingLinePose('pitwall-gp', seamProbe);
     expect(Math.hypot(
       afterPose.x - beforePose.x,
       afterPose.y - beforePose.y,
