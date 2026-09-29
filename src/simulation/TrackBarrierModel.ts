@@ -40,34 +40,47 @@ export function safetyBarrierSegments(): SafetyBarrierSegment[] {
     const baseEnd = (index + 1) / baseCount;
 
     for (const side of [-1, 1] as const) {
-      const roughStart = sampleTrack(baseStart, side * TRACK_BARRIER_OFFSET);
-      const roughEnd = sampleTrack(baseEnd >= 1 ? 0 : baseEnd, side * TRACK_BARRIER_OFFSET);
-      const roughLength = Math.hypot(roughEnd.x - roughStart.x, roughEnd.y - roughStart.y);
-      const subdivisionCount = Math.max(1, Math.ceil(roughLength / MAX_BARRIER_CHORD_LENGTH));
-
-      for (let sub = 0; sub < subdivisionCount; sub++) {
-        const startProgress = baseStart + (baseEnd - baseStart) * (sub / subdivisionCount);
-        const endProgress = baseStart + (baseEnd - baseStart) * ((sub + 1) / subdivisionCount);
-        const progress = (startProgress + endProgress) * 0.5;
-        const profile = trackProfile(progress);
-        if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) continue;
-
-        const start = sampleTrack(startProgress, side * TRACK_BARRIER_OFFSET);
-        const end = sampleTrack(endProgress >= 1 ? 0 : endProgress, side * TRACK_BARRIER_OFFSET);
-        const x = (start.x + end.x) * 0.5;
-        const y = (start.y + end.y) * 0.5;
-        const nearestTrack = projectTrack(x, y);
-        if (nearestTrack.distance < MIN_OTHER_ROAD_CLEARANCE) continue;
-
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const length = Math.hypot(dx, dy);
-        if (!Number.isFinite(length) || length < 0.2) continue;
-
-        segments.push({ side, progress, x, y, heading: Math.atan2(dy, dx), length });
-      }
+      appendBarrierInterval(segments, side, baseStart, baseEnd, 0);
     }
   }
 
   return segments;
+}
+
+const MAX_BARRIER_SUBDIVISION_DEPTH = 8;
+
+function appendBarrierInterval(
+  segments: SafetyBarrierSegment[],
+  side: -1 | 1,
+  startProgress: number,
+  endProgress: number,
+  depth: number,
+): void {
+  const start = sampleTrack(startProgress, side * TRACK_BARRIER_OFFSET);
+  const end = sampleTrack(endProgress >= 1 ? 0 : endProgress, side * TRACK_BARRIER_OFFSET);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (!Number.isFinite(length) || length < 0.2) return;
+
+  // The rough end-to-end chord can underestimate the offset-path curvature.
+  // Subdivide the actual candidate recursively so MAX_BARRIER_CHORD_LENGTH is
+  // a real guarantee even on race-scale bends.
+  if (length > MAX_BARRIER_CHORD_LENGTH && depth < MAX_BARRIER_SUBDIVISION_DEPTH) {
+    const middle = (startProgress + endProgress) * 0.5;
+    appendBarrierInterval(segments, side, startProgress, middle, depth + 1);
+    appendBarrierInterval(segments, side, middle, endProgress, depth + 1);
+    return;
+  }
+
+  const progress = (startProgress + endProgress) * 0.5;
+  const profile = trackProfile(progress);
+  if (!shouldPlaceSafetyBarrier(progress, side, profile.signedTurn, profile.severity)) return;
+
+  const x = (start.x + end.x) * 0.5;
+  const y = (start.y + end.y) * 0.5;
+  const nearestTrack = projectTrack(x, y);
+  if (nearestTrack.distance < MIN_OTHER_ROAD_CLEARANCE) return;
+
+  segments.push({ side, progress, x, y, heading: Math.atan2(dy, dx), length });
 }

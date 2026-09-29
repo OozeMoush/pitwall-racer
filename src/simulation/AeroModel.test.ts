@@ -47,8 +47,10 @@ describe('aerodynamicEffect', () => {
   });
 
   it('keeps the wake continuous across the start finish line', () => {
-    const subject: AeroCarPose = { id: 'you', lap: 3, progress: 0.995, laneOffset: 0 };
-    const ahead: AeroCarPose = { id: 'ahead', lap: 4, progress: 0.006, laneOffset: 0 };
+    // Express the seam gap in metres: fixed progress deltas grow with the
+    // circuit and would put these cars outside the 78 m wake on Pitwall GP 2.0.
+    const subject = car('you', TRACK_LENGTH - 30, 0, 3);
+    const ahead = car('ahead', 12, 0, 4);
     const effect = aerodynamicEffect(subject, [ahead]);
     expect(effect.tow).toBeGreaterThan(0);
   });

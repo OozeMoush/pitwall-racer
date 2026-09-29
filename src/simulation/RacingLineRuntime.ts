@@ -5,7 +5,7 @@ import {
   type ReferenceLapSample,
 } from './ReferenceDriverModel';
 import { sampleRacingLineAsset, type RacingLineAsset } from './RacingLineAsset';
-import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
+import { sampleTrack, trackLengthFor, TRACK_LENGTH, type TrackId } from './TrackModel';
 
 const active = new Map<TrackId, RacingLineAsset>();
 const seamRepairs = new WeakSet<RacingLineAsset>();
@@ -14,7 +14,7 @@ const MIN_BRAKE_LOOKAHEAD_METRES = 96;
 const MAX_BRAKE_LOOKAHEAD_METRES = 240;
 const AXF_SPEED_GUARD_DEADBAND = 4.0;
 const AXF_SPEED_GUARD_CORRECTION_DISTANCE = 36;
-const EXPLICIT_LINE_SEAM_BLEND_SPAN = 0.018;
+const EXPLICIT_LINE_SEAM_BLEND_METRES = 36;
 
 export function setRuntimeRacingLine(
   trackId: TrackId,
@@ -34,12 +34,16 @@ export function setRuntimeRacingLine(
   const seamProgressSpan = first && last
     ? Math.max(0.000001, 1 + first.progress - last.progress)
     : 0;
-  const seamDistance = seamProgressSpan * TRACK_LENGTH;
+  const seamDistance = seamProgressSpan * trackLengthFor(trackId);
   const laneJump = first && last
     ? Math.abs(first.laneOffset - last.laneOffset)
     : 0;
+  const seamSlope = laneJump / Math.max(1, seamDistance);
 
-  if (laneJump > seamDistance) seamRepairs.add(asset);
+  // Legacy 320-point assets become much more widely spaced on an 8 km track.
+  // Detect an implausible wrap by lateral slope, not by requiring the lateral
+  // jump to exceed the whole along-track sample spacing.
+  if (laneJump > 4 && seamSlope > 0.45) seamRepairs.add(asset);
   else seamRepairs.delete(asset);
 
   active.set(trackId, asset);
@@ -167,7 +171,7 @@ export function sampleRuntimeRacingLinePose(
     0,
     1,
   );
-  const repairBlend = seamRepairs.has(asset) ? seamBlendAmount(p) : 0;
+  const repairBlend = seamRepairs.has(asset) ? seamBlendAmount(asset, p) : 0;
   const headingBlend = Math.max(localSeamBlend, repairBlend);
   const interpolatedX = lerp(aPose.x, bPose.x, t);
   const interpolatedY = lerp(aPose.y, bPose.y, t);
@@ -607,27 +611,19 @@ function seamSafeLaneOffset(
 ): number {
   if (!seamRepairs.has(asset)) return fallbackLane;
 
+  const span = explicitLineSeamBlendSpan(asset.trackId);
   const p = wrap01(progress);
-  if (
-    p >= EXPLICIT_LINE_SEAM_BLEND_SPAN
-    && p <= 1 - EXPLICIT_LINE_SEAM_BLEND_SPAN
-  ) {
+  if (p >= span && p <= 1 - span) {
     return fallbackLane;
   }
 
-  const before = sampleRacingLineAsset(
-    asset,
-    1 - EXPLICIT_LINE_SEAM_BLEND_SPAN,
-  ).laneOffset;
-  const after = sampleRacingLineAsset(
-    asset,
-    EXPLICIT_LINE_SEAM_BLEND_SPAN,
-  ).laneOffset;
-  const seamProgress = p < EXPLICIT_LINE_SEAM_BLEND_SPAN
-    ? p + EXPLICIT_LINE_SEAM_BLEND_SPAN
-    : p - (1 - EXPLICIT_LINE_SEAM_BLEND_SPAN);
+  const before = sampleRacingLineAsset(asset, 1 - span).laneOffset;
+  const after = sampleRacingLineAsset(asset, span).laneOffset;
+  const seamProgress = p < span
+    ? p + span
+    : p - (1 - span);
   const t = clamp(
-    seamProgress / (EXPLICIT_LINE_SEAM_BLEND_SPAN * 2),
+    seamProgress / (span * 2),
     0,
     1,
   );
@@ -635,10 +631,18 @@ function seamSafeLaneOffset(
   return lerp(before, after, smooth);
 }
 
-function seamBlendAmount(progress: number): number {
+function explicitLineSeamBlendSpan(trackId: TrackId): number {
+  return clamp(
+    EXPLICIT_LINE_SEAM_BLEND_METRES / Math.max(1, trackLengthFor(trackId)),
+    0.0015,
+    0.04,
+  );
+}
+
+function seamBlendAmount(asset: RacingLineAsset, progress: number): number {
   const p = wrap01(progress);
   const distance = Math.min(p, 1 - p);
-  return 1 - clamp(distance / EXPLICIT_LINE_SEAM_BLEND_SPAN, 0, 1);
+  return 1 - clamp(distance / explicitLineSeamBlendSpan(asset.trackId), 0, 1);
 }
 
 function interpolateAngle(a: number, b: number, t: number): number {

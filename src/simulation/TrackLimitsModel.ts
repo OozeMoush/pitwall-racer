@@ -1,3 +1,5 @@
+import { DEFAULT_PIT_LANE_DEFINITION, getActiveTrack, TRACK_LENGTH } from './TrackModel';
+
 // Shared physical/visual circuit dimensions. The centreline is miniature, but
 // the road deliberately remains generous enough for two-car racing and for the
 // faster arcade steering line to breathe through the tighter-radius corners.
@@ -26,18 +28,32 @@ export const TRACK_BARRIER_OFFSET = TRACK_ROAD_HALF_WIDTH + 8.5;
 export const TRACK_BARRIER_SEGMENT_LENGTH = 5.4;
 export const TRACK_BARRIER_HALF_THICKNESS = 0.75;
 
-// Keep only two door-sized openings around the actual pit entry and exit.
-const PIT_ENTRY_GAP_START = 0.898;
-const PIT_ENTRY_GAP_END = 0.924;
-const PIT_EXIT_GAP_START = 0.056;
-const PIT_EXIT_GAP_END = 0.087;
+// Keep the pit-side wall openings physical as circuits change scale. The old
+// fixed progress windows worked on ~2 km layouts but left a solid wall across
+// Pitwall GP 2.0's new entry at 0.985.
+const PIT_BARRIER_OPENING_HALF_METRES = 48;
 
 export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
-  const p = ((progress % 1) + 1) % 1;
   if (side < 0) return true;
-  const pitEntryOpening = p >= PIT_ENTRY_GAP_START && p <= PIT_ENTRY_GAP_END;
-  const pitExitOpening = p >= PIT_EXIT_GAP_START && p <= PIT_EXIT_GAP_END;
+
+  const p = wrap01(progress);
+  const pitLane = getActiveTrack().pitLane ?? DEFAULT_PIT_LANE_DEFINITION;
+  const entry = wrap01(pitLane.entryProgress);
+  const exit = wrap01(entry + pitLane.lengthMetres / Math.max(1, TRACK_LENGTH));
+  const halfSpan = PIT_BARRIER_OPENING_HALF_METRES / Math.max(1, TRACK_LENGTH);
+
+  const pitEntryOpening = circularProgressDistance(p, entry) <= halfSpan;
+  const pitExitOpening = circularProgressDistance(p, exit) <= halfSpan;
   return !(pitEntryOpening || pitExitOpening);
+}
+
+function circularProgressDistance(a: number, b: number): number {
+  const delta = Math.abs(wrap01(a - b));
+  return Math.min(delta, 1 - delta);
+}
+
+function wrap01(value: number): number {
+  return ((value % 1) + 1) % 1;
 }
 
 export function shouldPlaceSafetyBarrier(
