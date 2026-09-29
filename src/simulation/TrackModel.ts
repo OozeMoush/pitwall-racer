@@ -232,8 +232,12 @@ export const TRACKS: readonly TrackDefinition[] = [
       extensionMetres: 3000,
       outStart: 0.02,
       outEnd: 0.30,
-      backStart: 0.78,
-      backEnd: 0.94,
+      // The linked esses all travel broadly westward. Return the added X
+      // distance gradually across that whole sequence instead of forcing the
+      // entire 3 km correction into the short final arc, which created an
+      // artificial low-speed kink and pit-path discontinuity.
+      backStart: 0.47,
+      backEnd: 0.86,
     },
     distanceScale: 1,
     referenceLapSeconds: 90,
