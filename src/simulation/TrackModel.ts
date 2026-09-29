@@ -223,7 +223,22 @@ export const TRACKS: readonly TrackDefinition[] = [
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
-  { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES, referenceLapSeconds: 21.896, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'sakura-esses',
+    name: 'SAKURA ESSES',
+    subtitle: 'GRAND PRIX · LINKED ESSES · HAIRPIN',
+    controls: SAKURA_ESSES,
+    stretch: {
+      extensionMetres: 3000,
+      outStart: 0.02,
+      outEnd: 0.30,
+      backStart: 0.78,
+      backEnd: 0.94,
+    },
+    distanceScale: 1,
+    referenceLapSeconds: 90,
+    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+  },
   { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE, referenceLapSeconds: 31.156, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT, referenceLapSeconds: 23.119, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   {
