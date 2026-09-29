@@ -1,8 +1,10 @@
 import {
   DEFAULT_PIT_LANE_DEFINITION,
   getActiveTrack,
+  getTrackDefinition,
   sampleTrack,
   TRACK_LENGTH,
+  type TrackId,
 } from './TrackModel';
 
 /** Default entry retained for tests/tools that need the Pitwall GP baseline. */
@@ -128,12 +130,23 @@ export function pitStopDurationSeconds(): number {
 }
 
 export function pitStopTimeLossEstimateSeconds(): number {
-  const laneLength = pitLaneLengthMetres();
-  const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
-  return Math.max(
-    PIT_SERVICE_SECONDS,
-    pitStopDurationSeconds() - mainlineSeconds,
+  return pitStopTimeLossForLaneLength(pitLaneLengthMetres());
+}
+
+/** Pure per-circuit estimate for strategy tooling; does not mutate active track. */
+export function pitStopTimeLossEstimateSecondsFor(trackId: TrackId): number {
+  const definition = getTrackDefinition(trackId);
+  const laneLength = Math.max(
+    120,
+    definition.pitLane?.lengthMetres ?? DEFAULT_PIT_LANE_DEFINITION.lengthMetres,
   );
+  return pitStopTimeLossForLaneLength(laneLength);
+}
+
+function pitStopTimeLossForLaneLength(laneLength: number): number {
+  const fullPitSeconds = laneLength / PIT_SPEED + PIT_SERVICE_SECONDS;
+  const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
+  return Math.max(PIT_SERVICE_SECONDS, fullPitSeconds - mainlineSeconds);
 }
 
 /**
