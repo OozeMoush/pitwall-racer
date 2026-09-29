@@ -35,6 +35,9 @@ describe('TrackModel', () => {
       } else if (track.id === 'baku-street') {
         expect(TRACK_LENGTH).toBeGreaterThan(5500);
         expect(TRACK_LENGTH).toBeLessThan(6500);
+      } else if (track.id === 'velocity-park') {
+        expect(TRACK_LENGTH).toBeGreaterThan(7800);
+        expect(TRACK_LENGTH).toBeLessThan(9000);
       } else {
         expect(TRACK_LENGTH).toBeGreaterThan(1400);
         expect(TRACK_LENGTH).toBeLessThan(2600);

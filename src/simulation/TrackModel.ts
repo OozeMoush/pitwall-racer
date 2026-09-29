@@ -18,12 +18,23 @@ export interface PitLaneDefinition {
   laneOffset: number;
 }
 
+interface TrackStretchDefinition {
+  extensionMetres: number;
+  outStart: number;
+  outEnd: number;
+  backStart: number;
+  backEnd: number;
+  xDirection?: number;
+  yDirection?: number;
+}
+
 export interface TrackDefinition {
   id: TrackId;
   name: string;
   subtitle: string;
   controls: readonly TrackPoint[];
   geometry?: 'smooth' | 'street' | 'pitwall-grand-prix';
+  stretch?: TrackStretchDefinition;
   referenceLaneMode?: 'optimized' | 'centerline';
   /** Metre conversion for gameplay lookaheads; 1 for race-scale layouts. */
   distanceScale?: number;
@@ -47,8 +58,8 @@ export interface TrackProjection {
   y: number;
 }
 
-// Legacy fictional circuits still use the original miniature scale while
-// race-scale layouts (Pitwall GP 2.0 and Baku) use real metre lookaheads.
+// Some fictional circuits still use the original miniature scale while
+// race-scale layouts use real metre lookaheads.
 // Gameplay distances therefore follow the active circuit instead of silently
 // shrinking every real-world metre by 0.42.
 export const MINIATURE_TRACK_SCALE = 0.42;
@@ -180,7 +191,22 @@ export const TRACKS: readonly TrackDefinition[] = [
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
-  { id: 'velocity-park', name: 'VELOCITY PARK', subtitle: 'MINIATURE · HIGH SPEED · HEAVY BRAKING', controls: VELOCITY_PARK, referenceLapSeconds: 19.764, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'velocity-park',
+    name: 'VELOCITY PARK',
+    subtitle: 'GRAND PRIX · HIGH SPEED · HEAVY BRAKING',
+    controls: VELOCITY_PARK,
+    stretch: {
+      extensionMetres: 3200,
+      outStart: 0.02,
+      outEnd: 0.28,
+      backStart: 0.46,
+      backEnd: 0.58,
+    },
+    distanceScale: 1,
+    referenceLapSeconds: 90,
+    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+  },
   { id: 'switchback-ring', name: 'SWITCHBACK RING', subtitle: 'MINIATURE · TECHNICAL · TYRE TEST', controls: SWITCHBACK_RING, referenceLapSeconds: 21.192, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES, referenceLapSeconds: 21.896, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE, referenceLapSeconds: 31.156, pitLane: DEFAULT_PIT_LANE_DEFINITION },
@@ -413,9 +439,63 @@ function buildTrackCentreline(definition: TrackDefinition): readonly TrackPoint[
     return buildClosedRoundedStreet(definition.controls, SAMPLES_PER_CONTROL);
   }
   const smooth = buildClosedCatmullRom(definition.controls, SAMPLES_PER_CONTROL);
-  return definition.geometry === 'pitwall-grand-prix'
+  const geometry = definition.geometry === 'pitwall-grand-prix'
     ? stretchPitwallGrandPrix(smooth)
     : smooth;
+  return definition.stretch
+    ? stretchTrackSections(geometry, definition.stretch)
+    : geometry;
+}
+
+function stretchTrackSections(
+  base: readonly TrackPoint[],
+  definition: TrackStretchDefinition,
+): TrackPoint[] {
+  if (base.length < 2) return base.map((point) => ({ ...point }));
+
+  const segmentLengths = base.map((point, index) => {
+    const next = base[(index + 1) % base.length];
+    return Math.hypot(next.x - point.x, next.y - point.y);
+  });
+  const baseLength = segmentLengths.reduce((sum, value) => sum + value, 0);
+  const directionLength = Math.hypot(
+    definition.xDirection ?? 1,
+    definition.yDirection ?? 0,
+  );
+  const nx = (definition.xDirection ?? 1) / Math.max(0.0001, directionLength);
+  const ny = (definition.yDirection ?? 0) / Math.max(0.0001, directionLength);
+  let along = 0;
+
+  return base.map((point, index) => {
+    const progress = baseLength <= 0 ? 0 : along / baseLength;
+    const weight = stretchWeight(progress, definition);
+    along += segmentLengths[index];
+    return {
+      x: point.x + nx * definition.extensionMetres * weight,
+      y: point.y + ny * definition.extensionMetres * weight,
+    };
+  });
+}
+
+function stretchWeight(
+  progress: number,
+  definition: TrackStretchDefinition,
+): number {
+  if (progress <= definition.outStart) return 0;
+  if (progress < definition.outEnd) {
+    return smoothstep01(
+      (progress - definition.outStart)
+      / Math.max(0.0001, definition.outEnd - definition.outStart),
+    );
+  }
+  if (progress <= definition.backStart) return 1;
+  if (progress < definition.backEnd) {
+    return 1 - smoothstep01(
+      (progress - definition.backStart)
+      / Math.max(0.0001, definition.backEnd - definition.backStart),
+    );
+  }
+  return 0;
 }
 
 function segmentAtDistance(distance: number): Segment {
