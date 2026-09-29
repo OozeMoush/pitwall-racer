@@ -27,7 +27,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 
 ## Race setup
 
-The pre-race menu currently offers seven miniature circuits:
+The pre-race menu currently offers race-scale Pitwall GP plus six legacy miniature circuits:
 
 - Pitwall GP
 - Velocity Park
@@ -37,7 +37,7 @@ The pre-race menu currently offers seven miniature circuits:
 - Serra Circuit
 - Baku Street
 
-Choose a starting tyre and a race distance of **40 / 50 / 60 laps**. The default is **50 laps**.
+Choose a starting tyre and a **SHORT / STANDARD / LONG** race duration. Lap count is derived per circuit from its representative pace; STANDARD targets roughly **27 minutes**.
 
 The circuits deliberately have different characters: balanced, high-speed, technical, rhythm, street-style and short-lap layouts. Track presentation uses a common visual language for road edges, runoff, kerbs, barriers, pit buildings and trackside references.
 
