@@ -26,7 +26,10 @@ const PIT_EXIT_RAMP_T = 0.10;
 const PIT_BOX_SLOT_START = 0.30;
 const PIT_BOX_SLOT_SPACING = 0.028;
 const PIT_PROJECTION_SPACING_METRES = 3;
-const PIT_TRACK_TANGENT_METRES = 5.5;
+// Sample a little beyond one road-mesh chord so detached 34 m pit offsets
+// do not amplify small centreline tangent changes into visible metre-scale
+// jumps on race-scale layouts such as Harbor Chicane.
+const PIT_TRACK_TANGENT_METRES = 8;
 
 export type PitPhase = 'IDLE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' | 'DONE';
 
