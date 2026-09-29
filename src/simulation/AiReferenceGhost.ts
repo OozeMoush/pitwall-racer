@@ -9,7 +9,14 @@ import {
 } from './RacingLineRuntime';
 import { surfaceEffect } from './SurfaceModel';
 import { createTire } from './TireModel';
-import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
+import {
+  getActiveTrack,
+  projectTrackNear,
+  sampleTrack,
+  setActiveTrack,
+  TRACK_LENGTH,
+  type TrackId,
+} from './TrackModel';
 import { createVehicle, type VehicleState } from './VehicleModel';
 
 const CORE_POWER_BOOST = 0.22;
@@ -64,6 +71,11 @@ export class AiReferenceGhost {
     timeFromInitialState = false,
   ) {
     this.trackId = trackId;
+    // AiReferenceGhost is explicitly bound to one circuit, but several lower
+    // simulation layers still read TrackModel's active circuit. Establish the
+    // requested context before constructing physics/reference state so an
+    // ambient setup-screen or test circuit cannot silently leak in.
+    if (getActiveTrack().id !== trackId) setActiveTrack(trackId);
     const base = createAiField()[0];
     const lineAsset = runtimeRacingLine(trackId);
     const freshSoft = createTire('SOFT');
@@ -120,6 +132,11 @@ export class AiReferenceGhost {
   }
 
   step(dt: number): void {
+    // Keep the replay tied to the circuit it was created for. This matters in
+    // debug tooling and in regression suites where other circuit simulations
+    // may run before the next ghost step.
+    if (getActiveTrack().id !== this.trackId) setActiveTrack(this.trackId);
+
     const state = this.physics.aiStates()[0];
     if (!state) return;
 
