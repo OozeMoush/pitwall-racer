@@ -44,6 +44,9 @@ describe('TrackModel', () => {
       } else if (track.id === 'sakura-esses') {
         expect(TRACK_LENGTH).toBeGreaterThan(7000);
         expect(TRACK_LENGTH).toBeLessThan(8500);
+      } else if (track.id === 'harbor-chicane') {
+        expect(TRACK_LENGTH).toBeGreaterThan(7000);
+        expect(TRACK_LENGTH).toBeLessThan(8500);
       } else {
         expect(TRACK_LENGTH).toBeGreaterThan(1400);
         expect(TRACK_LENGTH).toBeLessThan(2600);

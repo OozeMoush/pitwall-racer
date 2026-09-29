@@ -243,7 +243,22 @@ export const TRACKS: readonly TrackDefinition[] = [
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
-  { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE, referenceLapSeconds: 31.156, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'harbor-chicane',
+    name: 'HARBOR CHICANE',
+    subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE',
+    controls: HARBOR_CHICANE,
+    stretch: {
+      extensionMetres: 2800,
+      outStart: 0.18,
+      outEnd: 0.44,
+      backStart: 0.675,
+      backEnd: 0.966,
+    },
+    distanceScale: 1,
+    referenceLapSeconds: 90,
+    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+  },
   { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT, referenceLapSeconds: 23.119, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   {
     id: 'baku-street',
