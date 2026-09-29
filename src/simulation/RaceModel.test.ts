@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { raceLapsForPreset } from '../game/RaceSetup';
+import { benchmarkStrategies, simulateStrategy, strategyRaceProfile } from './StrategySimulator';
 import { createTire, type Compound } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import {
@@ -17,18 +18,18 @@ describe('RaceModel', () => {
   it('spreads AI strategies across the duration-derived standard race', () => {
     const totalLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
     const field = createAiField(undefined, totalLaps);
-    expect(field.filter((driver) => driver.nextCompound === 'HARD')).toHaveLength(2);
-    expect(field.filter((driver) => driver.nextCompound === 'SOFT')).toHaveLength(3);
-    expect(field.filter((driver) => driver.nextCompound === 'MEDIUM')).toHaveLength(2);
+    expect(field.filter((driver) => driver.nextCompound === 'HARD')).toHaveLength(3);
+    expect(field.filter((driver) => driver.nextCompound === 'SOFT')).toHaveLength(1);
+    expect(field.filter((driver) => driver.nextCompound === 'MEDIUM')).toHaveLength(3);
     expect(field.find((driver) => driver.name === 'ORBIT')?.plannedPitLap)
-      .toBe(Math.round(totalLaps * 0.72));
+      .toBe(Math.round(totalLaps * 0.39));
     expect(field.find((driver) => driver.name === 'RIFT')?.plannedPitLap)
-      .toBe(Math.round(totalLaps * 0.76));
+      .toBe(Math.round(totalLaps * 0.39));
 
     const kite = field.find((driver) => driver.name === 'KITE')!;
     expect(kite.pitPlan).toEqual([
-      { plannedLap: Math.round(totalLaps * 0.24), compound: 'MEDIUM' },
-      { plannedLap: Math.round(totalLaps * 0.72), compound: 'SOFT' },
+      { plannedLap: Math.round(totalLaps * 0.39), compound: 'MEDIUM' },
+      { plannedLap: Math.round(totalLaps * 0.67), compound: 'HARD' },
     ]);
     expect(kite.pitStopIndex).toBe(0);
   });
@@ -44,10 +45,34 @@ describe('RaceModel', () => {
 
     expect(afterFirstStop.tire.compound).toBe('MEDIUM');
     expect(afterFirstStop.pitStopIndex).toBe(1);
-    expect(afterFirstStop.nextCompound).toBe('SOFT');
+    expect(afterFirstStop.nextCompound).toBe('HARD');
     expect(afterFirstStop.plannedPitLap).toBe(kite.pitPlan[1].plannedLap);
     expect(afterFirstStop.pitLap).toBe(kite.pitPlan[1].plannedLap);
     expect(afterFirstStop.strategyIntent).toBe('PLAN');
+  });
+
+  it('keeps every live standard CPU plan within the competitive strategy envelope', () => {
+    const totalLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
+    const race = strategyRaceProfile('pitwall-gp', totalLaps);
+    const benchmark = benchmarkStrategies(race);
+    const field = createAiField(undefined, totalLaps);
+
+    for (const driver of field) {
+      const result = simulateStrategy({
+        name: driver.name,
+        startCompound: driver.tire.compound,
+        stops: driver.pitPlan.map((stop) => ({
+          afterLap: stop.plannedLap,
+          compound: stop.compound,
+        })),
+        paceForLap: () => 'BALANCED',
+      }, race);
+
+      expect(
+        result.totalTime - benchmark.fastest.totalTime,
+        `${driver.name} strategy gap`,
+      ).toBeLessThan(13);
+    }
   });
 
   it('scales planned pit windows with the selected duration preset', () => {
@@ -56,11 +81,11 @@ describe('RaceModel', () => {
     const short = createAiField(undefined, shortLaps);
     const long = createAiField(undefined, longLaps);
     expect(short.find((driver) => driver.name === 'APEX')?.plannedPitLap)
-      .toBe(Math.round(shortLaps * 0.40));
+      .toBe(Math.round(shortLaps * 0.33));
     expect(long.find((driver) => driver.name === 'APEX')?.plannedPitLap)
-      .toBe(Math.round(longLaps * 0.40));
+      .toBe(Math.round(longLaps * 0.33));
     expect(long.find((driver) => driver.name === 'ZEN')?.plannedPitLap)
-      .toBe(Math.round(longLaps * 0.74));
+      .toBe(Math.round(longLaps * 0.61));
   });
 
   it('requires two distinct dry compounds', () => {

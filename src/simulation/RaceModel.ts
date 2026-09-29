@@ -66,10 +66,10 @@ export function createAiField(
   gridOrder?: readonly string[],
   totalLaps = 50,
 ): DriverState[] {
-  // Most cars run one stop, but one deliberately aggressive strategy adds a
-  // second stop. KITE attacks on Soft, uses Medium for the middle stint, then
-  // returns to Soft for the finish. Stop fractions scale with the selected
-  // duration-derived race lap count.
+  // Strategy families are anchored to the duration-scale benchmark rather
+  // than the retired fixed-lap race. Most cars run competitive M/H one-stops;
+  // NOVA keeps the viable short Soft opening stint, while KITE and RIFT expose
+  // two distinct two-stop families for live race variety.
   const plans: Array<[
     string,
     Compound,
@@ -78,12 +78,12 @@ export function createAiField(
     number,
   ]> = [
     ['NOVA', 'SOFT', [[0.22, 'HARD']], -4, 1.130],
-    ['APEX', 'MEDIUM', [[0.40, 'HARD']], 4, 1.136],
-    ['VOLT', 'HARD', [[0.62, 'MEDIUM']], -3, 1.120],
-    ['ORBIT', 'MEDIUM', [[0.72, 'SOFT']], 3, 1.131],
-    ['KITE', 'SOFT', [[0.24, 'MEDIUM'], [0.72, 'SOFT']], -4, 1.127],
-    ['RIFT', 'HARD', [[0.76, 'SOFT']], 3, 1.118],
-    ['ZEN', 'MEDIUM', [[0.74, 'SOFT']], 0, 1.129],
+    ['APEX', 'MEDIUM', [[0.33, 'HARD']], 4, 1.136],
+    ['VOLT', 'HARD', [[0.67, 'MEDIUM']], -3, 1.120],
+    ['ORBIT', 'MEDIUM', [[0.39, 'HARD']], 3, 1.131],
+    ['KITE', 'HARD', [[0.39, 'MEDIUM'], [0.67, 'HARD']], -4, 1.127],
+    ['RIFT', 'HARD', [[0.39, 'SOFT'], [0.61, 'HARD']], 3, 1.118],
+    ['ZEN', 'HARD', [[0.61, 'MEDIUM']], 0, 1.129],
   ];
 
   const safeRaceLaps = Math.max(6, Math.round(totalLaps));
@@ -257,10 +257,13 @@ function choosePitStrategy(
     return { pitLap: driver.pitLap, intent: driver.strategyIntent };
   }
 
-  // Let duration-derived races breathe: a strategy can move two laps either way
-  // rather than pinning every car to one exact scheduled stop lap.
-  const earliest = Math.max(4, driver.plannedPitLap - 2);
-  const latest = Math.min(totalLaps - 3, driver.plannedPitLap + 2);
+  // One-stop plans can react by two laps in either direction. Multi-stop
+  // plans stay on their benchmarked schedule: moving one stop by two laps can
+  // collapse the next stint into an immediate second pit visit on an 18-lap
+  // race, which is not useful racecraft.
+  const reactionWindow = driver.pitPlan.length > 1 ? 0 : 2;
+  const earliest = Math.max(4, driver.plannedPitLap - reactionWindow);
+  const latest = Math.min(totalLaps - 3, driver.plannedPitLap + reactionWindow);
 
   if (driver.lap >= earliest && driver.lap < driver.plannedPitLap && battleState === 'FOLLOW' && gapMetres < raceScaleDistance(42) && tireHealth > 0.24) {
     return { pitLap: earliest, intent: 'UNDERCUT' };
