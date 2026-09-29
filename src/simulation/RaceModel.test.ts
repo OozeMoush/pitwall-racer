@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { raceLapsForPreset } from '../game/RaceSetup';
 import { createTire, type Compound } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import {
@@ -13,44 +14,53 @@ import {
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
 describe('RaceModel', () => {
-  it('spreads AI strategies and includes an aggressive Soft-Medium-Soft two-stop', () => {
-    const field = createAiField(undefined, 50);
+  it('spreads AI strategies across the duration-derived standard race', () => {
+    const totalLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
+    const field = createAiField(undefined, totalLaps);
     expect(field.filter((driver) => driver.nextCompound === 'HARD')).toHaveLength(2);
     expect(field.filter((driver) => driver.nextCompound === 'SOFT')).toHaveLength(3);
     expect(field.filter((driver) => driver.nextCompound === 'MEDIUM')).toHaveLength(2);
-    expect(field.find((driver) => driver.name === 'ORBIT')?.plannedPitLap).toBe(36);
-    expect(field.find((driver) => driver.name === 'RIFT')?.plannedPitLap).toBe(38);
+    expect(field.find((driver) => driver.name === 'ORBIT')?.plannedPitLap)
+      .toBe(Math.round(totalLaps * 0.72));
+    expect(field.find((driver) => driver.name === 'RIFT')?.plannedPitLap)
+      .toBe(Math.round(totalLaps * 0.76));
 
     const kite = field.find((driver) => driver.name === 'KITE')!;
     expect(kite.pitPlan).toEqual([
-      { plannedLap: 12, compound: 'MEDIUM' },
-      { plannedLap: 36, compound: 'SOFT' },
+      { plannedLap: Math.round(totalLaps * 0.24), compound: 'MEDIUM' },
+      { plannedLap: Math.round(totalLaps * 0.72), compound: 'SOFT' },
     ]);
     expect(kite.pitStopIndex).toBe(0);
   });
 
   it('arms KITE second stop after completing the first scheduled stop', () => {
-    const kite = createAiField(undefined, 50).find((driver) => driver.name === 'KITE')!;
-    kite.lap = 12;
+    const totalLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
+    const kite = createAiField(undefined, totalLaps).find((driver) => driver.name === 'KITE')!;
+    kite.lap = kite.pitPlan[0].plannedLap;
     kite.progress = 0.999;
     kite.speed = 90;
     kite.strategyIntent = 'UNDERCUT';
-    const afterFirstStop = stepAi(kite, 0.1, 50);
+    const afterFirstStop = stepAi(kite, 0.1, totalLaps);
 
     expect(afterFirstStop.tire.compound).toBe('MEDIUM');
     expect(afterFirstStop.pitStopIndex).toBe(1);
     expect(afterFirstStop.nextCompound).toBe('SOFT');
-    expect(afterFirstStop.plannedPitLap).toBe(36);
-    expect(afterFirstStop.pitLap).toBe(36);
+    expect(afterFirstStop.plannedPitLap).toBe(kite.pitPlan[1].plannedLap);
+    expect(afterFirstStop.pitLap).toBe(kite.pitPlan[1].plannedLap);
     expect(afterFirstStop.strategyIntent).toBe('PLAN');
   });
 
-  it('scales planned pit windows with the selected race length', () => {
-    const forty = createAiField(undefined, 40);
-    const sixty = createAiField(undefined, 60);
-    expect(forty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(16);
-    expect(sixty.find((driver) => driver.name === 'APEX')?.plannedPitLap).toBe(24);
-    expect(sixty.find((driver) => driver.name === 'ZEN')?.plannedPitLap).toBe(44);
+  it('scales planned pit windows with the selected duration preset', () => {
+    const shortLaps = raceLapsForPreset('pitwall-gp', 'SHORT');
+    const longLaps = raceLapsForPreset('pitwall-gp', 'LONG');
+    const short = createAiField(undefined, shortLaps);
+    const long = createAiField(undefined, longLaps);
+    expect(short.find((driver) => driver.name === 'APEX')?.plannedPitLap)
+      .toBe(Math.round(shortLaps * 0.40));
+    expect(long.find((driver) => driver.name === 'APEX')?.plannedPitLap)
+      .toBe(Math.round(longLaps * 0.40));
+    expect(long.find((driver) => driver.name === 'ZEN')?.plannedPitLap)
+      .toBe(Math.round(longLaps * 0.74));
   });
 
   it('requires two distinct dry compounds', () => {
