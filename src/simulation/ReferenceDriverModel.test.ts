@@ -13,9 +13,9 @@ describe('machine-limit reference driver', () => {
     const telemetry = TRACKS.map((track) => {
       const lap = referenceLap(track.id, grip);
       expect(lap.lapSeconds).toBeGreaterThan(15);
-      if (track.id === 'pitwall-gp') {
-        expect(lap.lapSeconds).toBeGreaterThan(75);
-        expect(lap.lapSeconds).toBeLessThan(105);
+      if (track.distanceScale === 1) {
+        expect(lap.lapSeconds).toBeGreaterThan(70);
+        expect(lap.lapSeconds).toBeLessThan(110);
       } else {
         expect(lap.lapSeconds).toBeLessThan(60);
       }
@@ -53,7 +53,7 @@ describe('machine-limit reference driver', () => {
     const baku = referenceRacingLineAsset('baku-street', grip);
     expect(pitwall.points.length).toBeGreaterThan(1000);
     expect(pitwall.points.length).toBeGreaterThan(baku.points.length);
-    expect(baku.points.length).toBeGreaterThanOrEqual(320);
+    expect(baku.points.length).toBeGreaterThan(700);
   });
 
   it('makes tyre grip change the physical reference instead of changing engine power', () => {

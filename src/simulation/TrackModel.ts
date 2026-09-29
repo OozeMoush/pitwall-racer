@@ -47,9 +47,10 @@ export interface TrackProjection {
   y: number;
 }
 
-// Legacy circuits still use the original miniature scale while Pitwall GP 2.0
-// is authored at race scale. Gameplay lookaheads therefore follow the active
-// circuit instead of silently shrinking every real-world metre by 0.42.
+// Legacy fictional circuits still use the original miniature scale while
+// race-scale layouts (Pitwall GP 2.0 and Baku) use real metre lookaheads.
+// Gameplay distances therefore follow the active circuit instead of silently
+// shrinking every real-world metre by 0.42.
 export const MINIATURE_TRACK_SCALE = 0.42;
 export let TRACK_DISTANCE_SCALE = 1;
 export const TRACK_CENTRE_X = 1110;
@@ -144,11 +145,18 @@ const BAKU_STREET_SOURCE: readonly TrackPoint[] = [
   { x: 879, y: 959 }, { x: 899, y: 850 }, { x: 916, y: 814 }, { x: 1151, y: 631 },
 ];
 
-function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
+function scaleAroundCentre(
+  points: readonly TrackPoint[],
+  scale: number,
+): readonly TrackPoint[] {
   return points.map((point) => ({
-    x: TRACK_CENTRE_X + (point.x - TRACK_CENTRE_X) * MINIATURE_TRACK_SCALE,
-    y: TRACK_CENTRE_Y + (point.y - TRACK_CENTRE_Y) * MINIATURE_TRACK_SCALE,
+    x: TRACK_CENTRE_X + (point.x - TRACK_CENTRE_X) * scale,
+    y: TRACK_CENTRE_Y + (point.y - TRACK_CENTRE_Y) * scale,
   }));
+}
+
+function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
+  return scaleAroundCentre(points, MINIATURE_TRACK_SCALE);
 }
 
 const PITWALL_GP = miniature(PITWALL_GP_SOURCE);
@@ -157,7 +165,8 @@ const SWITCHBACK_RING = miniature(SWITCHBACK_RING_SOURCE);
 const SAKURA_ESSES = miniature(SAKURA_ESSES_SOURCE);
 const HARBOR_CHICANE = miniature([...HARBOR_CHICANE_SOURCE].reverse());
 const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
-const BAKU_STREET = miniature(BAKU_STREET_SOURCE);
+const BAKU_RACE_SCALE = 1.055;
+const BAKU_STREET = scaleAroundCentre(BAKU_STREET_SOURCE, BAKU_RACE_SCALE);
 
 export const TRACKS: readonly TrackDefinition[] = [
   {
@@ -176,7 +185,16 @@ export const TRACKS: readonly TrackDefinition[] = [
   { id: 'sakura-esses', name: 'SAKURA ESSES', subtitle: 'RHYTHM · LINKED ESSES · HAIRPIN', controls: SAKURA_ESSES, referenceLapSeconds: 21.896, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'harbor-chicane', name: 'HARBOR CHICANE', subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE', controls: HARBOR_CHICANE, referenceLapSeconds: 31.156, pitLane: DEFAULT_PIT_LANE_DEFINITION },
   { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT, referenceLapSeconds: 23.119, pitLane: DEFAULT_PIT_LANE_DEFINITION },
-  { id: 'baku-street', name: 'BAKU STREET', subtitle: 'BAKU CITY CIRCUIT · CASTLE · LONG STRAIGHT', controls: BAKU_STREET, geometry: 'street', referenceLapSeconds: 37.426, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'baku-street',
+    name: 'BAKU STREET',
+    subtitle: 'BAKU CITY CIRCUIT · CASTLE · LONG STRAIGHT',
+    controls: BAKU_STREET,
+    geometry: 'street',
+    distanceScale: 1,
+    referenceLapSeconds: 90,
+    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+  },
 ] as const;
 
 const SAMPLES_PER_CONTROL = 28;
