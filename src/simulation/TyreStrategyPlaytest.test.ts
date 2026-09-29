@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { simulateStrategy, type StrategyPlan } from './StrategySimulator';
+import { raceLapsForPreset } from '../game/RaceSetup';
+import {
+  benchmarkStrategies,
+  simulateStrategy,
+  strategyRaceProfile,
+  type StrategyPlan,
+} from './StrategySimulator';
 
-const TOTAL_LAPS = 50;
+const TOTAL_LAPS = raceLapsForPreset('pitwall-gp', 'STANDARD');
+const RACE = strategyRaceProfile('pitwall-gp', TOTAL_LAPS);
+
 const plans: StrategyPlan[] = [
   {
     name: 'M no stop',
@@ -9,74 +17,89 @@ const plans: StrategyPlan[] = [
     paceForLap: () => 'BALANCED',
   },
   {
-    name: 'M→H lap18',
+    name: 'M→H lap6',
     startCompound: 'MEDIUM',
-    stopAfterLap: 18,
-    nextCompound: 'HARD',
+    stops: [{ afterLap: 6, compound: 'HARD' }],
     paceForLap: () => 'BALANCED',
   },
   {
-    name: 'H→M lap32',
+    name: 'H→M lap12',
     startCompound: 'HARD',
-    stopAfterLap: 32,
-    nextCompound: 'MEDIUM',
+    stops: [{ afterLap: 12, compound: 'MEDIUM' }],
     paceForLap: () => 'BALANCED',
   },
   {
-    name: 'S→H lap11',
-    startCompound: 'SOFT',
-    stopAfterLap: 11,
-    nextCompound: 'HARD',
+    name: 'H→M→H laps7/11',
+    startCompound: 'HARD',
+    stops: [
+      { afterLap: 7, compound: 'MEDIUM' },
+      { afterLap: 11, compound: 'HARD' },
+    ],
     paceForLap: () => 'BALANCED',
   },
 ];
 
 describe('tyre strategy playtest telemetry', () => {
-  it('keeps the default 50-lap race strategically meaningful on current tyre scale', () => {
-    const results = plans.map((plan) => simulateStrategy(plan, TOTAL_LAPS));
+  it('keeps the standard duration race strategically meaningful on race-scale time', () => {
+    const results = plans.map((plan) => simulateStrategy(plan, RACE));
+    const snapshot = benchmarkStrategies(RACE);
     const noStop = results[0];
-    const legal = results.slice(1).sort((a, b) => a.totalTime - b.totalTime);
-    const bestLegal = legal[0];
-    const secondLegal = legal[1] ?? bestLegal;
-    const softAttack = legal.find((result) => result.name.startsWith('S→'))!;
-
-    const mediumHard = results[1];
-    const mediumStop = mediumHard.laps[17];
-    const hardFinish = mediumHard.laps[49];
+    const representativeOneStop = results[1];
+    const representativeTwoStop = results[3];
+    const softTwoStop = snapshot.twoStopResults.find(
+      (result) => result.usedCompounds.has('SOFT'),
+    )!;
 
     const metrics = {
-      noStopSeconds: Number(noStop.totalTime.toFixed(2)),
-      bestLegal: bestLegal.name,
-      bestLegalSeconds: Number(bestLegal.totalTime.toFixed(2)),
-      secondLegal: secondLegal.name,
-      secondBestGapSeconds: Number((secondLegal.totalTime - bestLegal.totalTime).toFixed(2)),
-      noStopPenaltySeconds: Number((noStop.totalTime - bestLegal.totalTime).toFixed(2)),
-      softAttackGapSeconds: Number((softAttack.totalTime - bestLegal.totalTime).toFixed(2)),
-      mediumStopWear: Number(mediumStop.wearAtEnd.toFixed(3)),
-      hardFinishWear: Number(hardFinish.wearAtEnd.toFixed(3)),
-      noStopLap20Wear: Number(noStop.laps[19].wearAtEnd.toFixed(3)),
-      noStopLap50Wear: Number(noStop.laps[49].wearAtEnd.toFixed(3)),
+      totalLaps: TOTAL_LAPS,
+      referenceRaceMinutes: Number(
+        (TOTAL_LAPS * RACE.representativeLapSeconds / 60).toFixed(2),
+      ),
+      pitLossSeconds: Number(RACE.pitLossSeconds.toFixed(2)),
+      fastest: snapshot.fastest.name,
+      fastestSeconds: Number(snapshot.fastest.totalTime.toFixed(2)),
+      fastestOneStop: snapshot.fastestOneStop.name,
+      fastestOneStopSeconds: Number(snapshot.fastestOneStop.totalTime.toFixed(2)),
+      fastestTwoStop: snapshot.fastestTwoStop.name,
+      fastestTwoStopSeconds: Number(snapshot.fastestTwoStop.totalTime.toFixed(2)),
+      oneTwoStopGapSeconds: Number(
+        Math.abs(
+          snapshot.fastestOneStop.totalTime - snapshot.fastestTwoStop.totalTime,
+        ).toFixed(2),
+      ),
+      softTwoStopGapSeconds: Number(
+        (softTwoStop.totalTime - snapshot.fastest.totalTime).toFixed(2),
+      ),
+      noStopPenaltySeconds: Number(
+        (noStop.totalTime - snapshot.fastest.totalTime).toFixed(2),
+      ),
+      mediumStopWear: Number(representativeOneStop.laps[5].wearAtEnd.toFixed(3)),
+      hardFinishWear: Number(representativeOneStop.laps.at(-1)!.wearAtEnd.toFixed(3)),
+      representativeTwoStopSeconds: Number(representativeTwoStop.totalTime.toFixed(2)),
+      noStopFinishWear: Number(noStop.laps.at(-1)!.wearAtEnd.toFixed(3)),
     };
 
     console.log(`TYRE_PLAYTEST_METRICS ${JSON.stringify(metrics)}`);
 
-    // A no-stop Medium is both illegal and physically a terrible 50-lap idea.
-    expect(metrics.noStopPenaltySeconds).toBeGreaterThan(120);
-    expect(metrics.noStopLap50Wear).toBeGreaterThan(0.95);
+    expect(metrics.referenceRaceMinutes).toBeGreaterThanOrEqual(25);
+    expect(metrics.referenceRaceMinutes).toBeLessThanOrEqual(30);
+    expect(metrics.pitLossSeconds).toBeGreaterThanOrEqual(18);
+    expect(metrics.pitLossSeconds).toBeLessThanOrEqual(24);
 
-    // Two opposite M/H stint orders should remain genuinely competitive.
-    expect(metrics.secondBestGapSeconds).toBeLessThan(5);
+    // The mandatory-stop rule has a real physical counterpart: staying on one
+    // Medium set to the flag reaches the cliff and loses meaningful race time.
+    expect(metrics.noStopPenaltySeconds).toBeGreaterThan(90);
+    expect(metrics.noStopFinishWear).toBeGreaterThan(0.95);
 
-    // Soft remains a usable attacking start rather than a completely dead choice.
-    expect(metrics.softAttackGapSeconds).toBeGreaterThan(0);
-    expect(metrics.softAttackGapSeconds).toBeLessThan(25);
+    // A normal one-stop and a deliberate two-stop must both be live choices.
+    expect(metrics.oneTwoStopGapSeconds).toBeLessThan(3);
+    expect(metrics.softTwoStopGapSeconds).toBeLessThan(6);
 
-    // The representative live-style stop windows should occur before the cliff.
-    expect(metrics.mediumStopWear).toBeGreaterThan(0.30);
-    expect(metrics.mediumStopWear).toBeLessThan(0.62);
-    expect(metrics.hardFinishWear).toBeGreaterThan(0.25);
-    expect(metrics.hardFinishWear).toBeLessThan(0.60);
-    expect(metrics.noStopLap20Wear).toBeGreaterThan(0.40);
-    expect(metrics.noStopLap20Wear).toBeLessThan(0.65);
+    // The representative M→H window reaches the stop/finish before either tyre
+    // is simply destroyed, leaving room for undercut/overcut movement.
+    expect(metrics.mediumStopWear).toBeGreaterThan(0.45);
+    expect(metrics.mediumStopWear).toBeLessThan(0.70);
+    expect(metrics.hardFinishWear).toBeGreaterThan(0.45);
+    expect(metrics.hardFinishWear).toBeLessThan(0.70);
   });
 });
