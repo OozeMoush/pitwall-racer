@@ -263,7 +263,7 @@ describe('dynamicAiControl', () => {
     const control = dynamicAiControl(driver, vehicle, []);
     expect(control.debug.pathError).toBeGreaterThan(3);
     expect(control.debug.pathError).toBeLessThan(5);
-    expect(control.targetSpeed).toBeGreaterThan(71);
+    expect(control.targetSpeed).toBeGreaterThan(vehicle.speed * 0.98);
     expect(control.debug.feedbackBrake).toBe(0);
     expect(control.brake).toBe(0);
   });
