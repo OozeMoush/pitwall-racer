@@ -99,10 +99,10 @@ describe('AiReferenceGhost', () => {
   });
 
   it('requires a full warmup lap before timed replay starts', () => {
-    setActiveTrack('sakura-esses');
-    setRuntimeRacingLine('sakura-esses', {
+    setActiveTrack('serra-circuit');
+    setRuntimeRacingLine('serra-circuit', {
       version: 1,
-      trackId: 'sakura-esses',
+      trackId: 'serra-circuit',
       source: 'PLAYER',
       referenceGrip: 1.18,
       points: Array.from({ length: 320 }, (_, index) => ({
@@ -112,7 +112,7 @@ describe('AiReferenceGhost', () => {
       })),
     });
 
-    const ghost = new AiReferenceGhost(0.75, 'sakura-esses');
+    const ghost = new AiReferenceGhost(0.75, 'serra-circuit');
     expect(ghost.warmupLapsRemaining()).toBe(2);
     expect(ghost.currentLapSeconds()).toBeUndefined();
 
@@ -160,12 +160,12 @@ describe('AiReferenceGhost', () => {
     expect(Math.abs(ghost.driver.progress - initial)).toBeGreaterThan(0.01);
   });
   it('replays a physically demonstrated lap close to the path that produced it', () => {
-    setActiveTrack('sakura-esses');
-    setRuntimeRacingLine('sakura-esses', undefined);
+    setActiveTrack('serra-circuit');
+    setRuntimeRacingLine('serra-circuit', undefined);
 
-    const source = new AiReferenceGhost(0.01, 'sakura-esses');
+    const source = new AiReferenceGhost(0.01, 'serra-circuit');
     const recorder = new PlayerRacingLineCandidateRecorder();
-    recorder.begin('sakura-esses', source.driver.tire.grip);
+    recorder.begin('serra-circuit', source.driver.tire.grip);
     let elapsed = 0;
     let previousProgress = 0.01;
     let recordedLapSeconds = 0;
@@ -196,9 +196,9 @@ describe('AiReferenceGhost', () => {
 
     const candidate = recorder.finish(recordedLapSeconds);
     expect(candidate).toBeDefined();
-    setRuntimeRacingLine('sakura-esses', candidate);
+    setRuntimeRacingLine('serra-circuit', candidate);
 
-    const replay = new AiReferenceGhost(0.01, 'sakura-esses');
+    const replay = new AiReferenceGhost(0.01, 'serra-circuit');
     let replayElapsed = 0;
     let replayPreviousProgress = 0.01;
     let replayLapSeconds = 0;
@@ -218,7 +218,7 @@ describe('AiReferenceGhost', () => {
         replay.driver.progress,
       );
       const lineProjection = projectRuntimeRacingLineNear(
-        'sakura-esses',
+        'serra-circuit',
         state.x,
         state.y,
         projection.progress,
