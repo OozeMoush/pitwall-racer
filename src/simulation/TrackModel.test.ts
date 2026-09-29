@@ -25,13 +25,16 @@ describe('TrackModel', () => {
     expect(TRACK_LENGTH).toBeLessThan(8400);
   });
 
-  it('supports a full-scale flagship alongside legacy miniature circuits', () => {
+  it('supports multiple race-scale circuits alongside legacy miniature circuits', () => {
     const lengths = TRACKS.map((track) => {
       setActiveTrack(track.id);
       expect(RACING_LINE.length).toBeGreaterThan(track.controls.length * 10);
       if (track.id === 'pitwall-gp') {
         expect(TRACK_LENGTH).toBeGreaterThan(7800);
         expect(TRACK_LENGTH).toBeLessThan(8400);
+      } else if (track.id === 'baku-street') {
+        expect(TRACK_LENGTH).toBeGreaterThan(5500);
+        expect(TRACK_LENGTH).toBeLessThan(6500);
       } else {
         expect(TRACK_LENGTH).toBeGreaterThan(1400);
         expect(TRACK_LENGTH).toBeLessThan(2600);
@@ -46,16 +49,16 @@ describe('TrackModel', () => {
     const circuit = TRACKS.find((entry) => entry.id === 'baku-street');
     expect(circuit?.geometry).toBe('street');
     expect(circuit?.controls.length).toBeGreaterThanOrEqual(30);
-    expect(TRACK_LENGTH).toBeGreaterThan(2250);
-    expect(TRACK_LENGTH).toBeLessThan(2450);
+    expect(TRACK_LENGTH).toBeGreaterThan(5500);
+    expect(TRACK_LENGTH).toBeLessThan(6500);
 
     const samples = Array.from({ length: 240 }, (_, index) => sampleTrack(index / 240));
     expect(hasNonAdjacentCrossing(samples)).toBe(false);
 
     const xs = samples.map((point) => point.x);
     const ys = samples.map((point) => point.y);
-    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(700);
-    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(500);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(1700);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1200);
   });
 
   it('has no discontinuous heading jumps around every closed circuit', () => {
