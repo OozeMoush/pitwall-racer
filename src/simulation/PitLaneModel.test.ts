@@ -105,8 +105,10 @@ describe('PitLaneModel', () => {
     expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
 
     setActiveTrack('baku-street');
-    expect(pitLaneLengthMetres()).toBeCloseTo(342, 6);
-    expect(pitStopDurationSeconds()).not.toBeCloseTo(pitwallDuration, 3);
+    expect(pitLaneLengthMetres()).toBeCloseTo(480, 6);
+    expect(pitStopDurationSeconds()).toBeCloseTo(pitwallDuration, 6);
+    expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
+    // Similar physical pit length, different circuit geometry/length.
     expect(pitExitProgress()).not.toBeCloseTo(pitwallExit, 3);
   });
 
