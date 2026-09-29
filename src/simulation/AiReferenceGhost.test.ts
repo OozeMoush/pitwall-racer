@@ -8,6 +8,7 @@ import {
 } from './RacingLineRuntime';
 import {
   crossedStartLine,
+  getActiveTrack,
   projectTrackNear,
   sampleTrack,
   setActiveTrack,
@@ -21,6 +22,26 @@ afterEach(() => {
 describe('AiReferenceGhost', () => {
   beforeAll(async () => {
     await RAPIER.init();
+  });
+
+  it('binds replay physics to the requested circuit instead of ambient track state', () => {
+    setActiveTrack('pitwall-gp');
+    setRuntimeRacingLine('serra-circuit', undefined);
+
+    const ghost = new AiReferenceGhost(0.2, 'serra-circuit');
+    try {
+      expect(getActiveTrack().id).toBe('serra-circuit');
+
+      // Simulate unrelated UI/debug code changing the global active circuit.
+      setActiveTrack('velocity-park');
+      ghost.step(1 / 120);
+
+      expect(getActiveTrack().id).toBe('serra-circuit');
+      expect(ghost.state()).toBeDefined();
+      expect(ghost.latestControl()).toBeDefined();
+    } finally {
+      ghost.physics.world.free();
+    }
   });
 
   it('replays at the grip under which the PLAYER line was demonstrated', () => {
