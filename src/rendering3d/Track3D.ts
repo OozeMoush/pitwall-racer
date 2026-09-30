@@ -3,12 +3,8 @@ import { aiGridSlot, PLAYER_GRID } from '../simulation/GridModel';
 import { safetyBarrierSegments } from '../simulation/TrackBarrierModel';
 import {
   TRACK_BARRIER_HALF_THICKNESS,
-  TRACK_BARRIER_OFFSET,
   TRACK_BARRIER_SEGMENT_LENGTH,
-  TRACK_KERB_INNER_OFFSET,
-  TRACK_KERB_OUTER_OFFSET,
   TRACK_ROAD_HALF_WIDTH,
-  TRACK_RUNOFF_HALF_WIDTH,
   trackBarrierOffset,
   trackKerbInnerOffset,
   trackKerbOuterOffset,
@@ -139,18 +135,6 @@ function ribbonGeometry(
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
-}
-
-function offsetRibbonGeometry(
-  offsetA: number,
-  offsetB: number,
-  height: number,
-): THREE.BufferGeometry {
-  return variableOffsetRibbonGeometry(
-    () => offsetA,
-    () => offsetB,
-    height,
-  );
 }
 
 function variableOffsetRibbonGeometry(
