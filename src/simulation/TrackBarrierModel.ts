@@ -1,8 +1,8 @@
 import {
-  TRACK_BARRIER_OFFSET,
   TRACK_BARRIER_SEGMENT_LENGTH,
-  TRACK_ROAD_HALF_WIDTH,
   shouldPlaceSafetyBarrier,
+  trackBarrierOffset,
+  trackRoadHalfWidth,
 } from './TrackLimitsModel';
 import { trackProfile } from './TrackProfile';
 import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
@@ -16,7 +16,6 @@ export interface SafetyBarrierSegment {
   length: number;
 }
 
-const MIN_OTHER_ROAD_CLEARANCE = TRACK_ROAD_HALF_WIDTH + 5.15;
 // The first chord-aligned pass removed the dangerous apex spikes, but ~6 m
 // pieces can still read as a faceted polygon on this tiny circuit. Keep every
 // physical/visual wall chord close to 3 m so curves look round and wall brushes
@@ -56,8 +55,9 @@ function appendBarrierInterval(
   endProgress: number,
   depth: number,
 ): void {
-  const start = sampleTrack(startProgress, side * TRACK_BARRIER_OFFSET);
-  const end = sampleTrack(endProgress >= 1 ? 0 : endProgress, side * TRACK_BARRIER_OFFSET);
+  const normalizedEnd = endProgress >= 1 ? 0 : endProgress;
+  const start = sampleTrack(startProgress, side * trackBarrierOffset(startProgress));
+  const end = sampleTrack(normalizedEnd, side * trackBarrierOffset(normalizedEnd));
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
@@ -80,7 +80,7 @@ function appendBarrierInterval(
   const x = (start.x + end.x) * 0.5;
   const y = (start.y + end.y) * 0.5;
   const nearestTrack = projectTrack(x, y);
-  if (nearestTrack.distance < MIN_OTHER_ROAD_CLEARANCE) return;
+  if (nearestTrack.distance < trackRoadHalfWidth(nearestTrack.progress) + 5.15) return;
 
   segments.push({ side, progress, x, y, heading: Math.atan2(dy, dx), length });
 }
