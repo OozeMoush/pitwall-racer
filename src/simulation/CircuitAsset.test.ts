@@ -87,7 +87,7 @@ describe('CircuitAsset', () => {
 
     expect(getTrackDefinition(EDITOR_TRACK_ID).name).toBe('TEST FOUNDRY');
     expect(getTrackDefinition(EDITOR_TRACK_ID).scalePreset).toBe('COMPACT');
-    expect(getTrackDefinition(EDITOR_TRACK_ID).pitLane?.lengthMetres).toBe(120);
+    expect(getTrackDefinition(EDITOR_TRACK_ID).pitLane?.lengthMetres).toBe(330);
     expect(sectorBoundariesFor(EDITOR_TRACK_ID)).toEqual([0.28, 0.73]);
     expect(gridSlotForPosition(1).laneOffset).toBeCloseTo(-5, 6);
     expect(gridSlotForPosition(2).laneOffset).toBeCloseTo(5, 6);
