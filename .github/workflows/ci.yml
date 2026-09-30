@@ -16,6 +16,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        tier: [fast, playtest, long]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,5 +27,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm install
-      - run: npm test
-      - run: npm run build
+      - name: Run ${{ matrix.tier }} tests
+        run: npm run test:${{ matrix.tier }}
+      - name: Build
+        if: matrix.tier == 'fast'
+        run: npm run build
