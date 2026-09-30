@@ -8,6 +8,24 @@ class MemoryStorage {
 }
 
 describe('TimeTrialRecordStore', () => {
+  it('treats pre-revision and stale-geometry records as empty', () => {
+    const storage = new MemoryStorage();
+    const payload = {
+      bestLap: 24.2,
+      bestSectors: [8.0, 8.0, 8.2],
+      laps: [{ lapTime: 24.2, sectors: [8.0, 8.0, 8.2], recordedAt: 1 }],
+    };
+
+    storage.setItem('pitwall-racer:time-trial:v1:pitwall-gp', JSON.stringify(payload));
+    expect(loadTimeTrialRecord(storage, 'pitwall-gp').bestLap).toBeUndefined();
+
+    storage.setItem('pitwall-racer:time-trial:v1:pitwall-gp', JSON.stringify({
+      ...payload,
+      trackRevision: 'g1-stale',
+    }));
+    expect(loadTimeTrialRecord(storage, 'pitwall-gp').laps).toEqual([]);
+  });
+
   it('persists all-time lap and independent sector bests', () => {
     const storage = new MemoryStorage();
     saveTimeTrialLap(storage, 'pitwall-gp', 24.2, [8.2, 8.0, 8.0]);
