@@ -357,7 +357,7 @@ function addSafetyBarriers(root: THREE.Group): void {
 }
 
 function addPitBuildings(root: THREE.Group): void {
-  const start = sampleTrack(0.035, RUNOFF_HALF_WIDTH + 16);
+  const start = sampleTrack(0.035, trackRunoffHalfWidth(0.035) + 16);
   const world = toWorld(start.x, start.y, 0);
   const buildingMat = new THREE.MeshStandardMaterial({ color: 0x252c31, roughness: 0.7, metalness: 0.08 });
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x78a9b8, roughness: 0.28, metalness: 0.16 });
