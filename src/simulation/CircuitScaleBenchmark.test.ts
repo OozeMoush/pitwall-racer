@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { raceLapsForPreset } from '../game/RaceSetup';
 import { pitStopTimeLossEstimateSecondsFor } from './PitLaneModel';
 import { benchmarkStrategies, strategyRaceProfile } from './StrategySimulator';
-import { circuitScalePresetFor, getTrackDefinition } from './TrackModel';
+import { circuitScalePresetFor } from './TrackModel';
 
 describe('physical circuit scale benchmark', () => {
   it('keeps Compact and Standard race economies coherent on the same duration preset', () => {
     const rows = (['serra-circuit', 'pitwall-gp'] as const).map((trackId) => {
-      const definition = getTrackDefinition(trackId);
       const totalLaps = raceLapsForPreset(trackId, 'STANDARD');
       const race = strategyRaceProfile(trackId, totalLaps);
       const strategies = benchmarkStrategies(race);
