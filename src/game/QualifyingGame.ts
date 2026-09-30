@@ -649,7 +649,8 @@ class QualifyingGame {
   }
 
   private updateAudio(dt: number): void {
-    const projection = projectTrack(this.vehicle.x, this.vehicle.y);\n    const surface = surfaceEffect(projection.distance, projection.progress);
+    const projection = projectTrack(this.vehicle.x, this.vehicle.y);
+    const surface = surfaceEffect(projection.distance, projection.progress);
     this.audio.update({
       speed: this.vehicle.speed,
       throttle: this.phase === 'APPROACH' || this.phase === 'FLYING' ? (this.keys.has('KeyW') ? 1 : 0) : 0,
