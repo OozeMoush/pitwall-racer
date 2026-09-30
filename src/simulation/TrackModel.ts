@@ -301,7 +301,7 @@ export const TRACKS: TrackDefinition[] = [
     controls: SERRA_CIRCUIT,
     scalePreset: 'COMPACT',
     referenceLapSeconds: 23.119,
-    pitLane: { entryProgress: 0.91, lengthMetres: 120, laneOffset: 24 },
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'baku-street',
