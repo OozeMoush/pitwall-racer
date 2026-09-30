@@ -68,8 +68,9 @@ export function showCircuitEditor(
     </div>
   `;
 
+  const shell = root.querySelector<HTMLElement>('.circuit-editor-shell');
   const svg = root.querySelector<SVGSVGElement>('[data-circuit-canvas]');
-  if (!svg) throw new Error('Circuit editor SVG is missing');
+  if (!shell || !svg) throw new Error('Circuit editor workspace is missing');
 
   return new Promise((resolve) => {
     const render = (): void => {
@@ -242,7 +243,7 @@ export function showCircuitEditor(
       node.innerHTML = `<b class="editor-invalid">INVALID</b><span>${validation.errors.map(escapeHtml).join(' · ')}</span>`;
     };
 
-    root.addEventListener('click', async (event) => {
+    shell.addEventListener('click', async (event) => {
       const target = event.target as HTMLElement;
       const modeButton = target.closest<HTMLButtonElement>('[data-editor-mode]');
       if (modeButton) {
@@ -321,7 +322,7 @@ export function showCircuitEditor(
       }
     });
 
-    root.addEventListener('input', (event) => {
+    shell.addEventListener('input', (event) => {
       const target = event.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
       if (target.matches('[data-editor-json]')) return;
 
@@ -360,7 +361,16 @@ export function showCircuitEditor(
       if (gridField === 'longitudinalStepMetres') asset.grid.longitudinalStepMetres = Number(target.value);
       if (gridField === 'laneOffset') asset.grid.laneOffset = Number(target.value);
 
-      render();
+      if (target instanceof HTMLInputElement && target.type === 'range') {
+        const output = target.parentElement?.querySelector<HTMLOutputElement>('output');
+        if (output) {
+          output.value = target.hasAttribute('data-reference-field')
+            ? `${Number(target.value).toFixed(2)} m`
+            : `${Number(target.value).toFixed(1)} m`;
+        }
+      }
+      renderCanvas();
+      renderValidation();
     });
 
     svg.addEventListener('pointerdown', (event) => {
