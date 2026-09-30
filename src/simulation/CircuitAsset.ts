@@ -79,7 +79,7 @@ export function createDefaultCircuitAsset(): CircuitAsset {
     pitLane: {
       entryProgress: 0.88,
       exitProgress: 0.08,
-      lengthMetres: 120,
+      lengthMetres: 330,
       laneOffset: 30,
       path: [
         { t: 0, laneOffset: 11 },
@@ -397,7 +397,7 @@ function normalizePitPath(
 export function recommendedPitLaneLengthForScale(
   scalePreset: CircuitScalePreset,
 ): number {
-  return scalePreset === 'COMPACT' ? 120 : scalePreset === 'LONG' ? 560 : 480;
+  return scalePreset === 'COMPACT' ? 330 : scalePreset === 'LONG' ? 560 : 480;
 }
 
 function estimatedReferenceLapSeconds(
