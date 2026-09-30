@@ -1,5 +1,5 @@
 import type { RacingLineAsset, RacingLineSource } from './RacingLineAsset';
-import type { TrackId } from './TrackModel';
+import { trackGeometryRevision, type TrackId } from './TrackModel';
 
 const STORAGE_KEY = 'pitwall-racer:racing-line-selection:v1';
 
@@ -40,7 +40,11 @@ export function loadEditorRacingLine(
   storage: RacingLineSelectionStorage,
   trackId: TrackId,
 ): RacingLineAsset | undefined {
-  return load(storage).editor[trackId];
+  const asset = load(storage).editor[trackId];
+  if (!asset || asset.trackId !== trackId) return undefined;
+  return asset.trackRevision === trackGeometryRevision(trackId)
+    ? asset
+    : undefined;
 }
 
 export function saveEditorRacingLine(
@@ -50,6 +54,7 @@ export function saveEditorRacingLine(
   const state = load(storage);
   state.editor[asset.trackId] = {
     ...asset,
+    trackRevision: trackGeometryRevision(asset.trackId),
     source: 'EDITOR',
   };
   save(storage, state);
