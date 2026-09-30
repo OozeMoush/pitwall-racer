@@ -492,12 +492,19 @@ function markerAtProgress(
   label: string,
   kind: string,
 ): string {
-  const world = sampleControlPolygon(asset.controls, progress);
+  const world = sampleControlPolygon(orderedControls(asset), progress);
   const point = toScreen(world, frame);
   return `<g class="editor-marker ${kind}">
     <circle cx="${point.x}" cy="${point.y}" r="9"></circle>
     <text x="${point.x + 12}" y="${point.y + 4}">${label}</text>
   </g>`;
+}
+
+function orderedControls(asset: CircuitAsset): CircuitControlPoint[] {
+  if (asset.controls.length === 0) return [];
+  const start = ((asset.startControlIndex % asset.controls.length) + asset.controls.length)
+    % asset.controls.length;
+  return [...asset.controls.slice(start), ...asset.controls.slice(0, start)];
 }
 
 function sampleControlPolygon(
