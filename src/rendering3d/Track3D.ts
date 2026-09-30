@@ -3,12 +3,13 @@ import { aiGridSlot, PLAYER_GRID } from '../simulation/GridModel';
 import { safetyBarrierSegments } from '../simulation/TrackBarrierModel';
 import {
   TRACK_BARRIER_HALF_THICKNESS,
-  TRACK_BARRIER_OFFSET,
   TRACK_BARRIER_SEGMENT_LENGTH,
-  TRACK_KERB_INNER_OFFSET,
-  TRACK_KERB_OUTER_OFFSET,
   TRACK_ROAD_HALF_WIDTH,
-  TRACK_RUNOFF_HALF_WIDTH,
+  trackBarrierOffset,
+  trackKerbInnerOffset,
+  trackKerbOuterOffset,
+  trackRoadHalfWidth,
+  trackRunoffHalfWidth,
 } from '../simulation/TrackLimitsModel';
 import { trackProfile } from '../simulation/TrackProfile';
 import {
@@ -25,13 +26,9 @@ export const KERB_SEGMENT_METRES = 3;
 export const BARRIER_SEGMENT_METRES = TRACK_BARRIER_SEGMENT_LENGTH;
 export const SPEED_REFERENCE_SPACING_METRES = 12;
 
-const RUNOFF_HALF_WIDTH = TRACK_RUNOFF_HALF_WIDTH;
 const RUBBERED_HALF_WIDTH = 10.5;
 const MIN_TRACK_MESH_SAMPLES = 460;
 const TRACK_MESH_SPACING_METRES = 5;
-const KERB_INNER_OFFSET = TRACK_KERB_INNER_OFFSET;
-const KERB_OUTER_OFFSET = TRACK_KERB_OUTER_OFFSET;
-const SPEED_REFERENCE_OFFSET = TRACK_BARRIER_OFFSET + 2.4;
 
 export function createTrack3D(): THREE.Group {
   const root = new THREE.Group();
@@ -46,9 +43,18 @@ export function createTrack3D(): THREE.Group {
   grass.receiveShadow = true;
   root.add(grass);
 
-  addRibbon(root, RUNOFF_HALF_WIDTH, 0.004, 0x62686a, 0.98);
-  addRibbon(root, ROAD_HALF_WIDTH, 0.032, 0x2d3033, 0.9);
-  addRibbon(root, RUBBERED_HALF_WIDTH, 0.043, 0x242729, 0.98);
+  addRibbon(root, trackRunoffHalfWidth, 0.004, 0x62686a, 0.98);
+  addRibbon(root, trackRoadHalfWidth, 0.032, 0x2d3033, 0.9);
+  addRibbon(
+    root,
+    (progress) => Math.max(2, Math.min(
+      RUBBERED_HALF_WIDTH,
+      trackRoadHalfWidth(progress) - 1.25,
+    )),
+    0.043,
+    0x242729,
+    0.98,
+  );
   addEdgeLines(root);
   addCornerKerbs(root);
   addStartFinish(root);
@@ -90,7 +96,13 @@ function trackGroundBounds(): {
   };
 }
 
-function addRibbon(root: THREE.Group, halfWidth: number, height: number, color: number, roughness: number): void {
+function addRibbon(
+  root: THREE.Group,
+  halfWidth: number | ((progress: number) => number),
+  height: number,
+  color: number,
+  roughness: number,
+): void {
   const mesh = new THREE.Mesh(
     ribbonGeometry(halfWidth, height),
     new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.02 }),
@@ -99,15 +111,21 @@ function addRibbon(root: THREE.Group, halfWidth: number, height: number, color: 
   root.add(mesh);
 }
 
-function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry {
+function ribbonGeometry(
+  halfWidth: number | ((progress: number) => number),
+  height: number,
+): THREE.BufferGeometry {
   const vertices: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
   const sampleCount = trackMeshSampleCount();
   for (let i = 0; i <= sampleCount; i++) {
     const p = i / sampleCount;
-    const left = sampleTrack(p, halfWidth);
-    const right = sampleTrack(p, -halfWidth);
+    const localHalfWidth = typeof halfWidth === 'function'
+      ? halfWidth(p)
+      : halfWidth;
+    const left = sampleTrack(p, localHalfWidth);
+    const right = sampleTrack(p, -localHalfWidth);
     const lw = toWorld(left.x, left.y, height);
     const rw = toWorld(right.x, right.y, height);
     vertices.push(lw.x, lw.y, lw.z, rw.x, rw.y, rw.z);
@@ -128,19 +146,29 @@ function ribbonGeometry(halfWidth: number, height: number): THREE.BufferGeometry
   return geometry;
 }
 
-function offsetRibbonGeometry(offsetA: number, offsetB: number, height: number): THREE.BufferGeometry {
+function variableOffsetRibbonGeometry(
+  offsetA: (progress: number) => number,
+  offsetB: (progress: number) => number,
+  height: number,
+): THREE.BufferGeometry {
   const vertices: number[] = [];
   const indices: number[] = [];
-  appendOffsetStrip(
-    vertices,
-    indices,
-    0,
-    1,
-    offsetA,
-    offsetB,
-    height,
-    trackMeshSampleCount(),
-  );
+  const sampleCount = trackMeshSampleCount();
+  for (let i = 0; i <= sampleCount; i++) {
+    const progress = i / sampleCount;
+    const a = sampleTrack(progress, offsetA(progress));
+    const b = sampleTrack(progress, offsetB(progress));
+    const aw = toWorld(a.x, a.y, height);
+    const bw = toWorld(b.x, b.y, height);
+    vertices.push(aw.x, aw.y, aw.z, bw.x, bw.y, bw.z);
+    if (i < sampleCount) {
+      const i0 = i * 2;
+      const i1 = i0 + 1;
+      const i2 = i0 + 2;
+      const i3 = i0 + 3;
+      indices.push(i0, i2, i1, i1, i2, i3);
+    }
+  }
   return finishGeometry(vertices, indices);
 }
 
@@ -185,9 +213,15 @@ function finishGeometry(vertices: number[], indices: number[]): THREE.BufferGeom
 function addEdgeLines(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0xf2f3ef, roughness: 0.76 });
   for (const side of [-1, 1] as const) {
-    const center = side * (ROAD_HALF_WIDTH - 0.45);
     const half = EDGE_LINE_WIDTH_METRES / 2;
-    const line = new THREE.Mesh(offsetRibbonGeometry(center - half, center + half, 0.073), material);
+    const line = new THREE.Mesh(
+      variableOffsetRibbonGeometry(
+        (progress) => side * (trackRoadHalfWidth(progress) - 0.45) - half,
+        (progress) => side * (trackRoadHalfWidth(progress) - 0.45) + half,
+        0.073,
+      ),
+      material,
+    );
     line.receiveShadow = true;
     root.add(line);
   }
@@ -231,8 +265,8 @@ function addCornerKerbs(root: THREE.Group): void {
     if (profile.severity < 0.20 || Math.abs(profile.signedTurn) < 0.028) continue;
 
     const side = Math.sign(profile.signedTurn);
-    const inner = side * KERB_INNER_OFFSET;
-    const outer = side * KERB_OUTER_OFFSET;
+    const inner = side * trackKerbInnerOffset(mid);
+    const outer = side * trackKerbOuterOffset(mid);
     // At the very tight miniature apexes, offset curves can locally fold over
     // themselves. Drawing that quad produces the red/white star-shaped spikes
     // seen in play. Omit only the degenerate pieces; the wall still enforces the
@@ -274,7 +308,7 @@ function addStartFinish(root: THREE.Group): void {
   const start = sampleTrack(0);
   const world = toWorld(start.x, start.y, 0.097);
   const line = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 0.03, ROAD_HALF_WIDTH * WORLD_SCALE * 2.02),
+    new THREE.BoxGeometry(0.22, 0.03, trackRoadHalfWidth(0) * WORLD_SCALE * 2.02),
     new THREE.MeshStandardMaterial({ color: 0xf8f8f3, roughness: 0.65 }),
   );
   line.position.copy(world);
@@ -344,9 +378,8 @@ function addPitBuildings(root: THREE.Group): void {
 function addGrandstands(root: THREE.Group): void {
   const material = new THREE.MeshStandardMaterial({ color: 0x6c7376, roughness: 0.9 });
   const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x1c2226, roughness: 0.72, metalness: 0.08 });
-  const grandstandOffset = RUNOFF_HALF_WIDTH + 16;
   for (const [progress, side, length] of [[0.15, -1, 7.2], [0.47, 1, 8.8], [0.76, -1, 7.2]] as Array<[number, number, number]>) {
-    const p = sampleTrack(progress, side * grandstandOffset);
+    const p = sampleTrack(progress, side * (trackRunoffHalfWidth(progress) + 16));
     const world = toWorld(p.x, p.y, 0);
     const stand = new THREE.Mesh(new THREE.BoxGeometry(length, 1.9, 2.9), material);
     stand.position.set(world.x, 0.95, world.z);
@@ -364,7 +397,7 @@ function addBrakingBoards(root: THREE.Group): void {
   const postMat = new THREE.MeshStandardMaterial({ color: 0xe8e9e4, roughness: 0.82 });
   const boardMat = new THREE.MeshStandardMaterial({ color: 0x171e22, roughness: 0.64 });
   for (const progress of [0.13, 0.31, 0.49, 0.67, 0.85]) {
-    const p = sampleTrack(progress, RUNOFF_HALF_WIDTH + 6);
+    const p = sampleTrack(progress, trackRunoffHalfWidth(progress) + 6);
     const world = toWorld(p.x, p.y, 0);
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.0, 0.12), postMat);
     post.position.set(world.x, 1.0, world.z);
@@ -384,7 +417,8 @@ function addSpeedReferencePosts(root: THREE.Group): void {
   const matrix = new THREE.Matrix4();
   for (let i = 0; i < count; i++) {
     const side = i % 2 === 0 ? 1 : -1;
-    const p = sampleTrack((i + 0.5) / count, side * SPEED_REFERENCE_OFFSET);
+    const progress = (i + 0.5) / count;
+    const p = sampleTrack(progress, side * (trackBarrierOffset(progress) + 2.4));
     const world = toWorld(p.x, p.y, 0);
     matrix.compose(new THREE.Vector3(world.x, 0.39, world.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
     posts.setMatrixAt(i, matrix);

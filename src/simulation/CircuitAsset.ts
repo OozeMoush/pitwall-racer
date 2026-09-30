@@ -98,6 +98,18 @@ export function validateCircuitAsset(asset: CircuitAsset): CircuitAssetValidatio
   if (asset.controls.length < 6) errors.push('A circuit needs at least 6 control points.');
   if (asset.referenceLine.laneOffsets.length !== asset.controls.length) {
     errors.push('Reference-line offsets must match the control-point count.');
+  } else {
+    asset.referenceLine.laneOffsets.forEach((offset, index) => {
+      const roadHalfWidth = asset.controls[index]?.roadHalfWidth ?? 17;
+      const safeLane = Math.max(1, roadHalfWidth - 3.15);
+      if (!Number.isFinite(offset)) {
+        errors.push(`Reference-line offset ${index + 1} is not finite.`);
+      } else if (Math.abs(offset) > safeLane) {
+        errors.push(
+          `Reference-line offset ${index + 1} exceeds the local safe lane (${safeLane.toFixed(1)} m).`,
+        );
+      }
+    });
   }
   if (
     asset.startControlIndex < 0
@@ -206,13 +218,15 @@ export function installCircuitAsset(
   const validation = validateCircuitAsset(normalized);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
 
-  const controls = rotate(normalized.controls, normalized.startControlIndex)
-    .map(({ x, y }) => ({ x, y }));
+  const rotatedControls = rotate(normalized.controls, normalized.startControlIndex);
+  const controls = rotatedControls.map(({ x, y }) => ({ x, y }));
+  const roadHalfWidths = rotatedControls.map((point) => point.roadHalfWidth ?? 17);
   const definition: TrackDefinition = {
     id: EDITOR_TRACK_ID,
     name: normalized.name,
     subtitle: normalized.subtitle,
     controls,
+    roadHalfWidths,
     referenceLaneMode: 'centerline',
     distanceScale: scaleDistance(normalized.scalePreset),
     referenceLapSeconds: estimatedReferenceLapSeconds(controls, normalized.scalePreset),
@@ -242,7 +256,6 @@ export function circuitReferenceLineAsset(asset: CircuitAsset): RacingLineAsset 
   // Ensure TrackModel is using the geometry this line belongs to before
   // stamping its fingerprint.
   installCircuitAsset(asset);
-  const controls = rotate(asset.controls, asset.startControlIndex);
   const offsets = rotate(asset.referenceLine.laneOffsets, asset.startControlIndex);
   const centreline = trackCentreline(EDITOR_TRACK_ID);
   const points = centreline.map((_, index) => {

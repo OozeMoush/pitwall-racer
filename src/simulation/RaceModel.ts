@@ -1,6 +1,6 @@
 import { aerodynamicEffect } from './AeroModel';
 import { aiGridSlot, gridPositionFor, gridSlotForPosition } from './GridModel';
-import { AI_SAFE_LANE_LIMIT } from './TrackLimitsModel';
+import { trackAiSafeLaneLimit } from './TrackLimitsModel';
 import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
@@ -186,10 +186,11 @@ export function stepAi(
 
   const speed = approachSpeed(driver.speed, targetSpeed, dt, 50, 116);
 
+  const safeLane = trackAiSafeLaneLimit(progress);
   const targetLane = clamp(
     profile.apexOffset + driver.preferredLane * 0.16,
-    -AI_SAFE_LANE_LIMIT,
-    AI_SAFE_LANE_LIMIT,
+    -safeLane,
+    safeLane,
   );
   const laneOffset = approach(driver.laneOffset, targetLane, dt * 44);
 

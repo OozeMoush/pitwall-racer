@@ -2,6 +2,9 @@ import {
   DEEP_CUT_DISTANCE,
   FREE_KERB_DISTANCE,
   TRACK_RUNOFF_HALF_WIDTH,
+  trackDeepCutDistance,
+  trackFreeKerbDistance,
+  trackRunoffHalfWidth,
 } from './TrackLimitsModel';
 
 export interface SurfaceEffect {
@@ -21,24 +24,36 @@ const RUNOFF_EDGE_SEVERITY = 0.78;
  * dependent through ArcadeCarController, so a nearly stopped car can drive
  * back to the road instead of getting soft-locked.
  */
-export function surfaceEffect(distanceFromLine: number): SurfaceEffect {
+export function surfaceEffect(
+  distanceFromLine: number,
+  progress?: number,
+): SurfaceEffect {
   const distance = Math.max(0, distanceFromLine);
+  const freeKerb = progress === undefined
+    ? FREE_KERB_DISTANCE
+    : trackFreeKerbDistance(progress);
+  const deepCut = progress === undefined
+    ? DEEP_CUT_DISTANCE
+    : trackDeepCutDistance(progress);
+  const runoff = progress === undefined
+    ? TRACK_RUNOFF_HALF_WIDTH
+    : trackRunoffHalfWidth(progress);
   let severity = 0;
 
-  if (distance > FREE_KERB_DISTANCE && distance <= DEEP_CUT_DISTANCE) {
+  if (distance > freeKerb && distance <= deepCut) {
     severity = DEEP_KERB_SEVERITY
-      * clamp01((distance - FREE_KERB_DISTANCE) / (DEEP_CUT_DISTANCE - FREE_KERB_DISTANCE));
-  } else if (distance > DEEP_CUT_DISTANCE && distance < TRACK_RUNOFF_HALF_WIDTH) {
+      * clamp01((distance - freeKerb) / Math.max(0.001, deepCut - freeKerb));
+  } else if (distance > deepCut && distance < runoff) {
     severity = DEEP_KERB_SEVERITY
       + (RUNOFF_EDGE_SEVERITY - DEEP_KERB_SEVERITY)
-        * clamp01((distance - DEEP_CUT_DISTANCE) / (TRACK_RUNOFF_HALF_WIDTH - DEEP_CUT_DISTANCE));
-  } else if (distance >= TRACK_RUNOFF_HALF_WIDTH) {
+        * clamp01((distance - deepCut) / Math.max(0.001, runoff - deepCut));
+  } else if (distance >= runoff) {
     severity = 1;
   }
 
   const label: SurfaceEffect['label'] = severity <= 0
     ? 'TRACK'
-    : distance < TRACK_RUNOFF_HALF_WIDTH
+    : distance < runoff
       ? 'RUNOFF'
       : 'GRASS';
 

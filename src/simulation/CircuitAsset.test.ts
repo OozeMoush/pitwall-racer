@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   circuitReferenceLineAsset,
   createDefaultCircuitAsset,
@@ -20,6 +20,10 @@ import {
 } from './TrackModel';
 import { gridSlotForPosition } from './GridModel';
 import { pitEntryProgress, pitExitProgress } from './PitLaneModel';
+import { trackRoadHalfWidth } from './TrackLimitsModel';
+import { surfaceEffect } from './SurfaceModel';
+
+afterEach(() => setActiveTrack('pitwall-gp'));
 
 class MemoryStorage implements CircuitAssetStorage {
   private readonly values = new Map<string, string>();
@@ -96,6 +100,38 @@ describe('CircuitAsset', () => {
     expect(line.trackRevision).toBe(trackGeometryRevision(EDITOR_TRACK_ID));
     expect(line.points.length).toBeGreaterThan(asset.controls.length * 10);
     expect(line.points.some((point) => Math.abs(point.laneOffset) > 1)).toBe(true);
+  });
+
+  it('installs authored local road widths and includes them in geometry revision', () => {
+    const asset = createDefaultCircuitAsset();
+    asset.controls[0].roadHalfWidth = 10;
+
+    installCircuitAsset(asset);
+    setActiveTrack(EDITOR_TRACK_ID);
+    const narrowRevision = trackGeometryRevision(EDITOR_TRACK_ID);
+
+    expect(getTrackDefinition(EDITOR_TRACK_ID).roadHalfWidths?.[0]).toBe(10);
+    expect(trackRoadHalfWidth(0)).toBeCloseTo(10, 6);
+    expect(surfaceEffect(12, 0).label).toBe('RUNOFF');
+
+    asset.controls[0].roadHalfWidth = 12;
+    installCircuitAsset(asset);
+    setActiveTrack(EDITOR_TRACK_ID);
+
+    expect(trackGeometryRevision(EDITOR_TRACK_ID)).not.toBe(narrowRevision);
+    expect(trackRoadHalfWidth(0)).toBeCloseTo(12, 6);
+  });
+
+  it('rejects an authored reference line outside the local safe road envelope', () => {
+    const asset = createDefaultCircuitAsset();
+    asset.controls[0].roadHalfWidth = 8;
+    asset.referenceLine.laneOffsets[0] = 6;
+
+    const validation = validateCircuitAsset(asset);
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.some((message) =>
+      message.includes('exceeds the local safe lane')
+    )).toBe(true);
   });
 
   it('rejects broken/self-intersecting editor layouts', () => {
