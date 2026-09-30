@@ -1,5 +1,10 @@
 import type { EmpiricalLapEvidence } from './PaceBenchmarkModel';
-import { DEEP_CUT_DISTANCE, TRACK_RUNOFF_HALF_WIDTH } from './TrackLimitsModel';
+import {
+  DEEP_CUT_DISTANCE,
+  TRACK_RUNOFF_HALF_WIDTH,
+  trackDeepCutDistance,
+  trackRunoffHalfWidth,
+} from './TrackLimitsModel';
 import type { Compound } from './TireModel';
 import type { TrackId } from './TrackModel';
 
@@ -31,10 +36,17 @@ export class PaceEvidenceAccumulator {
     this.startWear = clamp01(startWear);
   }
 
-  sample(distanceFromLine: number, tow: number, hasLaunchEffect = false): void {
+  sample(
+    distanceFromLine: number,
+    tow: number,
+    hasLaunchEffect = false,
+    progress?: number,
+  ): void {
     this.samples += 1;
-    if (distanceFromLine > DEEP_CUT_DISTANCE) this.deepCutSamples += 1;
-    if (distanceFromLine >= TRACK_RUNOFF_HALF_WIDTH) this.grassSamples += 1;
+    const deepCut = progress === undefined ? DEEP_CUT_DISTANCE : trackDeepCutDistance(progress);
+    const runoff = progress === undefined ? TRACK_RUNOFF_HALF_WIDTH : trackRunoffHalfWidth(progress);
+    if (distanceFromLine > deepCut) this.deepCutSamples += 1;
+    if (distanceFromLine >= runoff) this.grassSamples += 1;
     this.maxTow = Math.max(this.maxTow, Math.max(0, tow));
     this.launchAffected ||= hasLaunchEffect;
   }
