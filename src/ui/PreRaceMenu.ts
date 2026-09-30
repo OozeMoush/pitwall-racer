@@ -6,20 +6,32 @@ import {
   type RaceLengthPreset,
   type RaceSetup,
 } from '../game/RaceSetup';
+import { installStoredCircuitAsset } from '../simulation/CircuitAsset';
 import { loadPlayerRacingLineCandidate } from '../simulation/PlayerRacingLineCandidate';
 import {
+  loadEditorRacingLine,
   saveSelectedRacingLineSource,
   selectedRacingLineSource,
   type SelectableRacingLineSource,
 } from '../simulation/RacingLineSelectionStore';
-import { TRACKS, trackCentreline, type TrackDefinition, type TrackId } from '../simulation/TrackModel';
+import {
+  EDITOR_TRACK_ID,
+  TRACKS,
+  trackCentreline,
+  type TrackDefinition,
+  type TrackId,
+} from '../simulation/TrackModel';
 import type { Compound } from '../simulation/TireModel';
+import { showCircuitEditor } from './CircuitEditor';
 
 export function showPreRaceMenu(
   root: HTMLElement,
   initial: RaceSetup = DEFAULT_RACE_SETUP,
 ): Promise<RaceSetup> {
-  let selectedTrack: TrackId = initial.trackId;
+  installStoredCircuitAsset(window.localStorage);
+  let selectedTrack: TrackId = TRACKS.some((track) => track.id === initial.trackId)
+    ? initial.trackId
+    : DEFAULT_RACE_SETUP.trackId;
   let selectedCpuLine: SelectableRacingLineSource = selectedRacingLineSource(
     window.localStorage,
     selectedTrack,
@@ -34,7 +46,10 @@ export function showPreRaceMenu(
     <div class="pre-race-panel">
       <header class="pre-race-header">
         <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
-        <p>Choose a Grand Prix session or enter the independent empty-track Time Trial to update PLAYER BEST.</p>
+        <div class="pre-race-header-actions">
+          <p>Choose a Grand Prix session or enter the independent empty-track Time Trial to update PLAYER BEST.</p>
+          <button class="open-editor-button" data-circuit-editor>CIRCUIT EDITOR</button>
+        </div>
       </header>
 
       <section class="setup-section">
@@ -54,6 +69,10 @@ export function showPreRaceMenu(
           <button class="track-choice cpu-line-choice" data-cpu-line="PLAYER">
             <strong>PLAYER BEST</strong>
             <span data-player-line-status>No clean lap captured yet</span>
+          </button>
+          <button class="track-choice cpu-line-choice" data-cpu-line="EDITOR">
+            <strong>EDITOR</strong>
+            <span data-editor-line-status>No authored line for this circuit</span>
           </button>
         </div>
       </section>
@@ -105,6 +124,19 @@ export function showPreRaceMenu(
           ? `Clean player lap · ${playerCandidate.lapSeconds.toFixed(3)} s`
           : 'Uses the next clean qualifying/race lap';
       }
+
+      const editorAsset = loadEditorRacingLine(window.localStorage, selectedTrack);
+      const editorStatus = root.querySelector<HTMLElement>('[data-editor-line-status]');
+      const editorButton = root.querySelector<HTMLButtonElement>('[data-cpu-line="EDITOR"]');
+      if (editorStatus) {
+        editorStatus.textContent = editorAsset
+          ? 'Authored seed line · geometry matched'
+          : 'No authored line for this circuit';
+      }
+      if (editorButton) {
+        editorButton.disabled = !editorAsset;
+        editorButton.classList.toggle('unavailable', !editorAsset);
+      }
     };
 
     root.querySelectorAll<HTMLButtonElement>('[data-track]').forEach((button) => {
@@ -144,6 +176,26 @@ export function showPreRaceMenu(
       });
     });
     refreshSelected();
+
+    root.querySelector<HTMLButtonElement>('[data-circuit-editor]')?.addEventListener(
+      'click',
+      async () => {
+        const result = await showCircuitEditor(root, window.localStorage);
+        installStoredCircuitAsset(window.localStorage);
+        const nextTrack = result === 'saved' ? EDITOR_TRACK_ID : selectedTrack;
+        const nextDefaults: RaceSetup = {
+          ...initial,
+          trackId: nextTrack,
+          startCompound: selectedCompound,
+          raceLength: selectedRaceLength,
+          totalLaps: raceLapsForPreset(nextTrack, selectedRaceLength),
+          timeTrial: false,
+          skipQualifying: false,
+        };
+        resolve(await showPreRaceMenu(root, nextDefaults));
+      },
+      { once: true },
+    );
 
     const finishSetup = (
       skipQualifying: boolean,

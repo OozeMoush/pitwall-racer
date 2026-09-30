@@ -11,6 +11,7 @@ import { installHudEnhancer } from './ui/HudEnhancer';
 import { installRacePauseController } from './ui/RacePauseController';
 import { showPreRaceMenu } from './ui/PreRaceMenu';
 import './style.css';
+import './circuit-editor.css';
 import './battle-timing.css';
 import './timing-highlight-fix.css';
 import './weekend.css';
