@@ -4,6 +4,7 @@ import {
   getTrackDefinition,
   sampleTrack,
   TRACK_LENGTH,
+  type PitLanePathPoint,
   type TrackId,
 } from './TrackModel';
 
@@ -385,7 +386,7 @@ function pitLaneSide(): number {
 }
 
 function samplePitLanePath(
-  path: NonNullable<ReturnType<typeof getActiveTrack>['pitLane']>['path'],
+  path: readonly PitLanePathPoint[],
   tInput: number,
 ): number {
   const t = clamp01(tInput);
