@@ -23,6 +23,8 @@ import {
   pitEntryProgress,
   pitExitProgress,
   pitLaneOffset,
+  pitLanePose,
+  projectPitLane,
   shouldEnterPit,
 } from './PitLaneModel';
 import { hasSafetyBarrier, trackRoadHalfWidth } from './TrackLimitsModel';
@@ -158,6 +160,11 @@ describe('CircuitAsset', () => {
     expect(pitLaneOffset(1)).toBeCloseTo(11, 6);
     expect(pitLaneOffset(0.32)).toBeGreaterThan(20);
     expect(pitLaneOffset(0.32)).toBeLessThan(38);
+
+    const pose = pitLanePose(0.45);
+    const projection = projectPitLane(pose.x, pose.y, 0.42);
+    expect(projection.t).toBeCloseTo(0.45, 2);
+    expect(projection.distance).toBeLessThan(0.25);
   });
 
   it('supports a pit lane authored on the opposite side of the circuit', () => {
