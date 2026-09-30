@@ -134,7 +134,7 @@ export class AiReferenceGhost {
     this.control = dynamicAiControl(this.driver, state, []);
     this.driver.battleState = this.control.battleState;
     const projection = projectTrackNear(state.x, state.y, this.driver.progress);
-    const surface = surfaceEffect(projection.distance);
+    const surface = surfaceEffect(projection.distance, projection.progress);
 
     this.physics.driveAi(0, {
       throttle: this.control.throttle,
