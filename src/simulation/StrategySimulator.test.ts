@@ -41,6 +41,29 @@ describe('StrategySimulator', () => {
     expect(RACE.pitLossSeconds).toBeLessThanOrEqual(24);
   });
 
+  it('keeps compact one-stop and two-stop economics coherent', () => {
+    const compactLaps = raceLapsForPreset('serra-circuit', 'STANDARD');
+    const compactRace = strategyRaceProfile('serra-circuit', compactLaps);
+    const snapshot = benchmarkStrategies(compactRace);
+    const oneTwoGap = Math.abs(
+      snapshot.fastestOneStop.totalTime - snapshot.fastestTwoStop.totalTime,
+    );
+
+    expect(compactLaps).toBeGreaterThan(60);
+    expect(compactRace.representativeLapSeconds).toBeCloseTo(23.119, 6);
+    expect(compactRace.totalLaps * compactRace.representativeLapSeconds / 60)
+      .toBeGreaterThan(26);
+    expect(compactRace.totalLaps * compactRace.representativeLapSeconds / 60)
+      .toBeLessThan(28);
+    expect(compactRace.pitLossSeconds).toBeGreaterThanOrEqual(4);
+    expect(compactRace.pitLossSeconds).toBeLessThanOrEqual(7);
+    expect(compactRace.strategyEffectScale).toBeGreaterThan(0.05);
+    expect(compactRace.strategyEffectScale).toBeLessThan(0.10);
+    expect(oneTwoGap).toBeLessThan(3);
+    expect(snapshot.fastestOneStop.legal).toBe(true);
+    expect(snapshot.fastestTwoStop.legal).toBe(true);
+  });
+
   it('keeps the dry two-compound rule as a hard legality constraint', () => {
     expect(simulateStrategy(noStopMedium, RACE).legal).toBe(false);
     expect(simulateStrategy(balanced, RACE).legal).toBe(true);
