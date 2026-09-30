@@ -48,12 +48,40 @@ The setup screen supports three session paths:
 
 Grand Prix setup includes:
 
-- Pitwall GP 2.0 at race scale plus six legacy miniature circuits;
+- selectable circuits with explicit physical scale profiles (Compact / Standard / Long);
 - Soft / Medium / Hard starting tyre;
 - SHORT / STANDARD / LONG duration presets targeting roughly 18 / 27 / 36 minutes, with lap count derived per circuit;
 - AUTO or PLAYER BEST CPU racing-line source.
 
 The current circuit set is Pitwall GP, Velocity Park, Switchback Ring, Sakura Esses, Harbor Chicane, Serra Circuit and Baku Street.
+
+
+## Physical circuit scale
+
+Physical circuit scale is **not** a race-duration setting.
+
+Pitwall Racer deliberately supports multiple physical formats:
+
+- **Compact** — purpose-built short laps, typically around 20–40 seconds. Serra Circuit is the reference Compact benchmark.
+- **Standard** — the current race-scale format, typically around 75–105 seconds. Pitwall GP is the reference Standard benchmark.
+- **Long** — available to the circuit editor for layouts that deliberately need more physical space. It is not a requirement for ordinary circuits.
+
+SHORT / STANDARD / LONG race-duration presets remain a separate axis. The same ~27-minute STANDARD event is therefore about 70 laps at Serra and 18 laps at Pitwall GP.
+
+The strategy model normalizes fixed per-lap tyre/slide effects by both representative lap duration and pit cost. This prevents a compact circuit from becoming a forced two-stop race merely because the same 27 minutes contains many more lap boundaries.
+
+Pit economics follow physical scale as well. The current benchmark is approximately:
+
+| Circuit | Physical scale | Reference lap | STANDARD laps | Reference race | Net pit loss | Pit loss / lap |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Serra Circuit | Compact | 23.119 s | ~70 | ~27 min | ~5.1 s | ~22% |
+| Pitwall GP | Standard | 90 s | 18 | 27 min | ~18.1 s | ~20% |
+
+The CI benchmark requires one-stop and two-stop families to remain within three seconds on both reference formats.
+
+This is a product decision: **layout quality comes first**. A circuit should be made longer because the intended racing needs more space, not because a global stopwatch target says every lap must approach 90 seconds. Target lap time is a design constraint only when deliberately chosen for that circuit.
+
+Compact layouts do create more frequent traffic and lapping opportunities because the field crosses the same point more often. That is treated as a format characteristic to monitor with the physical pack tests, not a reason to stretch every track. The current eight-car field remains the baseline; if a future Compact layout becomes traffic-saturated, field size or event format should be tuned explicitly for that circuit rather than lengthening good corners with low-interaction straights.
 
 ## Balance gates
 
@@ -133,7 +161,7 @@ There are no live energy-mode keys in the current core-race build.
 - one-shot qualifying / skip-qualifying flow ✅
 - starting tyre selection ✅
 - duration-based SHORT / STANDARD / LONG race lengths ✅
-- race-scale Pitwall GP plus six legacy miniature circuits ✅
+- explicit Compact / Standard / Long physical circuit profiles ✅
 - AUTO / PLAYER BEST CPU racing-line selection ✅
 - compact qualifying-derived starting grid ✅
 - unified road edge / runoff / barrier language ✅ first model
