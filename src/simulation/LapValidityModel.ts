@@ -3,7 +3,7 @@ import {
   WHEEL_HALF_LENGTH,
   WHEEL_HALF_WIDTH,
 } from './CarGeometry';
-import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
+import { TRACK_ROAD_HALF_WIDTH, trackRoadHalfWidth } from './TrackLimitsModel';
 import { projectTrack } from './TrackModel';
 
 // Track-limit legality follows the visible four-wheel envelope, not the smaller
@@ -161,10 +161,11 @@ export function isEntireCarBeyondTrackAt(
       Math.abs(Math.sin(headingDelta)) * WHEEL_HALF_LENGTH
       + Math.abs(Math.cos(headingDelta)) * WHEEL_HALF_WIDTH;
 
-    if (projection.laneOffset - lateralExtent <= TRACK_ROAD_HALF_WIDTH) {
+    const roadHalfWidth = trackRoadHalfWidth(projection.progress);
+    if (projection.laneOffset - lateralExtent <= roadHalfWidth) {
       allBeyondRight = false;
     }
-    if (projection.laneOffset + lateralExtent >= -TRACK_ROAD_HALF_WIDTH) {
+    if (projection.laneOffset + lateralExtent >= -roadHalfWidth) {
       allBeyondLeft = false;
     }
 
