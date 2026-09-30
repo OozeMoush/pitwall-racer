@@ -443,14 +443,19 @@ export function showCircuitEditor(
       }
 
       const pitField = target.getAttribute('data-pit-field');
-      if (pitField === 'lengthMetres') asset.pitLane.lengthMetres = Number(target.value);
-      if (pitField === 'laneOffset') {
+      const numericValue = target.value.trim() === ''
+        ? undefined
+        : Number(target.value);
+      if (pitField === 'lengthMetres' && numericValue !== undefined && Number.isFinite(numericValue)) {
+        asset.pitLane.lengthMetres = numericValue;
+      }
+      if (pitField === 'laneOffset' && numericValue !== undefined && Number.isFinite(numericValue)) {
         const previous = asset.pitLane.laneOffset;
-        const next = Number(target.value);
+        const nextOffset = numericValue;
         const previousMagnitude = Math.max(1, Math.abs(previous));
-        const nextMagnitude = Math.abs(next);
-        const side = Math.sign(next) || Math.sign(previous) || 1;
-        asset.pitLane.laneOffset = next;
+        const nextMagnitude = Math.abs(nextOffset);
+        const side = Math.sign(nextOffset) || Math.sign(previous) || 1;
+        asset.pitLane.laneOffset = nextOffset;
         asset.pitLane.path.forEach((control, index) => {
           if (index === 0 || index === asset.pitLane.path.length - 1) {
             control.laneOffset = 11 * side;
@@ -466,14 +471,20 @@ export function showCircuitEditor(
 
       const pitPathField = target.getAttribute('data-pit-path-field');
       const selectedPit = asset.pitLane.path[selectedPitIndex];
-      if (pitPathField && selectedPit) {
+      if (
+        pitPathField
+        && selectedPit
+        && numericValue !== undefined
+        && Number.isFinite(numericValue)
+      ) {
         if (pitPathField === 't' && selectedPitIndex > 0 && selectedPitIndex < asset.pitLane.path.length - 1) {
           const previous = asset.pitLane.path[selectedPitIndex - 1];
           const next = asset.pitLane.path[selectedPitIndex + 1];
-          selectedPit.t = clamp(Number(target.value) / 100, previous.t + 0.01, next.t - 0.01);
+          selectedPit.t = clamp(numericValue / 100, previous.t + 0.01, next.t - 0.01);
+          target.value = String(Math.round(selectedPit.t * 100));
         }
         if (pitPathField === 'laneOffset') {
-          selectedPit.laneOffset = Number(target.value);
+          selectedPit.laneOffset = numericValue;
           syncPitNominalOffset(asset);
         }
       }
