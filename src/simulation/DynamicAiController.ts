@@ -12,9 +12,9 @@ import {
   runtimeRacingLine,
 } from './RacingLineRuntime';
 import {
-  AI_SAFE_LANE_LIMIT,
-  TRACK_KERB_OUTER_OFFSET,
-  TRACK_RUNOFF_HALF_WIDTH,
+  trackAiSafeLaneLimit,
+  trackKerbOuterOffset,
+  trackRunoffHalfWidth,
 } from './TrackLimitsModel';
 import { getActiveTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { trackProfile } from './TrackProfile';
@@ -160,7 +160,9 @@ export function dynamicAiControl(
   const targetProgress = projection.progress + lookAheadMetres / TRACK_LENGTH;
   const lineReference = activeReferenceTarget(trackId, targetProgress, controlGrip);
   const currentLineReference = activeReferenceTarget(trackId, projection.progress, controlGrip);
-  const baseLane = clamp(lineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  const targetSafeLane = trackAiSafeLaneLimit(targetProgress);
+  const currentSafeLane = trackAiSafeLaneLimit(projection.progress);
+  const baseLane = clamp(lineReference.laneOffset, -targetSafeLane, targetSafeLane);
 
   // Traffic must never create a lateral target. CPU cars always steer toward
   // the shared reference line; FOLLOW only changes longitudinal pace.
@@ -168,13 +170,13 @@ export function dynamicAiControl(
     ? baseLane
     : approachLane(projection.laneOffset, baseLane, 2.6);
 
-  const offRoad = projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65;
+  const offRoad = projection.distance > trackKerbOuterOffset(projection.progress) + 0.65;
   if (offRoad) {
     // Traffic never changes the normal racing line, but once an AUTO CPU is
     // genuinely off the circuit the safest recovery target is the centreline.
     // PLAYER/EDITOR traces keep their demonstrated path instead.
     targetLane = highFidelityLine
-      ? clamp(currentLineReference.laneOffset, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+      ? clamp(currentLineReference.laneOffset, -currentSafeLane, currentSafeLane)
       : 0;
     battleState = 'CLEAR';
   }
@@ -188,7 +190,7 @@ export function dynamicAiControl(
       )
     : undefined;
   if (explicitFollower) {
-    targetLane = clamp(explicitFollower.targetLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+    targetLane = clamp(explicitFollower.targetLane, -currentSafeLane, currentSafeLane);
   }
   const steeringLookAheadMetres = explicitFollower?.lookAheadMetres ?? lookAheadMetres;
   const steeringProgress = explicitFollower?.steeringProgress
@@ -202,8 +204,8 @@ export function dynamicAiControl(
     ? 0
     : clamp(
         activeReferenceTarget(trackId, tangentProgress, controlGrip).laneOffset,
-        -AI_SAFE_LANE_LIMIT,
-        AI_SAFE_LANE_LIMIT,
+        -trackAiSafeLaneLimit(tangentProgress),
+        trackAiSafeLaneLimit(tangentProgress),
       );
   const tangent = sampleTrack(tangentProgress, tangentLane);
   const pathHeading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
@@ -211,13 +213,13 @@ export function dynamicAiControl(
   const headingError = wrapAngle(pathHeading - vehicle.heading);
   const bearingError = wrapAngle(bearingHeading - vehicle.heading);
   const referenceLaneNow = explicitFollower
-    ? clamp(explicitFollower.referenceLane, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT)
+    ? clamp(explicitFollower.referenceLane, -currentSafeLane, currentSafeLane)
     : offRoad
       ? 0
       : clamp(
           currentLineReference.laneOffset,
-          -AI_SAFE_LANE_LIMIT,
-          AI_SAFE_LANE_LIMIT,
+          -currentSafeLane,
+          currentSafeLane,
         );
   const lateralError = clamp((referenceLaneNow - projection.laneOffset) / 9.0, -1, 1);
   const steerCommand = offRoad
@@ -367,8 +369,8 @@ export function dynamicAiControl(
     targetSpeed = Math.min(targetSpeed, Math.max(28, ahead.speed - 2.5));
   }
 
-  if (projection.distance > TRACK_KERB_OUTER_OFFSET + 0.65) targetSpeed = Math.min(targetSpeed, 58);
-  if (projection.distance >= TRACK_RUNOFF_HALF_WIDTH) targetSpeed = Math.min(targetSpeed, 36);
+  if (projection.distance > trackKerbOuterOffset(projection.progress) + 0.65) targetSpeed = Math.min(targetSpeed, 58);
+  if (projection.distance >= trackRunoffHalfWidth(projection.progress)) targetSpeed = Math.min(targetSpeed, 36);
   targetSpeed = clamp(targetSpeed, highFidelityLine ? 18 : 26, 136);
 
   const speedError = targetSpeed - speed;
