@@ -752,7 +752,7 @@ export class CoreRaceGame {
     if (this.lap === 0) return;
     if (this.lastTrackProgress > this.trackProgress) return;
     while (this.nextSector <= 2) {
-      const threshold = sectorBoundariesFor(this.setup.trackId)[this.nextSector - 1];
+      const threshold = sectorBoundariesFor(getActiveTrack().id)[this.nextSector - 1];
       if (this.lastTrackProgress < threshold && this.trackProgress >= threshold) {
         const index = this.nextSector - 1;
         const sectorTime = this.timing.raceTime - this.sectorStartTime;
@@ -1024,7 +1024,7 @@ export class CoreRaceGame {
       }
 
       if (driver.lap >= 1 && clock.nextSector <= 2) {
-        const threshold = sectorBoundariesFor(this.setup.trackId)[clock.nextSector - 1];
+        const threshold = sectorBoundariesFor(getActiveTrack().id)[clock.nextSector - 1];
         if (clock.lastProgress < threshold && driver.progress >= threshold) {
           const sectorTime = this.timing.raceTime - clock.sectorStartTime;
           if (sectorTime > 0.5) {
