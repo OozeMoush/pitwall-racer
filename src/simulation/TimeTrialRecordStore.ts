@@ -1,4 +1,4 @@
-import type { TrackId } from './TrackModel';
+import { trackGeometryRevision, type TrackId } from './TrackModel';
 
 export interface TimeTrialLapRecord {
   lapTime: number;
@@ -7,6 +7,7 @@ export interface TimeTrialLapRecord {
 }
 
 export interface TimeTrialRecord {
+  trackRevision?: string;
   bestLap?: number;
   bestSectors: [number | undefined, number | undefined, number | undefined];
   laps: TimeTrialLapRecord[];
@@ -29,6 +30,7 @@ export function loadTimeTrialRecord(
     const raw = storage.getItem(KEY_PREFIX + trackId);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<TimeTrialRecord>;
+    if (parsed.trackRevision !== trackGeometryRevision(trackId)) return empty;
     const laps = Array.isArray(parsed.laps)
       ? parsed.laps
           .filter(isLapRecord)
@@ -44,7 +46,7 @@ export function loadTimeTrialRecord(
     const bestLap = typeof parsed.bestLap === 'number' && Number.isFinite(parsed.bestLap) && parsed.bestLap > 0
       ? parsed.bestLap
       : laps[0]?.lapTime;
-    return { bestLap, bestSectors, laps };
+    return { trackRevision: parsed.trackRevision, bestLap, bestSectors, laps };
   } catch {
     return empty;
   }
@@ -77,6 +79,7 @@ export function saveTimeTrialLap(
     best === undefined ? sectors[index] : Math.min(best, sectors[index]),
   ) as TimeTrialRecord['bestSectors'];
   const record: TimeTrialRecord = {
+    trackRevision: trackGeometryRevision(trackId),
     bestLap: previous.bestLap === undefined ? lapTime : Math.min(previous.bestLap, lapTime),
     bestSectors,
     laps,

@@ -39,6 +39,21 @@ describe('pace benchmark evidence storage', () => {
     expect(loadPaceEvidence(storage).map((lap) => lap.seconds)).toEqual([24.4, 26.2]);
   });
 
+  it('ignores historical evidence without the current track revision', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('pitwall-racer:pace-evidence:v1', JSON.stringify({
+      version: 1,
+      laps: [evidence(24.4)],
+    }));
+    expect(loadPaceEvidence(storage)).toEqual([]);
+
+    storage.setItem('pitwall-racer:pace-evidence:v1', JSON.stringify({
+      version: 1,
+      laps: [{ ...evidence(24.4), trackRevision: 'g1-stale' }],
+    }));
+    expect(loadPaceEvidence(storage)).toEqual([]);
+  });
+
   it('treats corrupt storage as empty instead of breaking startup', () => {
     const storage = new MemoryStorage();
     storage.setItem('pitwall-racer:pace-evidence:v1', '{broken');

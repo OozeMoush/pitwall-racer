@@ -5,6 +5,7 @@ import type {
 import {
   sampleTrack,
   samplesForDistance,
+  trackGeometryRevision,
   trackLengthFor,
   type TrackId,
 } from './TrackModel';
@@ -137,6 +138,7 @@ export class PlayerRacingLineCandidateRecorder {
     return {
       version: 1,
       trackId: this.trackId,
+      trackRevision: trackGeometryRevision(this.trackId),
       source: 'PLAYER',
       referenceGrip: this.referenceGrip,
       lapSeconds,
@@ -170,11 +172,19 @@ export function saveBestPlayerRacingLineCandidate(
   candidate: RacingLineAsset,
 ): RacingLineAsset {
   const store = loadStore(storage);
-  const previous = store.candidates[candidate.trackId];
+  const currentRevision = trackGeometryRevision(candidate.trackId);
+  const normalizedCandidate: RacingLineAsset = {
+    ...candidate,
+    trackRevision: currentRevision,
+  };
+  const storedPrevious = store.candidates[candidate.trackId];
+  const previous = storedPrevious?.trackRevision === currentRevision
+    ? storedPrevious
+    : undefined;
 
   if (previous) {
     const previousQuality = racingLineTraceQuality(previous);
-    const candidateQuality = racingLineTraceQuality(candidate);
+    const candidateQuality = racingLineTraceQuality(normalizedCandidate);
 
     // Never trade replay fidelity for a headline lap time. Once a trace has
     // richer physical state (heading/yaw, acceleration, grip, AXF), a lower
@@ -186,27 +196,31 @@ export function saveBestPlayerRacingLineCandidate(
     if (
       candidateQuality === previousQuality
       && previous.lapSeconds !== undefined
-      && candidate.lapSeconds !== undefined
-      && previous.lapSeconds <= candidate.lapSeconds
+      && normalizedCandidate.lapSeconds !== undefined
+      && previous.lapSeconds <= normalizedCandidate.lapSeconds
     ) {
       return previous;
     }
   }
 
-  store.candidates[candidate.trackId] = candidate;
+  store.candidates[candidate.trackId] = normalizedCandidate;
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
     // A development aid must never break the playable race loop.
   }
-  return candidate;
+  return normalizedCandidate;
 }
 
 export function loadPlayerRacingLineCandidate(
   storage: RacingLineCandidateStorage,
   trackId: TrackId,
 ): RacingLineAsset | undefined {
-  return loadStore(storage).candidates[trackId];
+  const candidate = loadStore(storage).candidates[trackId];
+  if (!candidate || candidate.trackId !== trackId) return undefined;
+  return candidate.trackRevision === trackGeometryRevision(trackId)
+    ? candidate
+    : undefined;
 }
 
 function loadStore(storage: RacingLineCandidateStorage): CandidateStore {

@@ -1,3 +1,4 @@
+import { trackGeometryRevision } from './TrackModel';
 import type { EmpiricalLapEvidence } from './PaceBenchmarkModel';
 
 const STORAGE_KEY = 'pitwall-racer:pace-evidence:v1';
@@ -8,9 +9,11 @@ export interface PaceEvidenceStorage {
   setItem(key: string, value: string): void;
 }
 
+type StoredLapEvidence = EmpiricalLapEvidence & { trackRevision?: string };
+
 interface StoredEvidence {
   version: 1;
-  laps: EmpiricalLapEvidence[];
+  laps: StoredLapEvidence[];
 }
 
 export function loadPaceEvidence(storage: PaceEvidenceStorage): EmpiricalLapEvidence[] {
@@ -19,7 +22,10 @@ export function loadPaceEvidence(storage: PaceEvidenceStorage): EmpiricalLapEvid
     if (!raw) return [];
     const parsed = JSON.parse(raw) as Partial<StoredEvidence>;
     if (parsed.version !== 1 || !Array.isArray(parsed.laps)) return [];
-    return parsed.laps.filter(isLapEvidence).slice(0, MAX_STORED_LAPS);
+    return parsed.laps
+      .filter(isLapEvidence)
+      .filter((lap) => lap.trackRevision === trackGeometryRevision(lap.trackId))
+      .slice(0, MAX_STORED_LAPS);
   } catch {
     return [];
   }
@@ -30,7 +36,11 @@ export function savePaceEvidence(
   evidence: EmpiricalLapEvidence,
 ): EmpiricalLapEvidence[] {
   const existing = loadPaceEvidence(storage);
-  const laps = [evidence, ...existing]
+  const revisionedEvidence: StoredLapEvidence = {
+    ...evidence,
+    trackRevision: trackGeometryRevision(evidence.trackId),
+  };
+  const laps = [revisionedEvidence, ...existing]
     .sort((a, b) => a.seconds - b.seconds)
     .slice(0, MAX_STORED_LAPS);
   const payload: StoredEvidence = { version: 1, laps };
@@ -42,7 +52,7 @@ export function savePaceEvidence(
   return laps;
 }
 
-function isLapEvidence(value: unknown): value is EmpiricalLapEvidence {
+function isLapEvidence(value: unknown): value is StoredLapEvidence {
   if (!value || typeof value !== 'object') return false;
   const lap = value as Record<string, unknown>;
   return typeof lap.trackId === 'string'

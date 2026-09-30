@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { sampleTrack, samplesForDistance, trackLengthFor } from './TrackModel';
+import {
+  sampleTrack,
+  samplesForDistance,
+  trackGeometryRevision,
+  trackLengthFor,
+} from './TrackModel';
 import {
   PlayerRacingLineCandidateRecorder,
   loadPlayerRacingLineCandidate,
@@ -80,6 +85,28 @@ describe('player racing-line candidates', () => {
     expect(laterSlower).toBeDefined();
     saveBestPlayerRacingLineCandidate(storage, laterSlower!);
     expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')?.lapSeconds).toBe(25.0);
+  });
+
+  it('ignores legacy or stale candidates after circuit geometry changes', () => {
+    const storage = new MemoryStorage();
+    const candidate = recordedLap(24.5)!;
+    expect(candidate.trackRevision).toBe(trackGeometryRevision('pitwall-gp'));
+
+    storage.setItem('pitwall-racer:racing-line-candidates:v1', JSON.stringify({
+      version: 1,
+      candidates: {
+        'pitwall-gp': { ...candidate, trackRevision: 'g1-stale' },
+      },
+    }));
+    expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')).toBeUndefined();
+
+    storage.setItem('pitwall-racer:racing-line-candidates:v1', JSON.stringify({
+      version: 1,
+      candidates: {
+        'pitwall-gp': { ...candidate, trackRevision: undefined },
+      },
+    }));
+    expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')).toBeUndefined();
   });
 
   it('drops a lap explicitly marked ineligible', () => {

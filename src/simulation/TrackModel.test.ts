@@ -12,6 +12,8 @@ import {
   sampleTrack,
   samplesForDistance,
   setActiveTrack,
+  trackGeometryFingerprint,
+  trackGeometryRevision,
 } from './TrackModel';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
@@ -23,6 +25,22 @@ describe('TrackModel', () => {
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
     expect(TRACK_LENGTH).toBeGreaterThan(7800);
     expect(TRACK_LENGTH).toBeLessThan(8400);
+  });
+
+  it('changes the geometry revision when generated road points move', () => {
+    const baseline = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ];
+    const edited = baseline.map((point, index) => (
+      index === 1 ? { ...point, x: point.x + 0.01 } : point
+    ));
+
+    expect(trackGeometryFingerprint(baseline)).not.toBe(trackGeometryFingerprint(edited));
+    expect(trackGeometryRevision('pitwall-gp')).toBe(
+      trackGeometryFingerprint(RACING_LINE),
+    );
   });
 
   it('supports multiple race-scale circuits alongside legacy miniature circuits', () => {

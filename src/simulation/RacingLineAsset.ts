@@ -48,6 +48,12 @@ export interface RacingLinePoint {
 export interface RacingLineAsset {
   version: 1;
   trackId: TrackId;
+  /**
+   * Fingerprint of the generated circuit geometry this asset was recorded
+   * against. Missing revisions are legacy and must not be activated from
+   * persistent storage.
+   */
+  trackRevision?: string;
   source: RacingLineSource;
   referenceGrip?: number;
   lapSeconds?: number;
