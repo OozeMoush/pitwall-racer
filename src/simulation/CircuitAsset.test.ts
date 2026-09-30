@@ -54,6 +54,18 @@ describe('CircuitAsset', () => {
     expect(exportCircuitAsset(imported)).toBe(exported);
   });
 
+  it('migrates older editor assets that did not store an explicit pit path', () => {
+    const legacy = JSON.parse(exportCircuitAsset(createDefaultCircuitAsset())) as Record<string, any>;
+    delete legacy.pitLane.path;
+
+    const imported = importCircuitAsset(JSON.stringify(legacy));
+
+    expect(imported.pitLane.path.length).toBeGreaterThanOrEqual(4);
+    expect(imported.pitLane.path[0].t).toBe(0);
+    expect(imported.pitLane.path.at(-1)?.t).toBe(1);
+    expect(validateCircuitAsset(imported).valid).toBe(true);
+  });
+
   it('persists and installs through the ordinary TrackModel runtime slot', () => {
     const storage = new MemoryStorage();
     const asset = createDefaultCircuitAsset();
