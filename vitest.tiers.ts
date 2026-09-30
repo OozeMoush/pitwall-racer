@@ -1,4 +1,5 @@
 export const LONG_TEST_FILES = [
+  'src/simulation/FullStandardRaceTyrePlaytest.test.ts',
   'src/simulation/AiReferenceGhost.test.ts',
   'src/simulation/DynamicPackPlaytest.test.ts',
   'src/simulation/MultiCircuitPlaytest.test.ts',
