@@ -256,7 +256,6 @@ export function circuitReferenceLineAsset(asset: CircuitAsset): RacingLineAsset 
   // Ensure TrackModel is using the geometry this line belongs to before
   // stamping its fingerprint.
   installCircuitAsset(asset);
-  const controls = rotate(asset.controls, asset.startControlIndex);
   const offsets = rotate(asset.referenceLine.laneOffsets, asset.startControlIndex);
   const centreline = trackCentreline(EDITOR_TRACK_ID);
   const points = centreline.map((_, index) => {
