@@ -313,6 +313,37 @@ export function trackCentreline(id: TrackId): readonly TrackPoint[] {
   return buildTrackCentreline(definition);
 }
 
+/**
+ * Stable fingerprint of the generated centreline, not a manually maintained
+ * version number. Any control-point, interpolation or stretch change that
+ * moves the playable road therefore invalidates geometry-derived persistence
+ * automatically.
+ */
+export function trackGeometryFingerprint(points: readonly TrackPoint[]): string {
+  let hash = 0x811c9dc5;
+  const mixInt32 = (value: number) => {
+    const integer = value | 0;
+    for (let byte = 0; byte < 4; byte++) {
+      hash ^= (integer >>> (byte * 8)) & 0xff;
+      hash = Math.imul(hash, 0x01000193);
+    }
+  };
+
+  mixInt32(points.length);
+  for (const point of points) {
+    // Millimetre precision is far tighter than meaningful circuit edits while
+    // keeping the fingerprint deterministic across JSON/storage round trips.
+    mixInt32(Math.round(point.x * 1000));
+    mixInt32(Math.round(point.y * 1000));
+  }
+
+  return `g1-${(hash >>> 0).toString(16).padStart(8, '0')}-${points.length}`;
+}
+
+export function trackGeometryRevision(id: TrackId): string {
+  return trackGeometryFingerprint(trackCentreline(id));
+}
+
 export function trackLengthFor(id: TrackId): number {
   const points = trackCentreline(id);
   let total = 0;
