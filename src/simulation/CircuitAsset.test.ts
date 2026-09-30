@@ -25,7 +25,7 @@ import {
   pitLaneOffset,
   shouldEnterPit,
 } from './PitLaneModel';
-import { trackRoadHalfWidth } from './TrackLimitsModel';
+import { hasSafetyBarrier, trackRoadHalfWidth } from './TrackLimitsModel';
 import { surfaceEffect } from './SurfaceModel';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
@@ -175,6 +175,8 @@ describe('CircuitAsset', () => {
     const entry = pitEntryProgress();
     expect(shouldEnterPit(entry - 0.01, entry + 0.001, 20, true, -9)).toBe(true);
     expect(shouldEnterPit(entry - 0.01, entry + 0.001, 20, true, 9)).toBe(false);
+    expect(hasSafetyBarrier(entry, -1)).toBe(false);
+    expect(hasSafetyBarrier(entry, 1)).toBe(true);
   });
 
   it('rejects a broken pit route before export or install', () => {
