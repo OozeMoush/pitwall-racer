@@ -16,9 +16,9 @@ export const PIT_SERVICE_SECONDS = 2.5;
 const COMPACT_PIT_SERVICE_SECONDS = 1.2;
 const LONG_PIT_SERVICE_SECONDS = 2.8;
 
-// The limiter is now a real pit-lane rule instead of the old kinematic
-// conveyor speed. 80 km/h is close to modern F1 and still feels readable on
-// the miniature circuit.
+// Standard/Long circuits retain an F1-like 80 km/h limiter. Compact circuits
+// use a faster abstract limiter so a physically authored pit route does not
+// consume half of a 20–40 second lap.
 export const PIT_SPEED = 80 / 3.6;
 const COMPACT_PIT_SPEED = 130 / 3.6;
 export const PIT_LIMIT_START_T = 0.10;
@@ -268,8 +268,8 @@ export function pitLaneSpeedLimitActive(tInput: number): boolean {
 
 /**
  * Target used by the player's limiter/box assist. Entry and exit are allowed a
- * little more speed, but the regulated section is capped at 80 km/h. The final
- * metres into the box are progressively slowed so the only snap is the tiny
+ * little more speed, but the regulated section follows the circuit-scale
+ * limiter. The final metres into the box are progressively slowed so the only snap is the tiny
  * final docking correction.
  */
 export function pitLaneTargetSpeed(state: PitStopState, tInput: number): number {
