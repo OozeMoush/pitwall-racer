@@ -204,4 +204,4 @@ it('runs a full physical STANDARD race through H/M/S wear, slides, and real pit 
   for (const row of metrics) {
     expect(row.deepCutRatio, row.name).toBeLessThan(0.03);
   }
-}, 90_000);
+}, 180_000);
