@@ -304,7 +304,7 @@ class QualifyingGame {
       this.vehicle.x,
       this.vehicle.y,
     );
-    const surface = surfaceEffect(physicalSurfaceProjection.distance);
+    const surface = surfaceEffect(physicalSurfaceProjection.distance, physicalSurfaceProjection.progress);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
     const load = Math.min(1.34,
       Math.abs(this.steerInput) * speedLoad * 0.92
@@ -647,7 +647,7 @@ class QualifyingGame {
   }
 
   private updateAudio(dt: number): void {
-    const surface = surfaceEffect(projectTrack(this.vehicle.x, this.vehicle.y).distance);
+    const projection = projectTrack(this.vehicle.x, this.vehicle.y);\n    const surface = surfaceEffect(projection.distance, projection.progress);
     this.audio.update({
       speed: this.vehicle.speed,
       throttle: this.phase === 'APPROACH' || this.phase === 'FLYING' ? (this.keys.has('KeyW') ? 1 : 0) : 0,
