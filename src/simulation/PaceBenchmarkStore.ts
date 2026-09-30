@@ -52,7 +52,7 @@ export function savePaceEvidence(
   return laps;
 }
 
-function isLapEvidence(value: unknown): value is EmpiricalLapEvidence {
+function isLapEvidence(value: unknown): value is StoredLapEvidence {
   if (!value || typeof value !== 'object') return false;
   const lap = value as Record<string, unknown>;
   return typeof lap.trackId === 'string'
