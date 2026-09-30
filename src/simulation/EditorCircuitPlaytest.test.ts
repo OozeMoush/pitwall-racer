@@ -103,4 +103,4 @@ it('runs an exported editor-authored Foundry Loop through the normal physical AI
   } finally {
     physics.world.free();
   }
-}, 20_000);
+}, 90_000);

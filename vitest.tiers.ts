@@ -1,5 +1,6 @@
 export const LONG_TEST_FILES = [
   'src/simulation/FullStandardRaceTyrePlaytest.test.ts',
+  'src/simulation/EditorCircuitPlaytest.test.ts',
   'src/simulation/AiReferenceGhost.test.ts',
   'src/simulation/DynamicPackPlaytest.test.ts',
   'src/simulation/MultiCircuitPlaytest.test.ts',
@@ -17,7 +18,6 @@ export const PLAYTEST_TEST_FILES = [
   'src/simulation/AiTrafficLineRegression.test.ts',
   'src/simulation/AiPhysicalPit.test.ts',
   'src/simulation/DynamicAiController.test.ts',
-  'src/simulation/EditorCircuitPlaytest.test.ts',
   'src/simulation/GridLaunchRegression.test.ts',
   'src/simulation/LapValidityModel.test.ts',
   'src/simulation/QualifyingModel.test.ts',

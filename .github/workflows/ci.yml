@@ -15,11 +15,17 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
-        tier: [fast, playtest, long]
+        include:
+          - tier: fast
+            timeout: 10
+          - tier: playtest
+            timeout: 10
+          - tier: long
+            timeout: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
