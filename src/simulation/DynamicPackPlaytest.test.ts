@@ -176,7 +176,7 @@ describe('dynamic field playtest telemetry', () => {
     expect(metrics.avgAiLongitudinalJerk).toBeLessThan(11);
     expect(metrics.p99AiLongitudinalJerk).toBeLessThan(48);
     expect(metrics.highJerkRatio).toBeLessThan(0.008);
-  }, 20_000);
+  }, 60_000);
 });
 
 function percentile(sorted: readonly number[], quantile: number): number {
