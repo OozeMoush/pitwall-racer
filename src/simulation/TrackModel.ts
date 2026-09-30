@@ -44,6 +44,8 @@ export interface TrackDefinition {
   name: string;
   subtitle: string;
   controls: readonly TrackPoint[];
+  /** Optional authored road half-width at each control point. */
+  roadHalfWidths?: readonly number[];
   geometry?: 'smooth' | 'street' | 'pitwall-grand-prix';
   stretch?: TrackStretchDefinition;
   referenceLaneMode?: 'optimized' | 'centerline';
