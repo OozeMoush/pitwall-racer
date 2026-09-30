@@ -378,7 +378,16 @@ export function trackGeometryFingerprint(points: readonly TrackPoint[]): string 
 }
 
 export function trackGeometryRevision(id: TrackId): string {
-  return trackGeometryFingerprint(trackCentreline(id));
+  const centrelineRevision = trackGeometryFingerprint(trackCentreline(id));
+  const widths = getTrackDefinition(id).roadHalfWidths;
+  if (!widths || widths.length === 0) return centrelineRevision;
+
+  // Width is part of playable geometry: narrowing a road can make a formerly
+  // valid racing line illegal even when the centreline itself did not move.
+  const widthRevision = trackGeometryFingerprint(
+    widths.map((width, index) => ({ x: index, y: width })),
+  );
+  return `${centrelineRevision}:w-${widthRevision}`;
 }
 
 export function trackLengthFor(id: TrackId): number {
