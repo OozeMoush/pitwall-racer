@@ -62,7 +62,7 @@ describe('CircuitAsset', () => {
 
     expect(imported.pitLane.path.length).toBeGreaterThanOrEqual(4);
     expect(imported.pitLane.path[0].t).toBe(0);
-    expect(imported.pitLane.path.at(-1)?.t).toBe(1);
+    expect(imported.pitLane.path[imported.pitLane.path.length - 1].t).toBe(1);
     expect(validateCircuitAsset(imported).valid).toBe(true);
   });
 
