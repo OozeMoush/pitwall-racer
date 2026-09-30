@@ -13,7 +13,7 @@ import { saveSelectedRacingLineSource } from '../simulation/RacingLineSelectionS
 import { EDITOR_TRACK_ID } from '../simulation/TrackModel';
 
 type EditorResult = 'saved' | 'cancelled';
-type EditorMode = 'GEOMETRY' | 'REFERENCE';
+type EditorMode = 'GEOMETRY' | 'PIT' | 'REFERENCE';
 
 const VIEW_WIDTH = 1000;
 const VIEW_HEIGHT = 650;
@@ -24,9 +24,11 @@ export function showCircuitEditor(
 ): Promise<EditorResult> {
   let asset = cloneAsset(loadCircuitAsset(storage) ?? createDefaultCircuitAsset());
   let selectedIndex = Math.min(asset.controls.length - 1, asset.startControlIndex);
+  let selectedPitIndex = Math.min(1, asset.pitLane.path.length - 1);
   let mode: EditorMode = 'GEOMETRY';
   let drag:
     | { kind: 'control'; index: number; pointerId: number }
+    | { kind: 'pit'; index: number; pointerId: number }
     | { kind: 'reference'; index: number; pointerId: number }
     | undefined;
 
@@ -39,6 +41,7 @@ export function showCircuitEditor(
         </div>
         <div class="circuit-editor-mode">
           <button data-editor-mode="GEOMETRY">GEOMETRY</button>
+          <button data-editor-mode="PIT">PIT LANE</button>
           <button data-editor-mode="REFERENCE">REFERENCE LINE</button>
         </div>
       </div>
@@ -88,7 +91,9 @@ export function showCircuitEditor(
       if (hint) {
         hint.textContent = mode === 'GEOMETRY'
           ? 'Drag control points. Click empty canvas to append a point. Width is edited in the inspector.'
-          : 'Drag cyan reference handles left/right from each control point to author the CPU seed line.';
+          : mode === 'PIT'
+            ? 'Drag orange pit controls laterally. Entry/exit span and each control t can be edited in the inspector.'
+            : 'Drag cyan reference handles left/right from each control point to author the CPU seed line.';
       }
     };
 
@@ -133,6 +138,15 @@ export function showCircuitEditor(
         const screen = toScreen(point, frame);
         return `${index === 0 ? 'M' : 'L'}${screen.x.toFixed(1)},${screen.y.toFixed(1)}`;
       }).join(' ');
+      const pitHandles = mode === 'PIT'
+        ? asset.pitLane.path.map((control, index) => {
+            const screen = toScreen(previewPitPoint(asset, control.t), frame);
+            const selected = index === selectedPitIndex ? ' selected' : '';
+            return `<circle class="editor-pit-handle${selected}"
+              cx="${screen.x}" cy="${screen.y}" r="${selected ? 9 : 7}"
+              data-pit-index="${index}"></circle>`;
+          }).join('')
+        : '';
 
       const markers = [
         markerAtProgress(asset, asset.sectorBoundaries[0], frame, 'S1', 'sector'),
@@ -164,6 +178,7 @@ export function showCircuitEditor(
         <path class="editor-track-centre" d="${path}"></path>
         <path class="editor-reference-path" d="${referencePath}"></path>
         <path class="editor-pit-path" d="${pitPath}"></path>
+        ${pitHandles}
         ${markers}
         <g class="editor-start-marker">
           <circle cx="${start.x}" cy="${start.y}" r="15"></circle>
@@ -184,6 +199,8 @@ export function showCircuitEditor(
       if (!inspector) return;
       const point = asset.controls[selectedIndex];
       const referenceOffset = asset.referenceLine.laneOffsets[selectedIndex] ?? 0;
+      const pitControl = asset.pitLane.path[selectedPitIndex]
+        ?? asset.pitLane.path[0];
       inspector.innerHTML = `
         <section>
           <h2>CIRCUIT</h2>
@@ -228,7 +245,23 @@ export function showCircuitEditor(
           </div>
           <div class="editor-field-row">
             <label>PIT LENGTH m<input type="number" min="120" max="1600" step="10" data-pit-field="lengthMetres" value="${round(asset.pitLane.lengthMetres)}"></label>
-            <label>PIT OFFSET m<input type="number" min="10" max="80" step="1" data-pit-field="laneOffset" value="${round(asset.pitLane.laneOffset)}"></label>
+            <label>PIT NOMINAL OFFSET m<input type="number" min="-80" max="80" step="1" data-pit-field="laneOffset" value="${round(asset.pitLane.laneOffset)}"></label>
+          </div>
+        </section>
+
+        <section>
+          <h2>PIT PATH CONTROL ${selectedPitIndex + 1} / ${asset.pitLane.path.length}</h2>
+          <div class="editor-field-row">
+            <label>ROUTE %<input type="number" min="0" max="100" step="1"
+              data-pit-path-field="t" value="${Math.round((pitControl?.t ?? 0) * 100)}"
+              ${selectedPitIndex === 0 || selectedPitIndex === asset.pitLane.path.length - 1 ? 'disabled' : ''}></label>
+            <label>OFFSET m<input type="number" min="-80" max="80" step="0.5"
+              data-pit-path-field="laneOffset" value="${round(pitControl?.laneOffset ?? 11)}"></label>
+          </div>
+          <div class="editor-inline-actions">
+            <button data-editor-action="add-pit-point" ${asset.pitLane.path.length >= 12 ? 'disabled' : ''}>ADD PIT POINT</button>
+            <button data-editor-action="delete-pit-point"
+              ${asset.pitLane.path.length <= 4 || selectedPitIndex === 0 || selectedPitIndex === asset.pitLane.path.length - 1 ? 'disabled' : ''}>DELETE PIT POINT</button>
           </div>
         </section>
 
@@ -299,9 +332,40 @@ export function showCircuitEditor(
         render();
         return;
       }
+      if (action === 'add-pit-point') {
+        if (asset.pitLane.path.length >= 12) return;
+        const insertIndex = Math.min(
+          asset.pitLane.path.length - 1,
+          Math.max(1, selectedPitIndex + 1),
+        );
+        const left = asset.pitLane.path[insertIndex - 1];
+        const right = asset.pitLane.path[insertIndex];
+        asset.pitLane.path.splice(insertIndex, 0, {
+          t: (left.t + right.t) / 2,
+          laneOffset: (left.laneOffset + right.laneOffset) / 2,
+        });
+        selectedPitIndex = insertIndex;
+        mode = 'PIT';
+        syncPitNominalOffset(asset);
+        render();
+        return;
+      }
+      if (action === 'delete-pit-point') {
+        if (
+          asset.pitLane.path.length <= 4
+          || selectedPitIndex <= 0
+          || selectedPitIndex >= asset.pitLane.path.length - 1
+        ) return;
+        asset.pitLane.path.splice(selectedPitIndex, 1);
+        selectedPitIndex = Math.min(selectedPitIndex, asset.pitLane.path.length - 2);
+        syncPitNominalOffset(asset);
+        render();
+        return;
+      }
       if (action === 'reset') {
         asset = createDefaultCircuitAsset();
         selectedIndex = 0;
+        selectedPitIndex = Math.min(1, asset.pitLane.path.length - 1);
         render();
         return;
       }
@@ -326,6 +390,7 @@ export function showCircuitEditor(
         try {
           asset = importCircuitAsset(textarea.value);
           selectedIndex = Math.min(asset.startControlIndex, asset.controls.length - 1);
+          selectedPitIndex = Math.min(1, asset.pitLane.path.length - 1);
           render();
         } catch (error) {
           textarea.setCustomValidity(error instanceof Error ? error.message : 'Invalid circuit JSON');
@@ -379,7 +444,39 @@ export function showCircuitEditor(
 
       const pitField = target.getAttribute('data-pit-field');
       if (pitField === 'lengthMetres') asset.pitLane.lengthMetres = Number(target.value);
-      if (pitField === 'laneOffset') asset.pitLane.laneOffset = Number(target.value);
+      if (pitField === 'laneOffset') {
+        const previous = asset.pitLane.laneOffset;
+        const next = Number(target.value);
+        const previousMagnitude = Math.max(1, Math.abs(previous));
+        const nextMagnitude = Math.abs(next);
+        const side = Math.sign(next) || Math.sign(previous) || 1;
+        asset.pitLane.laneOffset = next;
+        asset.pitLane.path.forEach((control, index) => {
+          if (index === 0 || index === asset.pitLane.path.length - 1) {
+            control.laneOffset = 11 * side;
+            return;
+          }
+          control.laneOffset = side * clamp(
+            Math.abs(control.laneOffset) / previousMagnitude * nextMagnitude,
+            8,
+            80,
+          );
+        });
+      }
+
+      const pitPathField = target.getAttribute('data-pit-path-field');
+      const selectedPit = asset.pitLane.path[selectedPitIndex];
+      if (pitPathField && selectedPit) {
+        if (pitPathField === 't' && selectedPitIndex > 0 && selectedPitIndex < asset.pitLane.path.length - 1) {
+          const previous = asset.pitLane.path[selectedPitIndex - 1];
+          const next = asset.pitLane.path[selectedPitIndex + 1];
+          selectedPit.t = clamp(Number(target.value) / 100, previous.t + 0.01, next.t - 0.01);
+        }
+        if (pitPathField === 'laneOffset') {
+          selectedPit.laneOffset = Number(target.value);
+          syncPitNominalOffset(asset);
+        }
+      }
 
       const gridField = target.getAttribute('data-grid-field');
       if (gridField === 'frontGapMetres') asset.grid.frontGapMetres = Number(target.value);
@@ -401,10 +498,19 @@ export function showCircuitEditor(
     svg.addEventListener('pointerdown', (event) => {
       const target = event.target as SVGElement;
       const controlIndex = target.getAttribute('data-control-index');
+      const pitIndex = target.getAttribute('data-pit-index');
       const referenceIndex = target.getAttribute('data-reference-index');
       if (controlIndex !== null) {
         selectedIndex = Number(controlIndex);
         drag = { kind: 'control', index: selectedIndex, pointerId: event.pointerId };
+        svg.setPointerCapture(event.pointerId);
+        render();
+        return;
+      }
+      if (pitIndex !== null) {
+        selectedPitIndex = Number(pitIndex);
+        mode = 'PIT';
+        drag = { kind: 'pit', index: selectedPitIndex, pointerId: event.pointerId };
         svg.setPointerCapture(event.pointerId);
         render();
         return;
@@ -426,6 +532,13 @@ export function showCircuitEditor(
       if (drag.kind === 'control') {
         asset.controls[drag.index].x = world.x;
         asset.controls[drag.index].y = world.y;
+      } else if (drag.kind === 'pit') {
+        const control = asset.pitLane.path[drag.index];
+        const base = previewPitBase(asset, control.t);
+        const dx = world.x - base.x;
+        const dy = world.y - base.y;
+        control.laneOffset = clamp(dx * base.nx + dy * base.ny, -80, 80);
+        syncPitNominalOffset(asset);
       } else {
         const point = asset.controls[drag.index];
         const normal = controlNormal(asset.controls, drag.index);
@@ -561,6 +674,19 @@ function previewPitPoint(
   asset: CircuitAsset,
   t: number,
 ): { x: number; y: number } {
+  const base = previewPitBase(asset, t);
+  const laneOffset = pitLaneOffsetAt(asset, t);
+  return {
+    x: base.x + base.nx * laneOffset,
+    y: base.y + base.ny * laneOffset,
+  };
+}
+
+function previewPitBase(
+  asset: CircuitAsset,
+  tInput: number,
+): { x: number; y: number; nx: number; ny: number } {
+  const t = clamp(tInput, 0, 1);
   const controls = orderedControls(asset);
   const span = ((asset.pitLane.exitProgress - asset.pitLane.entryProgress) % 1 + 1) % 1;
   const progress = (asset.pitLane.entryProgress + span * t) % 1;
@@ -571,18 +697,36 @@ function previewPitPoint(
   const dx = after.x - before.x;
   const dy = after.y - before.y;
   const length = Math.max(0.0001, Math.hypot(dx, dy));
-  const nx = -dy / length;
-  const ny = dx / length;
-
-  const entryRamp = smoothstep01(clamp(t / 0.08, 0, 1));
-  const exitRamp = smoothstep01(clamp((1 - t) / 0.10, 0, 1));
-  const baseOffset = 11;
-  const laneOffset = baseOffset
-    + (asset.pitLane.laneOffset - baseOffset) * Math.min(entryRamp, exitRamp);
   return {
-    x: centre.x + nx * laneOffset,
-    y: centre.y + ny * laneOffset,
+    x: centre.x,
+    y: centre.y,
+    nx: -dy / length,
+    ny: dx / length,
   };
+}
+
+function pitLaneOffsetAt(asset: CircuitAsset, tInput: number): number {
+  const t = clamp(tInput, 0, 1);
+  const path = asset.pitLane.path;
+  if (path.length === 0) return asset.pitLane.laneOffset;
+  if (t <= path[0].t) return path[0].laneOffset;
+  for (let index = 1; index < path.length; index++) {
+    const right = path[index];
+    if (t > right.t) continue;
+    const left = path[index - 1];
+    const range = Math.max(0.000001, right.t - left.t);
+    const local = smoothstep01((t - left.t) / range);
+    return left.laneOffset + (right.laneOffset - left.laneOffset) * local;
+  }
+  return path[path.length - 1].laneOffset;
+}
+
+function syncPitNominalOffset(asset: CircuitAsset): void {
+  const peak = asset.pitLane.path.reduce(
+    (best, point) => Math.abs(point.laneOffset) > Math.abs(best.laneOffset) ? point : best,
+    asset.pitLane.path[0] ?? { t: 0, laneOffset: asset.pitLane.laneOffset },
+  );
+  asset.pitLane.laneOffset = peak.laneOffset;
 }
 
 function referencePoint(asset: CircuitAsset, index: number): { x: number; y: number } {
