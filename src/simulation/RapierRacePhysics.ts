@@ -14,12 +14,12 @@ import {
   type DynamicAiControl,
 } from './DynamicAiController';
 import {
-  PIT_SPEED,
   beginPitStop,
   createPitStopState,
   isPitActive,
   pitBoxTForSlot,
   pitLanePose,
+  pitSpeed,
   shouldEnterPit,
   stepPitStop,
   type PitStopState,
@@ -433,7 +433,8 @@ export class RapierRacePhysics {
     }
 
     const pose = pitLanePose(next.t);
-    const speed = next.phase === 'SERVICE' ? 0 : PIT_SPEED;
+    const limiterSpeed = pitSpeed();
+    const speed = next.phase === 'SERVICE' ? 0 : limiterSpeed;
     const pitVehicle: VehicleState = {
       x: pose.x,
       y: pose.y,
@@ -453,13 +454,13 @@ export class RapierRacePhysics {
         x: exit.x,
         y: exit.y,
         heading: exit.heading,
-        speed: PIT_SPEED,
+        speed: limiterSpeed,
         yawRate: 0,
       };
       this.setAiState(index, exitVehicle);
       driver.progress = exit.raceProgress;
       driver.laneOffset = exit.laneOffset;
-      driver.speed = PIT_SPEED;
+      driver.speed = limiterSpeed;
       this.lastAiProgress[index] = exit.raceProgress;
       this.aiPitStops[index] = createPitStopState();
     }
