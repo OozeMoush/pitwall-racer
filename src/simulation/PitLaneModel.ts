@@ -20,6 +20,7 @@ const LONG_PIT_SERVICE_SECONDS = 2.8;
 // conveyor speed. 80 km/h is close to modern F1 and still feels readable on
 // the miniature circuit.
 export const PIT_SPEED = 80 / 3.6;
+const COMPACT_PIT_SPEED = 130 / 3.6;
 export const PIT_LIMIT_START_T = 0.10;
 export const PIT_LIMIT_END_T = 0.90;
 
@@ -146,14 +147,25 @@ export function pitServiceSeconds(): number {
   return pitServiceSecondsFor(getActiveTrack().id);
 }
 
+export function pitSpeedFor(trackId: TrackId): number {
+  return circuitScalePresetFor(trackId) === 'COMPACT'
+    ? COMPACT_PIT_SPEED
+    : PIT_SPEED;
+}
+
+export function pitSpeed(): number {
+  return pitSpeedFor(getActiveTrack().id);
+}
+
 export function pitStopDurationSeconds(): number {
-  return pitLaneLengthMetres() / PIT_SPEED + pitServiceSeconds();
+  return pitLaneLengthMetres() / pitSpeed() + pitServiceSeconds();
 }
 
 export function pitStopTimeLossEstimateSeconds(): number {
   return pitStopTimeLossForLaneLength(
     pitLaneLengthMetres(),
     pitServiceSeconds(),
+    pitSpeed(),
   );
 }
 
@@ -167,14 +179,16 @@ export function pitStopTimeLossEstimateSecondsFor(trackId: TrackId): number {
   return pitStopTimeLossForLaneLength(
     laneLength,
     pitServiceSecondsFor(trackId),
+    pitSpeedFor(trackId),
   );
 }
 
 function pitStopTimeLossForLaneLength(
   laneLength: number,
   serviceSeconds: number,
+  pitSpeedMetresPerSecond: number,
 ): number {
-  const fullPitSeconds = laneLength / PIT_SPEED + serviceSeconds;
+  const fullPitSeconds = laneLength / pitSpeedMetresPerSecond + serviceSeconds;
   const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
   return Math.max(serviceSeconds, fullPitSeconds - mainlineSeconds);
 }
@@ -197,7 +211,7 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
     };
   }
 
-  const pitTRate = PIT_SPEED / pitLaneLengthMetres();
+  const pitTRate = pitSpeed() / pitLaneLengthMetres();
   const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= state.boxT) {
     return {
@@ -261,13 +275,14 @@ export function pitLaneSpeedLimitActive(tInput: number): boolean {
 export function pitLaneTargetSpeed(state: PitStopState, tInput: number): number {
   if (state.phase === 'SERVICE') return 0;
   const t = clamp01(tInput);
-  let target = pitLaneSpeedLimitActive(t) ? PIT_SPEED : 38;
+  const limiterSpeed = pitSpeed();
+  let target = pitLaneSpeedLimitActive(t) ? limiterSpeed : Math.max(38, limiterSpeed);
 
   if (state.phase === 'TRANSIT_IN') {
     const remaining = state.boxT - t;
     if (remaining < 0.065) {
       const ratio = clamp(remaining / 0.065, 0, 1);
-      target = Math.min(target, 3.5 + (PIT_SPEED - 3.5) * ratio);
+      target = Math.min(target, 3.5 + (limiterSpeed - 3.5) * ratio);
     }
   }
   return Math.max(0, target);
