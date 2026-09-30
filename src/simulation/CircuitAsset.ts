@@ -206,13 +206,15 @@ export function installCircuitAsset(
   const validation = validateCircuitAsset(normalized);
   if (!validation.valid) throw new Error(validation.errors.join(' '));
 
-  const controls = rotate(normalized.controls, normalized.startControlIndex)
-    .map(({ x, y }) => ({ x, y }));
+  const rotatedControls = rotate(normalized.controls, normalized.startControlIndex);
+  const controls = rotatedControls.map(({ x, y }) => ({ x, y }));
+  const roadHalfWidths = rotatedControls.map((point) => point.roadHalfWidth ?? 17);
   const definition: TrackDefinition = {
     id: EDITOR_TRACK_ID,
     name: normalized.name,
     subtitle: normalized.subtitle,
     controls,
+    roadHalfWidths,
     referenceLaneMode: 'centerline',
     distanceScale: scaleDistance(normalized.scalePreset),
     referenceLapSeconds: estimatedReferenceLapSeconds(controls, normalized.scalePreset),
