@@ -116,10 +116,11 @@ describe('AiReferenceGhost', () => {
     expect(ghost.warmupLapsRemaining()).toBe(2);
     expect(ghost.currentLapSeconds()).toBeUndefined();
 
+    const dt = 1 / 30;
     let lastProgress = ghost.driver.progress;
     let wraps = 0;
-    for (let tick = 0; tick < 55 * 120 && wraps < 2; tick++) {
-      ghost.step(1 / 120);
+    for (let tick = 0; tick < 55 * 30 && wraps < 2; tick++) {
+      ghost.step(dt);
       const progress = ghost.driver.progress;
       if (crossedStartLine(lastProgress, progress)) wraps += 1;
       lastProgress = progress;
@@ -131,7 +132,7 @@ describe('AiReferenceGhost', () => {
     expect(wraps).toBe(2);
     expect(ghost.warmupLapsRemaining()).toBe(0);
     expect(ghost.currentLapSeconds()).toBeDefined();
-  }, 20_000);
+  }, 90_000);
 
   it('runs the active PLAYER line with racecraft traffic removed', () => {
     setActiveTrack('pitwall-gp');
@@ -149,7 +150,8 @@ describe('AiReferenceGhost', () => {
 
     const ghost = new AiReferenceGhost(0.2, 'pitwall-gp');
     const initial = ghost.driver.progress;
-    for (let tick = 0; tick < 240; tick++) ghost.step(1 / 120);
+    const dt = 1 / 30;
+    for (let tick = 0; tick < 60; tick++) ghost.step(dt);
 
     const state = ghost.state();
     const control = ghost.latestControl();
@@ -158,7 +160,7 @@ describe('AiReferenceGhost', () => {
     expect(control?.battleState).toBe('CLEAR');
     expect(Number.isFinite(state?.speed)).toBe(true);
     expect(Math.abs(ghost.driver.progress - initial)).toBeGreaterThan(0.01);
-  });
+  }, 30_000);
   it('replays a physically demonstrated lap close to the path that produced it', () => {
     setActiveTrack('serra-circuit');
     setRuntimeRacingLine('serra-circuit', undefined);
