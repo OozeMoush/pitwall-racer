@@ -45,7 +45,16 @@ export function createTrack3D(): THREE.Group {
 
   addRibbon(root, trackRunoffHalfWidth, 0.004, 0x62686a, 0.98);
   addRibbon(root, trackRoadHalfWidth, 0.032, 0x2d3033, 0.9);
-  addRibbon(root, RUBBERED_HALF_WIDTH, 0.043, 0x242729, 0.98);
+  addRibbon(
+    root,
+    (progress) => Math.max(2, Math.min(
+      RUBBERED_HALF_WIDTH,
+      trackRoadHalfWidth(progress) - 1.25,
+    )),
+    0.043,
+    0x242729,
+    0.98,
+  );
   addEdgeLines(root);
   addCornerKerbs(root);
   addStartFinish(root);
