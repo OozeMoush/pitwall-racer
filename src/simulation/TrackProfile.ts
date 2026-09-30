@@ -1,4 +1,4 @@
-import { AI_SAFE_LANE_LIMIT } from './TrackLimitsModel';
+import { trackAiSafeLaneLimit } from './TrackLimitsModel';
 import { raceScaleDistance, sampleTrack, TRACK_LENGTH } from './TrackModel';
 
 export interface TrackProfileSample {
@@ -44,7 +44,10 @@ export function trackProfile(progress: number, skill = 1, grip = 1): TrackProfil
   const apexReach = 0.74 + lineGrip * 0.34;
   const apexOffset = Math.abs(signedTurn) < 0.03
     ? 0
-    : Math.sign(signedTurn) * Math.min(AI_SAFE_LANE_LIMIT * 0.95, (3.4 + severity * 5.0) * apexReach);
+    : Math.sign(signedTurn) * Math.min(
+        trackAiSafeLaneLimit(progress) * 0.95,
+        (3.4 + severity * 5.0) * apexReach,
+      );
 
   return { signedTurn, severity, targetSpeed, apexOffset };
 }
@@ -62,7 +65,8 @@ export function racingLineOffset(progress: number, grip = 1): number {
     totalWeight += weight;
   }
 
-  return clamp(weighted / totalWeight, -AI_SAFE_LANE_LIMIT, AI_SAFE_LANE_LIMIT);
+  const safeLane = trackAiSafeLaneLimit(progress);
+  return clamp(weighted / totalWeight, -safeLane, safeLane);
 }
 
 function rawRacingLineOffset(progress: number, grip: number): number {
