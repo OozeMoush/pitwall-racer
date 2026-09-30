@@ -15,6 +15,7 @@ import {
   pitLaneSpeedLimitActive,
   pitLaneTargetSpeed,
   pitServiceSecondsFor,
+  pitSpeedFor,
   pitStopDurationSeconds,
   pitStopTimeLossEstimateSecondsFor,
   projectPitLane,
@@ -126,10 +127,12 @@ describe('PitLaneModel', () => {
 
     expect(pitServiceSecondsFor('pitwall-gp')).toBeCloseTo(2.5, 6);
     expect(pitServiceSecondsFor('serra-circuit')).toBeCloseTo(1.2, 6);
+    expect(pitSpeedFor('pitwall-gp') * 3.6).toBeCloseTo(80, 6);
+    expect(pitSpeedFor('serra-circuit') * 3.6).toBeCloseTo(130, 6);
     expect(standardLoss).toBeGreaterThanOrEqual(18);
     expect(standardLoss).toBeLessThanOrEqual(24);
-    expect(compactLoss).toBeGreaterThanOrEqual(4);
-    expect(compactLoss).toBeLessThanOrEqual(7);
+    expect(compactLoss).toBeGreaterThanOrEqual(5);
+    expect(compactLoss).toBeLessThanOrEqual(8);
     expect(compactLoss).toBeLessThan(standardLoss * 0.4);
     expect(compactLoss / 23.119).toBeLessThan(0.30);
   });
