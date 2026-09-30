@@ -37,6 +37,7 @@ import {
   projectTrack,
   projectTrackNear,
   sampleTrack,
+  sectorBoundariesFor,
   TRACK_LENGTH,
 } from '../simulation/TrackModel';
 import { createVehicle, type VehicleState } from '../simulation/VehicleModel';
@@ -48,7 +49,6 @@ const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const START_PROGRESS = 0.72;
 const CORE_POWER_BOOST = 0.22;
 const RESULT_HOLD_SECONDS = 4.2;
-const SOLO_SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
 
 type QualifyingPhase = 'COUNTDOWN' | 'APPROACH' | 'FLYING' | 'RESULTS';
 type SoloSessionMode = 'QUALIFYING' | 'TIME_TRIAL';
@@ -398,7 +398,7 @@ class QualifyingGame {
 
     this.lapTime += dt;
     while (this.nextSector <= 2) {
-      const threshold = SOLO_SECTOR_BOUNDARIES[this.nextSector - 1];
+      const threshold = sectorBoundariesFor(this.setup.trackId)[this.nextSector - 1];
       if (this.lastProgress < threshold && this.currentProgress >= threshold) {
         const sectorIndex = this.nextSector - 1;
         const sectorTime = this.lapTime - this.sectorStartTime;

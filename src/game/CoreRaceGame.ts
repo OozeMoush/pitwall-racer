@@ -101,6 +101,7 @@ import {
   projectTrack,
   projectTrackNear,
   sampleTrack,
+  sectorBoundariesFor,
   TRACK_LENGTH,
 } from '../simulation/TrackModel';
 import type { RaceSetup } from './RaceSetup';
@@ -110,7 +111,6 @@ const CAMERA_HALF_HEIGHT = 19.5;
 const CAMERA_OFFSET = new THREE.Vector3(18.5, 34, 18.5);
 const CORE_POWER_BOOST = 0.22;
 const AI_COLORS = [0xe64c4c, 0xe8e8e5, 0x54cf88, 0x9f72e6, 0xf3a341, 0x5d8fe8, 0xf064ad];
-const SECTOR_BOUNDARIES = [1 / 3, 2 / 3] as const;
 const TIMING_EPSILON = 0.0005;
 
 interface LapTelemetry {
@@ -752,7 +752,7 @@ export class CoreRaceGame {
     if (this.lap === 0) return;
     if (this.lastTrackProgress > this.trackProgress) return;
     while (this.nextSector <= 2) {
-      const threshold = SECTOR_BOUNDARIES[this.nextSector - 1];
+      const threshold = sectorBoundariesFor(this.setup.trackId)[this.nextSector - 1];
       if (this.lastTrackProgress < threshold && this.trackProgress >= threshold) {
         const index = this.nextSector - 1;
         const sectorTime = this.timing.raceTime - this.sectorStartTime;
@@ -1024,7 +1024,7 @@ export class CoreRaceGame {
       }
 
       if (driver.lap >= 1 && clock.nextSector <= 2) {
-        const threshold = SECTOR_BOUNDARIES[clock.nextSector - 1];
+        const threshold = sectorBoundariesFor(this.setup.trackId)[clock.nextSector - 1];
         if (clock.lastProgress < threshold && driver.progress >= threshold) {
           const sectorTime = this.timing.raceTime - clock.sectorStartTime;
           if (sectorTime > 0.5) {

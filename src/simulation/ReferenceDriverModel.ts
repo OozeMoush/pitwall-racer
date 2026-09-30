@@ -6,6 +6,7 @@ import {
   getTrackDefinition,
   samplesForDistance,
   trackCentreline,
+  trackGeometryRevision,
   type TrackId,
   type TrackPoint,
 } from './TrackModel';
@@ -84,7 +85,7 @@ interface EnvelopeResult {
 export function referenceLap(trackId: TrackId, tireGrip: number): ReferenceLap {
   const safeGrip = clamp(tireGrip, 0.55, 1.36);
   const bucketedGrip = Math.round(safeGrip / GRIP_BUCKET) * GRIP_BUCKET;
-  const key = `${trackId}:${bucketedGrip.toFixed(3)}`;
+  const key = `${trackId}:${trackGeometryRevision(trackId)}:${bucketedGrip.toFixed(3)}`;
   const cached = cache.get(key);
   if (cached) return cached;
 

@@ -1,5 +1,7 @@
 export interface TrackPoint { x: number; y: number }
 
+export const EDITOR_TRACK_ID = 'editor-custom' as const;
+
 export type TrackId =
   | 'pitwall-gp'
   | 'velocity-park'
@@ -7,14 +9,23 @@ export type TrackId =
   | 'sakura-esses'
   | 'harbor-chicane'
   | 'serra-circuit'
-  | 'baku-street';
+  | 'baku-street'
+  | typeof EDITOR_TRACK_ID;
 
 export interface PitLaneDefinition {
   /** Lap progress where a committed pit entry begins. */
   entryProgress: number;
+  /** Optional explicit exit progress; legacy tracks derive it from lane length. */
+  exitProgress?: number;
   /** Physical route length, independent from whole-circuit length. */
   lengthMetres: number;
   /** Maximum centre-line offset from the racing surface. */
+  laneOffset: number;
+}
+
+export interface GridDefinition {
+  frontGapMetres: number;
+  longitudinalStepMetres: number;
   laneOffset: number;
 }
 
@@ -40,7 +51,11 @@ export interface TrackDefinition {
   distanceScale?: number;
   /** Current representative clean-lap time used to turn race duration into laps. */
   referenceLapSeconds?: number;
+  /** Timing split positions measured as lap progress. */
+  sectorBoundaries?: readonly [number, number];
   pitLane?: PitLaneDefinition;
+  grid?: GridDefinition;
+  editorAuthored?: boolean;
 }
 
 export const DEFAULT_PIT_LANE_DEFINITION: PitLaneDefinition = {
@@ -179,7 +194,7 @@ const SERRA_CIRCUIT = miniature(SERRA_CIRCUIT_SOURCE);
 const BAKU_RACE_SCALE = 1.055;
 const BAKU_STREET = scaleAroundCentre(BAKU_STREET_SOURCE, BAKU_RACE_SCALE);
 
-export const TRACKS: readonly TrackDefinition[] = [
+export const TRACKS: TrackDefinition[] = [
   {
     id: 'pitwall-gp',
     name: 'PITWALL GP',
@@ -270,7 +285,7 @@ export const TRACKS: readonly TrackDefinition[] = [
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
-] as const;
+];
 
 const SAMPLES_PER_CONTROL = 28;
 
@@ -306,6 +321,26 @@ export function getActiveTrack(): TrackDefinition {
 
 export function getTrackDefinition(id: TrackId): TrackDefinition {
   return TRACKS.find((track) => track.id === id) ?? TRACKS[0];
+}
+
+export function registerEditorTrack(definition: TrackDefinition): void {
+  if (definition.id !== EDITOR_TRACK_ID) {
+    throw new Error(`Editor track must use id ${EDITOR_TRACK_ID}`);
+  }
+  const index = TRACKS.findIndex((track) => track.id === EDITOR_TRACK_ID);
+  if (index >= 0) TRACKS[index] = definition;
+  else TRACKS.push(definition);
+  if (activeTrackId === EDITOR_TRACK_ID) setActiveTrack(EDITOR_TRACK_ID);
+}
+
+export function sectorBoundariesFor(
+  id: TrackId,
+): readonly [number, number] {
+  const boundaries = getTrackDefinition(id).sectorBoundaries;
+  if (!boundaries) return [1 / 3, 2 / 3];
+  const first = Math.max(0.05, Math.min(0.9, boundaries[0]));
+  const second = Math.max(first + 0.05, Math.min(0.95, boundaries[1]));
+  return [first, second];
 }
 
 export function trackCentreline(id: TrackId): readonly TrackPoint[] {

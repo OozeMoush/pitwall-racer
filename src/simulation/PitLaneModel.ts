@@ -371,6 +371,10 @@ function pitLaneCentre(tInput: number): {
 }
 
 function pitLaneSpanProgress(): number {
+  const definition = getActiveTrack().pitLane;
+  if (definition?.exitProgress !== undefined) {
+    return wrap01(definition.exitProgress - pitEntryProgress());
+  }
   return pitLaneLengthMetres() / Math.max(1, TRACK_LENGTH);
 }
 
