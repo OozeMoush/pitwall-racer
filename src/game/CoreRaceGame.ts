@@ -476,7 +476,7 @@ export class CoreRaceGame {
       this.vehicle.x,
       this.vehicle.y,
     );
-    const surface = surfaceEffect(physicalSurfaceProjection.distance);
+    const surface = surfaceEffect(physicalSurfaceProjection.distance, physicalSurfaceProjection.progress);
     const aero = aeroEffect(this.lap, beforeTrack.progress, this.ai, beforeTrack.laneOffset);
     const speedLoad = Math.min(1, this.vehicle.speed / 112);
     const corneringLoad = Math.abs(this.steerInput) * speedLoad * 0.92;
@@ -1327,7 +1327,7 @@ export class CoreRaceGame {
   }
 
   private updateAudio(dt: number): void {
-    const surface = surfaceEffect(this.trackDistance);
+    const surface = surfaceEffect(this.trackDistance, this.trackProgress);
     this.audio.update({
       speed: this.vehicle.speed,
       throttle: this.flow.phase === 'RACING' && this.keys.has('KeyW') && !isPitActive(this.pitStop) ? 1 : 0,
@@ -1809,7 +1809,7 @@ export class CoreRaceGame {
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
     const position = playerIndex + 1;
     const playerStanding = standings[playerIndex];
-    const surface = surfaceEffect(this.trackDistance);
+    const surface = surfaceEffect(this.trackDistance, this.trackProgress);
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const aero = aeroEffect(this.lap, projection.progress, this.ai, projection.laneOffset);
     const banner = raceBanner(this.flow);
