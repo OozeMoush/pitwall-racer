@@ -2,6 +2,8 @@ export interface TrackPoint { x: number; y: number }
 
 export const EDITOR_TRACK_ID = 'editor-custom' as const;
 
+export type CircuitScalePreset = 'COMPACT' | 'STANDARD' | 'LONG';
+
 export type TrackId =
   | 'pitwall-gp'
   | 'velocity-park'
@@ -60,6 +62,8 @@ export interface TrackDefinition {
   referenceLaneMode?: 'optimized' | 'centerline';
   /** Metre conversion for gameplay lookaheads; 1 for race-scale layouts. */
   distanceScale?: number;
+  /** Physical circuit scale. Independent from SHORT/STANDARD/LONG race duration. */
+  scalePreset?: CircuitScalePreset;
   /** Current representative clean-lap time used to turn race duration into laps. */
   referenceLapSeconds?: number;
   /** Timing split positions measured as lap progress. */
@@ -214,6 +218,7 @@ export const TRACKS: TrackDefinition[] = [
     geometry: 'pitwall-grand-prix',
     referenceLaneMode: 'centerline',
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -230,6 +235,7 @@ export const TRACKS: TrackDefinition[] = [
       backEnd: 0.58,
     },
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -246,6 +252,7 @@ export const TRACKS: TrackDefinition[] = [
       backEnd: 0.82,
     },
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -266,6 +273,7 @@ export const TRACKS: TrackDefinition[] = [
       backEnd: 0.86,
     },
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -282,10 +290,19 @@ export const TRACKS: TrackDefinition[] = [
       backEnd: 0.966,
     },
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
-  { id: 'serra-circuit', name: 'SERRA CIRCUIT', subtitle: 'SHORT LAP · MIXED · EXIT SPEED', controls: SERRA_CIRCUIT, referenceLapSeconds: 23.119, pitLane: DEFAULT_PIT_LANE_DEFINITION },
+  {
+    id: 'serra-circuit',
+    name: 'SERRA CIRCUIT',
+    subtitle: 'COMPACT · MIXED · EXIT SPEED',
+    controls: SERRA_CIRCUIT,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 23.119,
+    pitLane: { entryProgress: 0.91, lengthMetres: 120, laneOffset: 24 },
+  },
   {
     id: 'baku-street',
     name: 'BAKU STREET',
@@ -293,6 +310,7 @@ export const TRACKS: TrackDefinition[] = [
     controls: BAKU_STREET,
     geometry: 'street',
     distanceScale: 1,
+    scalePreset: 'STANDARD',
     referenceLapSeconds: 90,
     pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
   },
@@ -332,6 +350,10 @@ export function getActiveTrack(): TrackDefinition {
 
 export function getTrackDefinition(id: TrackId): TrackDefinition {
   return TRACKS.find((track) => track.id === id) ?? TRACKS[0];
+}
+
+export function circuitScalePresetFor(id: TrackId): CircuitScalePreset {
+  return getTrackDefinition(id).scalePreset ?? 'STANDARD';
 }
 
 export function registerEditorTrack(definition: TrackDefinition): void {
