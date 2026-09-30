@@ -12,15 +12,24 @@ export type TrackId =
   | 'baku-street'
   | typeof EDITOR_TRACK_ID;
 
+export interface PitLanePathPoint {
+  /** Normalized position from pit entry (0) to pit exit (1). */
+  t: number;
+  /** Signed lateral offset from the main circuit centreline in metres. */
+  laneOffset: number;
+}
+
 export interface PitLaneDefinition {
   /** Lap progress where a committed pit entry begins. */
   entryProgress: number;
   /** Optional explicit exit progress; legacy tracks derive it from lane length. */
   exitProgress?: number;
-  /** Physical route length, independent from whole-circuit length. */
+  /** Physical route length used for limiter timing and strategy estimates. */
   lengthMetres: number;
-  /** Maximum centre-line offset from the racing surface. */
+  /** Nominal/fallback centre-line offset from the racing surface. */
   laneOffset: number;
+  /** Optional authored route. Legacy circuits fall back to the generated ramp. */
+  path?: readonly PitLanePathPoint[];
 }
 
 export interface GridDefinition {
