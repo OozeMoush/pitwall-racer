@@ -4,6 +4,7 @@ import {
   importCircuitAsset,
   installCircuitAsset,
   loadCircuitAsset,
+  recommendedPitLaneLengthForScale,
   saveCircuitAsset,
   validateCircuitAsset,
   type CircuitAsset,
@@ -419,7 +420,17 @@ export function showCircuitEditor(
       const field = target.getAttribute('data-editor-field');
       if (field === 'name') asset.name = target.value;
       if (field === 'subtitle') asset.subtitle = target.value;
-      if (field === 'scalePreset') asset.scalePreset = target.value as CircuitAsset['scalePreset'];
+      if (field === 'scalePreset') {
+        const previousScale = asset.scalePreset;
+        const nextScale = target.value as CircuitAsset['scalePreset'];
+        const previousRecommendedPitLength = recommendedPitLaneLengthForScale(previousScale);
+        asset.scalePreset = nextScale;
+        // Keep a deliberately authored pit length. Only follow the scale preset
+        // automatically while the asset is still using that preset's default.
+        if (Math.abs(asset.pitLane.lengthMetres - previousRecommendedPitLength) < 0.5) {
+          asset.pitLane.lengthMetres = recommendedPitLaneLengthForScale(nextScale);
+        }
+      }
 
       const pointField = target.getAttribute('data-point-field');
       if (pointField && asset.controls[selectedIndex]) {
