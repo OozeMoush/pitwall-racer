@@ -1,5 +1,6 @@
 import {
   DEFAULT_PIT_LANE_DEFINITION,
+  circuitScalePresetFor,
   getActiveTrack,
   getTrackDefinition,
   sampleTrack,
@@ -12,6 +13,8 @@ import {
 export const PIT_ENTRY_PROGRESS = DEFAULT_PIT_LANE_DEFINITION.entryProgress;
 export const PIT_ENTRY_MIN_LANE_OFFSET = 8;
 export const PIT_SERVICE_SECONDS = 2.5;
+const COMPACT_PIT_SERVICE_SECONDS = 1.2;
+const LONG_PIT_SERVICE_SECONDS = 2.8;
 
 // The limiter is now a real pit-lane rule instead of the old kinematic
 // conveyor speed. 80 km/h is close to modern F1 and still feels readable on
@@ -132,12 +135,26 @@ export function pitExitProgress(): number {
   return wrap01(pitEntryProgress() + pitLaneSpanProgress());
 }
 
+export function pitServiceSecondsFor(trackId: TrackId): number {
+  const scale = circuitScalePresetFor(trackId);
+  if (scale === 'COMPACT') return COMPACT_PIT_SERVICE_SECONDS;
+  if (scale === 'LONG') return LONG_PIT_SERVICE_SECONDS;
+  return PIT_SERVICE_SECONDS;
+}
+
+export function pitServiceSeconds(): number {
+  return pitServiceSecondsFor(getActiveTrack().id);
+}
+
 export function pitStopDurationSeconds(): number {
-  return pitLaneLengthMetres() / PIT_SPEED + PIT_SERVICE_SECONDS;
+  return pitLaneLengthMetres() / PIT_SPEED + pitServiceSeconds();
 }
 
 export function pitStopTimeLossEstimateSeconds(): number {
-  return pitStopTimeLossForLaneLength(pitLaneLengthMetres());
+  return pitStopTimeLossForLaneLength(
+    pitLaneLengthMetres(),
+    pitServiceSeconds(),
+  );
 }
 
 /** Pure per-circuit estimate for strategy tooling; does not mutate active track. */
@@ -147,13 +164,19 @@ export function pitStopTimeLossEstimateSecondsFor(trackId: TrackId): number {
     120,
     definition.pitLane?.lengthMetres ?? DEFAULT_PIT_LANE_DEFINITION.lengthMetres,
   );
-  return pitStopTimeLossForLaneLength(laneLength);
+  return pitStopTimeLossForLaneLength(
+    laneLength,
+    pitServiceSecondsFor(trackId),
+  );
 }
 
-function pitStopTimeLossForLaneLength(laneLength: number): number {
-  const fullPitSeconds = laneLength / PIT_SPEED + PIT_SERVICE_SECONDS;
+function pitStopTimeLossForLaneLength(
+  laneLength: number,
+  serviceSeconds: number,
+): number {
+  const fullPitSeconds = laneLength / PIT_SPEED + serviceSeconds;
   const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
-  return Math.max(PIT_SERVICE_SECONDS, fullPitSeconds - mainlineSeconds);
+  return Math.max(serviceSeconds, fullPitSeconds - mainlineSeconds);
 }
 
 /**
@@ -181,7 +204,7 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
       ...state,
       phase: 'SERVICE',
       t: state.boxT,
-      serviceRemaining: PIT_SERVICE_SECONDS,
+      serviceRemaining: pitServiceSeconds(),
     };
   }
 
