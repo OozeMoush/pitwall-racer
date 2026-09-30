@@ -98,6 +98,18 @@ export function validateCircuitAsset(asset: CircuitAsset): CircuitAssetValidatio
   if (asset.controls.length < 6) errors.push('A circuit needs at least 6 control points.');
   if (asset.referenceLine.laneOffsets.length !== asset.controls.length) {
     errors.push('Reference-line offsets must match the control-point count.');
+  } else {
+    asset.referenceLine.laneOffsets.forEach((offset, index) => {
+      const roadHalfWidth = asset.controls[index]?.roadHalfWidth ?? 17;
+      const safeLane = Math.max(1, roadHalfWidth - 3.15);
+      if (!Number.isFinite(offset)) {
+        errors.push(`Reference-line offset ${index + 1} is not finite.`);
+      } else if (Math.abs(offset) > safeLane) {
+        errors.push(
+          `Reference-line offset ${index + 1} exceeds the local safe lane (${safeLane.toFixed(1)} m).`,
+        );
+      }
+    });
   }
   if (
     asset.startControlIndex < 0
