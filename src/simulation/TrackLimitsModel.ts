@@ -80,10 +80,15 @@ export function trackAiSafeLaneLimit(progress: number): number {
 const PIT_BARRIER_OPENING_HALF_METRES = 48;
 
 export function hasSafetyBarrier(progress: number, side: -1 | 1): boolean {
-  if (side < 0) return true;
-
   const p = wrap01(progress);
   const pitLane = getActiveTrack().pitLane ?? DEFAULT_PIT_LANE_DEFINITION;
+  const path = pitLane.path;
+  const middle = path && path.length > 0
+    ? path[Math.floor((path.length - 1) / 2)]
+    : undefined;
+  const pitSide = Math.sign(middle?.laneOffset ?? pitLane.laneOffset) || 1;
+  if (side !== pitSide) return true;
+
   const entry = wrap01(pitLane.entryProgress);
   const exit = wrap01(
     pitLane.exitProgress

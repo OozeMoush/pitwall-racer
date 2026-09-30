@@ -19,8 +19,15 @@ import {
   trackGeometryRevision,
 } from './TrackModel';
 import { gridSlotForPosition } from './GridModel';
-import { pitEntryProgress, pitExitProgress } from './PitLaneModel';
-import { trackRoadHalfWidth } from './TrackLimitsModel';
+import {
+  pitEntryProgress,
+  pitExitProgress,
+  pitLaneOffset,
+  pitLanePose,
+  projectPitLane,
+  shouldEnterPit,
+} from './PitLaneModel';
+import { hasSafetyBarrier, trackRoadHalfWidth } from './TrackLimitsModel';
 import { surfaceEffect } from './SurfaceModel';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
@@ -47,6 +54,18 @@ describe('CircuitAsset', () => {
 
     expect(imported).toEqual(asset);
     expect(exportCircuitAsset(imported)).toBe(exported);
+  });
+
+  it('migrates older editor assets that did not store an explicit pit path', () => {
+    const legacy = JSON.parse(exportCircuitAsset(createDefaultCircuitAsset())) as Record<string, any>;
+    delete legacy.pitLane.path;
+
+    const imported = importCircuitAsset(JSON.stringify(legacy));
+
+    expect(imported.pitLane.path.length).toBeGreaterThanOrEqual(4);
+    expect(imported.pitLane.path[0].t).toBe(0);
+    expect(imported.pitLane.path[imported.pitLane.path.length - 1].t).toBe(1);
+    expect(validateCircuitAsset(imported).valid).toBe(true);
   });
 
   it('persists and installs through the ordinary TrackModel runtime slot', () => {
@@ -120,6 +139,62 @@ describe('CircuitAsset', () => {
 
     expect(trackGeometryRevision(EDITOR_TRACK_ID)).not.toBe(narrowRevision);
     expect(trackRoadHalfWidth(0)).toBeCloseTo(12, 6);
+  });
+
+  it('installs and runs an explicitly authored pit-lane route', () => {
+    const asset = createDefaultCircuitAsset();
+    asset.pitLane.path = [
+      { t: 0, laneOffset: 11 },
+      { t: 0.20, laneOffset: 20 },
+      { t: 0.45, laneOffset: 38 },
+      { t: 0.75, laneOffset: 26 },
+      { t: 1, laneOffset: 11 },
+    ];
+    asset.pitLane.laneOffset = 38;
+
+    installCircuitAsset(asset);
+    setActiveTrack(EDITOR_TRACK_ID);
+
+    expect(pitLaneOffset(0)).toBeCloseTo(11, 6);
+    expect(pitLaneOffset(0.45)).toBeCloseTo(38, 6);
+    expect(pitLaneOffset(1)).toBeCloseTo(11, 6);
+    expect(pitLaneOffset(0.32)).toBeGreaterThan(20);
+    expect(pitLaneOffset(0.32)).toBeLessThan(38);
+
+    const pose = pitLanePose(0.45);
+    const projection = projectPitLane(pose.x, pose.y, 0.42);
+    expect(projection.t).toBeCloseTo(0.45, 2);
+    expect(projection.distance).toBeLessThan(0.25);
+  });
+
+  it('supports a pit lane authored on the opposite side of the circuit', () => {
+    const asset = createDefaultCircuitAsset();
+    asset.pitLane.laneOffset = -30;
+    asset.pitLane.path = asset.pitLane.path.map((point) => ({
+      ...point,
+      laneOffset: -Math.abs(point.laneOffset),
+    }));
+
+    expect(validateCircuitAsset(asset).valid).toBe(true);
+    installCircuitAsset(asset);
+    setActiveTrack(EDITOR_TRACK_ID);
+
+    const entry = pitEntryProgress();
+    expect(shouldEnterPit(entry - 0.01, entry + 0.001, 20, true, -9)).toBe(true);
+    expect(shouldEnterPit(entry - 0.01, entry + 0.001, 20, true, 9)).toBe(false);
+    expect(hasSafetyBarrier(entry, -1)).toBe(false);
+    expect(hasSafetyBarrier(entry, 1)).toBe(true);
+  });
+
+  it('rejects a broken pit route before export or install', () => {
+    const asset = createDefaultCircuitAsset();
+    asset.pitLane.path[2].t = asset.pitLane.path[1].t;
+
+    const validation = validateCircuitAsset(asset);
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.some((message) =>
+      message.includes('strictly increasing')
+    )).toBe(true);
   });
 
   it('rejects an authored reference line outside the local safe road envelope', () => {

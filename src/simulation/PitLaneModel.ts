@@ -4,6 +4,7 @@ import {
   getTrackDefinition,
   sampleTrack,
   TRACK_LENGTH,
+  type PitLanePathPoint,
   type TrackId,
 } from './TrackModel';
 
@@ -106,7 +107,10 @@ export function shouldEnterPit(
   laneOffset?: number,
 ): boolean {
   if (!requested || distanceFromLine > 48) return false;
-  if (laneOffset !== undefined && laneOffset < PIT_ENTRY_MIN_LANE_OFFSET) return false;
+  if (
+    laneOffset !== undefined
+    && laneOffset * pitLaneSide() < PIT_ENTRY_MIN_LANE_OFFSET
+  ) return false;
   const entryProgress = pitEntryProgress();
   return previousProgress < entryProgress && currentProgress >= entryProgress;
 }
@@ -269,12 +273,17 @@ export function pitLanePose(tInput: number): PitLanePose {
 
 export function pitLaneOffset(tInput: number): number {
   const t = clamp01(tInput);
+  const definition = getActiveTrack().pitLane ?? DEFAULT_PIT_LANE_DEFINITION;
+  if (definition.path && definition.path.length >= 2) {
+    return samplePitLanePath(definition.path, t);
+  }
+
+  const side = Math.sign(definition.laneOffset) || 1;
   const inRamp = smoothstep(clamp01(t / PIT_ENTRY_RAMP_T));
   const outRamp = smoothstep(clamp01((1 - t) / PIT_EXIT_RAMP_T));
-  const laneOffset = getActiveTrack().pitLane?.laneOffset
-    ?? DEFAULT_PIT_LANE_DEFINITION.laneOffset;
-  return PIT_ENTRY_OFFSET
-    + (laneOffset - PIT_ENTRY_OFFSET) * Math.min(inRamp, outRamp);
+  const entryOffset = PIT_ENTRY_OFFSET * side;
+  return entryOffset
+    + (definition.laneOffset - entryOffset) * Math.min(inRamp, outRamp);
 }
 
 export function projectPitLane(
@@ -368,6 +377,35 @@ function pitLaneCentre(tInput: number): {
     laneOffset,
     trackHeading,
   };
+}
+
+function pitLaneSide(): number {
+  const definition = getActiveTrack().pitLane ?? DEFAULT_PIT_LANE_DEFINITION;
+  const path = definition.path;
+  const middle = path && path.length > 0
+    ? path[Math.floor((path.length - 1) / 2)]
+    : undefined;
+  return Math.sign(middle?.laneOffset ?? definition.laneOffset) || 1;
+}
+
+function samplePitLanePath(
+  path: readonly PitLanePathPoint[],
+  tInput: number,
+): number {
+  const t = clamp01(tInput);
+  if (!path || path.length === 0) return PIT_ENTRY_OFFSET;
+  if (path.length === 1) return path[0].laneOffset;
+  if (t <= path[0].t) return path[0].laneOffset;
+
+  for (let index = 1; index < path.length; index++) {
+    const right = path[index];
+    if (t > right.t) continue;
+    const left = path[index - 1];
+    const range = Math.max(0.000001, right.t - left.t);
+    const local = smoothstep(clamp01((t - left.t) / range));
+    return left.laneOffset + (right.laneOffset - left.laneOffset) * local;
+  }
+  return path[path.length - 1].laneOffset;
 }
 
 function pitLaneSpanProgress(): number {

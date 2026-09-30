@@ -7,6 +7,7 @@ import {
   trackGeometryRevision,
   type GridDefinition,
   type PitLaneDefinition,
+  type PitLanePathPoint,
   type TrackDefinition,
   type TrackPoint,
 } from './TrackModel';
@@ -33,7 +34,10 @@ export interface CircuitAsset {
   /** Control point that becomes progress 0 / start-finish when installed. */
   startControlIndex: number;
   sectorBoundaries: [number, number];
-  pitLane: PitLaneDefinition & { exitProgress: number };
+  pitLane: PitLaneDefinition & {
+    exitProgress: number;
+    path: PitLanePathPoint[];
+  };
   grid: GridDefinition;
   referenceLine: CircuitReferenceSeed;
 }
@@ -76,6 +80,14 @@ export function createDefaultCircuitAsset(): CircuitAsset {
       exitProgress: 0.08,
       lengthMetres: 330,
       laneOffset: 30,
+      path: [
+        { t: 0, laneOffset: 11 },
+        { t: 0.12, laneOffset: 24 },
+        { t: 0.30, laneOffset: 30 },
+        { t: 0.70, laneOffset: 30 },
+        { t: 0.88, laneOffset: 24 },
+        { t: 1, laneOffset: 11 },
+      ],
     },
     grid: {
       frontGapMetres: 9,
@@ -145,6 +157,38 @@ export function validateCircuitAsset(asset: CircuitAsset): CircuitAssetValidatio
   }
   if (!Number.isFinite(pit.laneOffset) || Math.abs(pit.laneOffset) < 10 || Math.abs(pit.laneOffset) > 80) {
     errors.push('Pit-lane offset magnitude must be between 10 m and 80 m.');
+  }
+
+  const pitPath = pit.path ?? [];
+  if (pitPath.length < 4 || pitPath.length > 12) {
+    errors.push('Pit-lane path must contain 4–12 control points.');
+  } else {
+    const side = Math.sign(pit.laneOffset) || 1;
+    pitPath.forEach((point, index) => {
+      if (!Number.isFinite(point.t) || !Number.isFinite(point.laneOffset)) {
+        errors.push(`Pit-lane path point ${index + 1} must contain finite values.`);
+        return;
+      }
+      if (point.t < 0 || point.t > 1) {
+        errors.push(`Pit-lane path point ${index + 1} t must be inside [0, 1].`);
+      }
+      if (Math.abs(point.laneOffset) > 80) {
+        errors.push(`Pit-lane path point ${index + 1} offset exceeds 80 m.`);
+      }
+      if (point.laneOffset * side < 8) {
+        errors.push(`Pit-lane path point ${index + 1} crosses the circuit centreline or entry gate.`);
+      }
+      if (index > 0 && point.t <= pitPath[index - 1].t) {
+        errors.push('Pit-lane path t values must be strictly increasing.');
+      }
+    });
+    if (Math.abs(pitPath[0].t) > 0.0001 || Math.abs(pitPath[pitPath.length - 1].t - 1) > 0.0001) {
+      errors.push('Pit-lane path must start at t=0 and end at t=1.');
+    }
+    const peakOffset = Math.max(...pitPath.map((point) => Math.abs(point.laneOffset)));
+    if (peakOffset < 18) {
+      warnings.push('Pit lane never separates far from the racing surface.');
+    }
   }
 
   if (asset.controls.length >= 4 && hasSelfIntersection(asset.controls)) {
@@ -301,6 +345,10 @@ function normalizeCircuitAsset(asset: CircuitAsset): CircuitAsset {
       exitProgress: Number(asset?.pitLane?.exitProgress ?? 0.08),
       lengthMetres: Number(asset?.pitLane?.lengthMetres ?? 330),
       laneOffset: Number(asset?.pitLane?.laneOffset ?? 30),
+      path: normalizePitPath(
+        asset?.pitLane?.path,
+        Number(asset?.pitLane?.laneOffset ?? 30),
+      ),
     },
     grid: {
       frontGapMetres: Number(asset?.grid?.frontGapMetres ?? 9),
@@ -313,6 +361,30 @@ function normalizeCircuitAsset(asset: CircuitAsset): CircuitAsset {
         : [],
     },
   };
+}
+
+function normalizePitPath(
+  path: readonly PitLanePathPoint[] | undefined,
+  nominalOffset: number,
+): PitLanePathPoint[] {
+  if (Array.isArray(path) && path.length > 0) {
+    return path.map((point) => ({
+      t: Number(point.t),
+      laneOffset: Number(point.laneOffset),
+    }));
+  }
+
+  const side = Math.sign(nominalOffset) || 1;
+  const peak = Math.max(10, Math.abs(nominalOffset)) * side;
+  const entry = 11 * side;
+  return [
+    { t: 0, laneOffset: entry },
+    { t: 0.12, laneOffset: peak * 0.8 },
+    { t: 0.30, laneOffset: peak },
+    { t: 0.70, laneOffset: peak },
+    { t: 0.88, laneOffset: peak * 0.8 },
+    { t: 1, laneOffset: entry },
+  ];
 }
 
 function estimatedReferenceLapSeconds(
