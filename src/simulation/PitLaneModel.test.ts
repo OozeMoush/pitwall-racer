@@ -14,7 +14,9 @@ import {
   pitLanePose,
   pitLaneSpeedLimitActive,
   pitLaneTargetSpeed,
+  pitServiceSecondsFor,
   pitStopDurationSeconds,
+  pitStopTimeLossEstimateSecondsFor,
   projectPitLane,
   shouldEnterPit,
   stepPitStop,
@@ -116,6 +118,20 @@ describe('PitLaneModel', () => {
     expect(PIT_SERVICE_SECONDS).toBeGreaterThanOrEqual(2.3);
     expect(pitStopDurationSeconds()).toBeGreaterThan(14);
     expect(pitStopDurationSeconds()).toBeLessThan(25);
+  });
+
+  it('uses shorter compact pit economics without changing the standard baseline', () => {
+    const standardLoss = pitStopTimeLossEstimateSecondsFor('pitwall-gp');
+    const compactLoss = pitStopTimeLossEstimateSecondsFor('serra-circuit');
+
+    expect(pitServiceSecondsFor('pitwall-gp')).toBeCloseTo(2.5, 6);
+    expect(pitServiceSecondsFor('serra-circuit')).toBeCloseTo(1.2, 6);
+    expect(standardLoss).toBeGreaterThanOrEqual(18);
+    expect(standardLoss).toBeLessThanOrEqual(24);
+    expect(compactLoss).toBeGreaterThanOrEqual(4);
+    expect(compactLoss).toBeLessThanOrEqual(7);
+    expect(compactLoss).toBeLessThan(standardLoss * 0.4);
+    expect(compactLoss / 23.119).toBeLessThan(0.30);
   });
 
   it('moves outside the racing surface and rejoins through the dedicated openings', () => {
