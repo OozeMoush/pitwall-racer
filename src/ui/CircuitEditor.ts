@@ -100,6 +100,25 @@ export function showCircuitEditor(
           return `${index === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
         })
         .join(' ') + (asset.controls.length > 2 ? ' Z' : '');
+      const leftRoad = asset.controls.map((point, index) => {
+        const normal = controlNormal(asset.controls, index);
+        const width = point.roadHalfWidth ?? 17;
+        return toScreen({
+          x: point.x + normal.x * width,
+          y: point.y + normal.y * width,
+        }, frame);
+      });
+      const rightRoad = asset.controls.map((point, index) => {
+        const normal = controlNormal(asset.controls, index);
+        const width = point.roadHalfWidth ?? 17;
+        return toScreen({
+          x: point.x - normal.x * width,
+          y: point.y - normal.y * width,
+        }, frame);
+      }).reverse();
+      const roadPolygon = [...leftRoad, ...rightRoad]
+        .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
+        .join(' ') + ' Z';
 
       const referencePoints = asset.controls.map((point, index) => {
         const ref = referencePoint(asset, index);
@@ -136,7 +155,7 @@ export function showCircuitEditor(
 
       svg.innerHTML = `
         <rect class="editor-canvas-bg" x="0" y="0" width="${VIEW_WIDTH}" height="${VIEW_HEIGHT}"></rect>
-        <path class="editor-track-envelope" d="${path}"></path>
+        <path class="editor-road-surface" d="${roadPolygon}"></path>
         <path class="editor-track-centre" d="${path}"></path>
         <path class="editor-reference-path" d="${referencePath}"></path>
         ${markers}
