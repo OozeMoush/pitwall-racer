@@ -381,7 +381,10 @@ function pitLaneCentre(tInput: number): {
 
 function pitLaneSide(): number {
   const definition = getActiveTrack().pitLane ?? DEFAULT_PIT_LANE_DEFINITION;
-  const middle = definition.path?.[Math.floor((definition.path.length - 1) / 2)];
+  const path = definition.path;
+  const middle = path && path.length > 0
+    ? path[Math.floor((path.length - 1) / 2)]
+    : undefined;
   return Math.sign(middle?.laneOffset ?? definition.laneOffset) || 1;
 }
 
