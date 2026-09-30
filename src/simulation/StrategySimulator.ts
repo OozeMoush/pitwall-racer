@@ -30,6 +30,8 @@ export interface StrategyRaceProfile {
   totalLaps: number;
   representativeLapSeconds: number;
   pitLossSeconds: number;
+  /** Per-lap strategic effect normalized so lap count alone does not amplify tyre value. */
+  strategyEffectScale: number;
 }
 
 export interface SimulatedLap {
@@ -64,6 +66,9 @@ export interface BalanceSnapshot {
 // time through long straights. Keep the old ~10.8 s technical-corner budget
 // instead of multiplying tyre grip advantage by the entire ~90 s lap.
 const MAX_REPRESENTATIVE_CORNER_SECONDS = 10.8;
+const STRATEGY_REFERENCE_LAP_SECONDS = 90;
+const STRATEGY_REFERENCE_PIT_LOSS_SECONDS =
+  pitStopTimeLossEstimateSecondsFor('pitwall-gp');
 const DT = 0.5;
 const GRIP_RESPONSE_EXPONENT = 0.85;
 const COMPOUNDS: readonly Compound[] = ['SOFT', 'MEDIUM', 'HARD'];
@@ -84,14 +89,29 @@ export function strategyRaceProfile(
   trackId: TrackId,
   totalLaps: number,
 ): StrategyRaceProfile {
+  const representativeLapSeconds = Math.max(
+    15,
+    getTrackDefinition(trackId).referenceLapSeconds ?? STRATEGY_REFERENCE_LAP_SECONDS,
+  );
+  const pitLossSeconds = pitStopTimeLossEstimateSecondsFor(trackId);
+  // Equal-duration compact races have many more laps. If every lap retained
+  // the old fixed tyre/slide delta, changing only physical lap scale would
+  // multiply the strategic value of fresh rubber. Normalize the per-lap effect
+  // by both lap duration and the circuit's pit cost so one-stop/two-stop
+  // economics remain comparable without forcing every circuit toward 90 s.
+  const strategyEffectScale = clamp(
+    representativeLapSeconds / STRATEGY_REFERENCE_LAP_SECONDS
+      * pitLossSeconds / STRATEGY_REFERENCE_PIT_LOSS_SECONDS,
+    0.04,
+    1.5,
+  );
+
   return {
     trackId,
     totalLaps: Math.max(1, Math.round(totalLaps)),
-    representativeLapSeconds: Math.max(
-      15,
-      getTrackDefinition(trackId).referenceLapSeconds ?? 90,
-    ),
-    pitLossSeconds: pitStopTimeLossEstimateSecondsFor(trackId),
+    representativeLapSeconds,
+    pitLossSeconds,
+    strategyEffectScale,
   };
 }
 
@@ -133,13 +153,13 @@ export function simulateStrategy(
     const cornerSeconds = Math.min(
       MAX_REPRESENTATIVE_CORNER_SECONDS,
       race.representativeLapSeconds * 0.45,
-    );
+    ) * race.strategyEffectScale;
     const straightSeconds = race.representativeLapSeconds - cornerSeconds;
     const relativeGrip = Math.max(0.56, gripRatioToMedium(gripAverage));
     const lapTime = straightSeconds
       + cornerSeconds / Math.pow(relativeGrip, GRIP_RESPONSE_EXPONENT)
-      + slideRiskAverage * REPRESENTATIVE_SLIDE_PENALTY_SECONDS
-      + modeLapAdjustment[pace];
+      + slideRiskAverage * REPRESENTATIVE_SLIDE_PENALTY_SECONDS * race.strategyEffectScale
+      + modeLapAdjustment[pace] * race.strategyEffectScale;
     totalTime += lapTime;
     laps.push({
       lap,
@@ -349,4 +369,9 @@ function appendCachedStint(
       lap: completedLaps + index + 1,
     })),
   );
+}
+
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }

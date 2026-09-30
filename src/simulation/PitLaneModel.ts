@@ -1,5 +1,6 @@
 import {
   DEFAULT_PIT_LANE_DEFINITION,
+  circuitScalePresetFor,
   getActiveTrack,
   getTrackDefinition,
   sampleTrack,
@@ -12,11 +13,14 @@ import {
 export const PIT_ENTRY_PROGRESS = DEFAULT_PIT_LANE_DEFINITION.entryProgress;
 export const PIT_ENTRY_MIN_LANE_OFFSET = 8;
 export const PIT_SERVICE_SECONDS = 2.5;
+const COMPACT_PIT_SERVICE_SECONDS = 1.2;
+const LONG_PIT_SERVICE_SECONDS = 2.8;
 
-// The limiter is now a real pit-lane rule instead of the old kinematic
-// conveyor speed. 80 km/h is close to modern F1 and still feels readable on
-// the miniature circuit.
+// Standard/Long circuits retain an F1-like 80 km/h limiter. Compact circuits
+// use a faster abstract limiter so a physically authored pit route does not
+// consume half of a 20–40 second lap.
 export const PIT_SPEED = 80 / 3.6;
+const COMPACT_PIT_SPEED = 130 / 3.6;
 export const PIT_LIMIT_START_T = 0.10;
 export const PIT_LIMIT_END_T = 0.90;
 
@@ -132,12 +136,37 @@ export function pitExitProgress(): number {
   return wrap01(pitEntryProgress() + pitLaneSpanProgress());
 }
 
+export function pitServiceSecondsFor(trackId: TrackId): number {
+  const scale = circuitScalePresetFor(trackId);
+  if (scale === 'COMPACT') return COMPACT_PIT_SERVICE_SECONDS;
+  if (scale === 'LONG') return LONG_PIT_SERVICE_SECONDS;
+  return PIT_SERVICE_SECONDS;
+}
+
+export function pitServiceSeconds(): number {
+  return pitServiceSecondsFor(getActiveTrack().id);
+}
+
+export function pitSpeedFor(trackId: TrackId): number {
+  return circuitScalePresetFor(trackId) === 'COMPACT'
+    ? COMPACT_PIT_SPEED
+    : PIT_SPEED;
+}
+
+export function pitSpeed(): number {
+  return pitSpeedFor(getActiveTrack().id);
+}
+
 export function pitStopDurationSeconds(): number {
-  return pitLaneLengthMetres() / PIT_SPEED + PIT_SERVICE_SECONDS;
+  return pitLaneLengthMetres() / pitSpeed() + pitServiceSeconds();
 }
 
 export function pitStopTimeLossEstimateSeconds(): number {
-  return pitStopTimeLossForLaneLength(pitLaneLengthMetres());
+  return pitStopTimeLossForLaneLength(
+    pitLaneLengthMetres(),
+    pitServiceSeconds(),
+    pitSpeed(),
+  );
 }
 
 /** Pure per-circuit estimate for strategy tooling; does not mutate active track. */
@@ -147,13 +176,21 @@ export function pitStopTimeLossEstimateSecondsFor(trackId: TrackId): number {
     120,
     definition.pitLane?.lengthMetres ?? DEFAULT_PIT_LANE_DEFINITION.lengthMetres,
   );
-  return pitStopTimeLossForLaneLength(laneLength);
+  return pitStopTimeLossForLaneLength(
+    laneLength,
+    pitServiceSecondsFor(trackId),
+    pitSpeedFor(trackId),
+  );
 }
 
-function pitStopTimeLossForLaneLength(laneLength: number): number {
-  const fullPitSeconds = laneLength / PIT_SPEED + PIT_SERVICE_SECONDS;
+function pitStopTimeLossForLaneLength(
+  laneLength: number,
+  serviceSeconds: number,
+  pitSpeedMetresPerSecond: number,
+): number {
+  const fullPitSeconds = laneLength / pitSpeedMetresPerSecond + serviceSeconds;
   const mainlineSeconds = laneLength / MAINLINE_REFERENCE_SPEED;
-  return Math.max(PIT_SERVICE_SECONDS, fullPitSeconds - mainlineSeconds);
+  return Math.max(serviceSeconds, fullPitSeconds - mainlineSeconds);
 }
 
 /**
@@ -174,14 +211,14 @@ export function stepPitStop(state: PitStopState, dt: number): PitStopState {
     };
   }
 
-  const pitTRate = PIT_SPEED / pitLaneLengthMetres();
+  const pitTRate = pitSpeed() / pitLaneLengthMetres();
   const t = Math.min(1, state.t + pitTRate * dt);
   if (state.phase === 'TRANSIT_IN' && t >= state.boxT) {
     return {
       ...state,
       phase: 'SERVICE',
       t: state.boxT,
-      serviceRemaining: PIT_SERVICE_SECONDS,
+      serviceRemaining: pitServiceSeconds(),
     };
   }
 
@@ -231,20 +268,21 @@ export function pitLaneSpeedLimitActive(tInput: number): boolean {
 
 /**
  * Target used by the player's limiter/box assist. Entry and exit are allowed a
- * little more speed, but the regulated section is capped at 80 km/h. The final
- * metres into the box are progressively slowed so the only snap is the tiny
+ * little more speed, but the regulated section follows the circuit-scale
+ * limiter. The final metres into the box are progressively slowed so the only snap is the tiny
  * final docking correction.
  */
 export function pitLaneTargetSpeed(state: PitStopState, tInput: number): number {
   if (state.phase === 'SERVICE') return 0;
   const t = clamp01(tInput);
-  let target = pitLaneSpeedLimitActive(t) ? PIT_SPEED : 38;
+  const limiterSpeed = pitSpeed();
+  let target = pitLaneSpeedLimitActive(t) ? limiterSpeed : Math.max(38, limiterSpeed);
 
   if (state.phase === 'TRANSIT_IN') {
     const remaining = state.boxT - t;
     if (remaining < 0.065) {
       const ratio = clamp(remaining / 0.065, 0, 1);
-      target = Math.min(target, 3.5 + (PIT_SPEED - 3.5) * ratio);
+      target = Math.min(target, 3.5 + (limiterSpeed - 3.5) * ratio);
     }
   }
   return Math.max(0, target);

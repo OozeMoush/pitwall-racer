@@ -5,6 +5,7 @@ import {
   registerEditorTrack,
   trackCentreline,
   trackGeometryRevision,
+  type CircuitScalePreset,
   type GridDefinition,
   type PitLaneDefinition,
   type PitLanePathPoint,
@@ -12,7 +13,7 @@ import {
   type TrackPoint,
 } from './TrackModel';
 
-export type CircuitScalePreset = 'COMPACT' | 'STANDARD' | 'LONG';
+export type { CircuitScalePreset } from './TrackModel';
 
 export interface CircuitControlPoint extends TrackPoint {
   /** Intended local road half-width in metres. Runtime width support is wired by the editor integration layer. */
@@ -273,6 +274,7 @@ export function installCircuitAsset(
     roadHalfWidths,
     referenceLaneMode: 'centerline',
     distanceScale: scaleDistance(normalized.scalePreset),
+    scalePreset: normalized.scalePreset,
     referenceLapSeconds: estimatedReferenceLapSeconds(controls, normalized.scalePreset),
     sectorBoundaries: normalized.sectorBoundaries,
     pitLane: normalized.pitLane,
@@ -343,7 +345,12 @@ function normalizeCircuitAsset(asset: CircuitAsset): CircuitAsset {
     pitLane: {
       entryProgress: Number(asset?.pitLane?.entryProgress ?? 0.88),
       exitProgress: Number(asset?.pitLane?.exitProgress ?? 0.08),
-      lengthMetres: Number(asset?.pitLane?.lengthMetres ?? 330),
+      lengthMetres: Number(
+        asset?.pitLane?.lengthMetres
+        ?? recommendedPitLaneLengthForScale(
+          isScalePreset(asset?.scalePreset) ? asset.scalePreset : 'COMPACT',
+        ),
+      ),
       laneOffset: Number(asset?.pitLane?.laneOffset ?? 30),
       path: normalizePitPath(
         asset?.pitLane?.path,
@@ -385,6 +392,12 @@ function normalizePitPath(
     { t: 0.88, laneOffset: peak * 0.8 },
     { t: 1, laneOffset: entry },
   ];
+}
+
+export function recommendedPitLaneLengthForScale(
+  scalePreset: CircuitScalePreset,
+): number {
+  return scalePreset === 'COMPACT' ? 330 : scalePreset === 'LONG' ? 560 : 480;
 }
 
 function estimatedReferenceLapSeconds(
