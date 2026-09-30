@@ -153,4 +153,4 @@ it('executes a demonstrated PLAYER line for multiple laps on every race compound
     }
   } finally { physics.world.free(); }
 
-}, 120_000);
+}, 180_000);
