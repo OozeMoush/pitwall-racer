@@ -314,7 +314,9 @@ class QualifyingGame {
     );
     this.tire = stepTire(this.tire, 'PUSH', load, dt);
 
-    if (this.phase === 'FLYING') this.paceEvidence.sample(before.distance, 0, false);
+    if (this.phase === 'FLYING') {
+      this.paceEvidence.sample(before.distance, 0, false, before.progress);
+    }
 
     this.physics.drivePlayer({
       throttle,
