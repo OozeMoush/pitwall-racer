@@ -74,7 +74,7 @@ Pit economics follow physical scale as well. The current benchmark is approximat
 
 | Circuit | Physical scale | Reference lap | STANDARD laps | Reference race | Net pit loss | Pit loss / lap |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Serra Circuit | Compact | 23.119 s | ~70 | ~27 min | ~5.1 s | ~22% |
+| Serra Circuit | Compact | 23.119 s | ~70 | ~27 min | ~6.4 s | ~28% |
 | Pitwall GP | Standard | 90 s | 18 | 27 min | ~18.1 s | ~20% |
 
 The CI benchmark requires one-stop and two-stop families to remain within three seconds on both reference formats.
