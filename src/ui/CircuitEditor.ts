@@ -128,6 +128,11 @@ export function showCircuitEditor(
       const referencePath = referencePoints
         .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(1)},${point.y.toFixed(1)}`)
         .join(' ') + (referencePoints.length > 2 ? ' Z' : '');
+      const pitPath = Array.from({ length: 33 }, (_, index) => {
+        const point = previewPitPoint(asset, index / 32);
+        const screen = toScreen(point, frame);
+        return `${index === 0 ? 'M' : 'L'}${screen.x.toFixed(1)},${screen.y.toFixed(1)}`;
+      }).join(' ');
 
       const markers = [
         markerAtProgress(asset, asset.sectorBoundaries[0], frame, 'S1', 'sector'),
@@ -158,6 +163,7 @@ export function showCircuitEditor(
         <path class="editor-road-surface" d="${roadPolygon}"></path>
         <path class="editor-track-centre" d="${path}"></path>
         <path class="editor-reference-path" d="${referencePath}"></path>
+        <path class="editor-pit-path" d="${pitPath}"></path>
         ${markers}
         <g class="editor-start-marker">
           <circle cx="${start.x}" cy="${start.y}" r="15"></circle>
@@ -551,6 +557,34 @@ function sampleControlPolygon(
   return controls[0];
 }
 
+function previewPitPoint(
+  asset: CircuitAsset,
+  t: number,
+): { x: number; y: number } {
+  const controls = orderedControls(asset);
+  const span = ((asset.pitLane.exitProgress - asset.pitLane.entryProgress) % 1 + 1) % 1;
+  const progress = (asset.pitLane.entryProgress + span * t) % 1;
+  const centre = sampleControlPolygon(controls, progress);
+  const epsilon = 0.002;
+  const before = sampleControlPolygon(controls, (progress - epsilon + 1) % 1);
+  const after = sampleControlPolygon(controls, (progress + epsilon) % 1);
+  const dx = after.x - before.x;
+  const dy = after.y - before.y;
+  const length = Math.max(0.0001, Math.hypot(dx, dy));
+  const nx = -dy / length;
+  const ny = dx / length;
+
+  const entryRamp = smoothstep01(clamp(t / 0.08, 0, 1));
+  const exitRamp = smoothstep01(clamp((1 - t) / 0.10, 0, 1));
+  const baseOffset = 11;
+  const laneOffset = baseOffset
+    + (asset.pitLane.laneOffset - baseOffset) * Math.min(entryRamp, exitRamp);
+  return {
+    x: centre.x + nx * laneOffset,
+    y: centre.y + ny * laneOffset,
+  };
+}
+
 function referencePoint(asset: CircuitAsset, index: number): { x: number; y: number } {
   const point = asset.controls[index];
   const normal = controlNormal(asset.controls, index);
@@ -590,6 +624,11 @@ function round(value: number): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function smoothstep01(value: number): number {
+  const t = clamp(value, 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function escapeHtml(value: string): string {
