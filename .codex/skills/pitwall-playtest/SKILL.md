@@ -9,7 +9,7 @@ Use this skill for AI behaviour, race pace, driving physics, racing-line replay,
 
 ## Start with evidence
 
-1. Read `AGENTS.md`, `PLAYTEST.md`, and `references/current-state.md`.
+1. Read `AGENTS.md`, `docs/PROJECT_STATE.md`, the relevant GitHub Issue, and `PLAYTEST.md`.
 2. Run `npm run test:playtest`, then `npm test`, then `npm run build`.
 3. Treat every existing failure as evidence. Do not change thresholds just because the current code misses them.
 4. Inspect concrete telemetry before editing: actual/target speed, path/lane error, brake feedback/profile brake, throttle, progress branch, tyre/source grip, contact kind, and lap/sector/pit state.
