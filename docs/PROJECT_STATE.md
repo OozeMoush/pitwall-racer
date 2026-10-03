@@ -1,0 +1,135 @@
+# Pitwall Racer — Current Project State
+
+> Canonical current-state snapshot for humans, ChatGPT Project, Codex and Work sessions.
+>
+> This file is intentionally concise. Durable product decisions belong in `DESIGN.md`; detailed implementation history belongs in Issues and PRs.
+
+## Verified baseline
+
+Last updated: **2026-10-04**
+
+- default branch: `main`
+- verified main: `a145f813aa8f231ae626b349a03608cb139dc9a3`
+- main CI: **#884 — success**
+- repository visibility: **public**
+- development server: **Vite port 5175, strictPort**
+- branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
+- merged head branches are deleted automatically
+
+Before relying on this snapshot, compare the current `main` SHA and recent CI. If main has moved materially, update this file in the PR that changes the project baseline.
+
+## Product direction
+
+Pitwall Racer is a **top-down Formula-style racing game first**. Driving feel, CPU racecraft, tyre behaviour and pit decisions matter more than simulation complexity.
+
+Current product rules:
+
+- physical single-player racing remains the core;
+- eight-car field: player + seven physical CPU cars;
+- no player-position rubber-banding;
+- REFERENCE GHOST stays unassisted and is used as a calibration instrument;
+- dry races require two tyre compounds;
+- hybrid energy management remains deferred until the dry core race is consistently fun;
+- physical circuit scale and race duration are separate axes.
+
+See `DESIGN.md` for the durable rationale.
+
+## Current playable shape
+
+The current main branch includes:
+
+- fixed elevated top-down Three.js presentation;
+- Rapier 2D physical player and CPU field;
+- Soft / Medium / Hard tyres with wear and performance effects;
+- physical player and AI pit flow;
+- standalone Time Trial;
+- one-shot qualifying or P8 qualifying skip;
+- Grand Prix with SHORT / STANDARD / LONG duration presets;
+- AUTO and PLAYER BEST CPU racing-line sources;
+- five-light reaction start;
+- lap / sector / history / standings HUD;
+- tow and dirty air;
+- track limits and race penalties;
+- multiple selectable circuits;
+- interactive circuit editor with:
+  - closed-loop geometry editing,
+  - local road width,
+  - start/finish and sectors,
+  - grid authoring,
+  - pit entry / editable pit route / pit exit,
+  - authored EDITOR reference line,
+  - deterministic JSON import/export.
+
+## Physical circuit scale decision
+
+Issue #111 established **multiple physical circuit formats**:
+
+- **Compact** — reference: Serra Circuit, ~23.119 s/lap;
+- **Standard** — reference: Pitwall GP, ~90 s/lap;
+- **Long** — available for deliberately large authored layouts.
+
+Race duration remains independent. A STANDARD event targets roughly 27 minutes on either Compact or Standard circuits.
+
+Current benchmark:
+
+| Circuit | Scale | Ref lap | STANDARD laps | Approx race | Net pit loss |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Serra Circuit | Compact | 23.119 s | 70 | 26.97 min | ~6.4 s |
+| Pitwall GP | Standard | 90 s | 18 | 27.0 min | ~18.1 s |
+
+Strategy effects are normalized so Compact layouts do not become automatically multi-stop dominant merely because they contain more lap boundaries.
+
+## Recent structural work
+
+Recently completed project-level work:
+
+- #109 — geometry-revision invalidation for derived circuit data;
+- #110 — dedicated circuit editor and authored reference/pit infrastructure;
+- #111 — Compact / Standard / Long physical scale model;
+- #132 — repository workflow for public development;
+- #133 — fixed Vite development port 5175.
+
+The old `feat/machine-optimal-reference` experiment has been preserved as:
+
+`archive/machine-optimal-reference-2026-09`
+
+It is archival evidence, not active mainline architecture.
+
+## Current work discovery
+
+**GitHub Issues are the authoritative work queue.**
+
+Do not infer active work from old branches, chat history or memory.
+
+At session start:
+
+1. read the open Issues;
+2. read the relevant Issue body and latest comments;
+3. inspect linked/open PRs;
+4. only create a new Issue when substantial work has no existing work item.
+
+One Issue may be implemented by multiple coherent PRs. The Issue closes only when its acceptance criteria are complete.
+
+## Immediate risks to keep watching
+
+These are ongoing design/engineering risks rather than necessarily open bugs:
+
+1. Driving must stay readable and satisfying as speed increases.
+2. CPU difficulty must come from coherent driving, not hidden position-based compensation.
+3. PLAYER BEST / AUTO / EDITOR lines must remain physically executable across track changes.
+4. Compact circuits can create traffic/lapping saturation; solve this per circuit or event rather than padding layouts with dead straights.
+5. Tyre/pit balance must remain meaningful across different physical circuit scales.
+6. Circuit editor metadata and generated runtime data must stay geometry-revision safe.
+7. Automated playtests protect objective behaviour but must not replace subjective human feel.
+
+## Where to look next
+
+- product/design intent: `DESIGN.md`
+- project operating model: `docs/PROJECT_OPERATIONS.md`
+- ChatGPT Project / Work setup: `docs/CHATGPT_PROJECT_SETUP.md`
+- agent rules: `AGENTS.md`
+- gameplay validation: `PLAYTEST.md`
+- active work: GitHub Issues
+- implementation history: merged PRs
+
+If this file conflicts with code/tests or a newer merged Issue/PR, the newer repository evidence wins and this snapshot must be updated.
