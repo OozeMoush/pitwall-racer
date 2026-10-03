@@ -19,9 +19,9 @@ Treat GitHub as the authoritative project source. Do not rely on chat history or
 
 At the start of project work:
 1. inspect current main;
-2. read README.md, AGENTS.md and docs/PROJECT_STATE.md;
+2. read README.md, docs/PROJECT_STATE.md and docs/PROJECT_OPERATIONS.md;
 3. read the relevant GitHub Issue and linked/open PRs;
-4. for gameplay changes, also follow PLAYTEST.md and the repo pitwall-playtest skill.
+4. for gameplay changes, also follow PLAYTEST.md.
 
 GitHub Issues are the work queue and durable resume points. If substantial work has no Issue, create one. One large Issue may use several independently mergeable PRs; small Issues should normally stay one PR.
 
@@ -31,7 +31,7 @@ Do not normally push directly to main or revive stale feature branches.
 
 Before finishing a substantial session, leave GitHub resumable: merged PR, open PR, or Issue checkpoint with completed work, verification, remaining work and blockers.
 
-Record durable product/design decisions in DESIGN.md, current baseline changes in docs/PROJECT_STATE.md, agent/process rules in AGENTS.md or docs/PROJECT_OPERATIONS.md. Never leave an important project decision only in chat.
+Record durable product/design decisions in DESIGN.md, current baseline changes in docs/PROJECT_STATE.md, process rules in docs/PROJECT_OPERATIONS.md, and gameplay verification rules in PLAYTEST.md. Never leave an important project decision only in chat.
 
 If repository evidence conflicts with memory, repository evidence wins.
 ```
@@ -75,7 +75,7 @@ A minimal Work handoff can be:
 ```text
 Work on OozeMoush/pitwall-racer Issue #NN to completion.
 
-GitHub is the source of truth. Start from current main. Read README.md, AGENTS.md, docs/PROJECT_STATE.md, docs/PROJECT_OPERATIONS.md and the Issue before making changes. Follow the repository branch/PR/CI policy. For gameplay work also follow PLAYTEST.md and the pitwall-playtest skill.
+GitHub is the source of truth. Start from current main. Read README.md, docs/PROJECT_STATE.md, docs/PROJECT_OPERATIONS.md and the Issue before making changes. Follow the repository branch/PR/CI policy. For gameplay work also follow PLAYTEST.md.
 
 Continue autonomously until the Issue acceptance criteria are complete or a genuine external blocker exists. Leave GitHub resumable with PR/CI status and an Issue checkpoint. Do not rely on prior ChatGPT conversation context.
 ```
