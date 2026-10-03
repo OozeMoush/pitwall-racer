@@ -97,6 +97,8 @@ It is archival evidence, not active mainline architecture.
 
 ## Current work discovery
 
+Current project-operations migration: **Issue #134**.
+
 **GitHub Issues are the authoritative work queue.**
 
 Do not infer active work from old branches, chat history or memory.
