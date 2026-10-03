@@ -9,14 +9,14 @@
 Last updated: **2026-10-04**
 
 - default branch: `main`
-- verified main: `a145f813aa8f231ae626b349a03608cb139dc9a3`
+- last verified code baseline: `a145f813aa8f231ae626b349a03608cb139dc9a3`
 - main CI: **#884 — success**
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
 - merged head branches are deleted automatically
 
-Before relying on this snapshot, compare the current `main` SHA and recent CI. If main has moved materially, update this file in the PR that changes the project baseline.
+Before relying on this snapshot, compare current `main` and recent CI. Documentation-only commits do not require a baseline bump; update this file when code, architecture, project direction or verification assumptions move materially.
 
 ## Product direction
 
