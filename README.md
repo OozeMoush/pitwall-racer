@@ -101,6 +101,19 @@ The repository is public, but public visibility does not grant strangers push ac
 
 Enable automatic deletion of merged head branches so the branch list stays short.
 
+## Project operations
+
+Pitwall Racer uses a repository-first operating model. GitHub — not chat history or model memory — is the durable project source of truth.
+
+- [Current project state](./docs/PROJECT_STATE.md) — canonical session-recovery snapshot
+- [Project operations](./docs/PROJECT_OPERATIONS.md) — information ownership, Issue/PR lifecycle, startup and handoff protocol
+- [ChatGPT Project + Work setup](./docs/CHATGPT_PROJECT_SETUP.md) — recommended Project instructions and Work startup prompt
+- [Design](./DESIGN.md) — durable product/design decisions
+- [Playtest gate](./PLAYTEST.md) — gameplay verification rules
+- [Agent instructions](./AGENTS.md) — compact non-negotiable agent rules
+
+GitHub Issues are the authoritative work queue and resume points. A new ChatGPT/Work session should be able to recover the project from these repository documents plus the relevant Issue/PR without prior conversation context.
+
 ## Architecture
 
 `src/simulation/` owns authoritative race truth independently from rendering.
