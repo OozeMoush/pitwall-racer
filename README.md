@@ -110,7 +110,6 @@ Pitwall Racer uses a repository-first operating model. GitHub — not chat histo
 - [ChatGPT Project + Work setup](./docs/CHATGPT_PROJECT_SETUP.md) — recommended Project instructions and Work startup prompt
 - [Design](./DESIGN.md) — durable product/design decisions
 - [Playtest gate](./PLAYTEST.md) — gameplay verification rules
-- [Agent instructions](./AGENTS.md) — compact non-negotiable agent rules
 
 GitHub Issues are the authoritative work queue and resume points. A new ChatGPT/Work session should be able to recover the project from these repository documents plus the relevant Issue/PR without prior conversation context.
 

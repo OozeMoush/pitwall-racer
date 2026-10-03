@@ -1,6 +1,6 @@
 # Pitwall Racer — Current Project State
 
-> Canonical current-state snapshot for humans, ChatGPT Project, Codex and Work sessions.
+> Canonical current-state snapshot for humans, ChatGPT Project and Work sessions.
 >
 > This file is intentionally concise. Durable product decisions belong in `DESIGN.md`; detailed implementation history belongs in Issues and PRs.
 
@@ -129,7 +129,6 @@ These are ongoing design/engineering risks rather than necessarily open bugs:
 - product/design intent: `DESIGN.md`
 - project operating model: `docs/PROJECT_OPERATIONS.md`
 - ChatGPT Project / Work setup: `docs/CHATGPT_PROJECT_SETUP.md`
-- agent rules: `AGENTS.md`
 - gameplay validation: `PLAYTEST.md`
 - active work: GitHub Issues
 - implementation history: merged PRs
