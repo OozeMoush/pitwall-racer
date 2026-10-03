@@ -93,7 +93,7 @@ CI runs the fast, playtest and long tiers for pull requests targeting `main`, re
 - Open a pull request back to `main` and use CI as the merge gate. This is useful even for solo development because the PR records the change and keeps broken commits out of `main`.
 - Prefer **squash merge** so one completed change becomes one readable commit on `main`.
 - Delete the head branch after merge. If a PR is abandoned or superseded, delete that branch too; revive the idea later from a fresh branch based on current `main`.
-- One GitHub Issue may be completed by several PRs. Branch names are implementation details; the Issue and merged PRs are the durable history.
+- Small Issues should normally stay one PR. Large Issues may be split across several coherent, independently mergeable PRs; the Issue closes only when its acceptance criteria are complete. Branch names are implementation details; the Issue and merged PRs are the durable history.
 - Avoid direct pushes to `main` for normal development. Repository-administration emergencies are the only intended exception.
 - Never rewrite published `main` history to make it look cleaner. Clean forward with small PRs instead.
 
