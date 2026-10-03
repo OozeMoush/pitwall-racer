@@ -97,7 +97,9 @@ CI runs the fast, playtest and long tiers for pull requests targeting `main`, re
 - Avoid direct pushes to `main` for normal development. Repository-administration emergencies are the only intended exception.
 - Never rewrite published `main` history to make it look cleaner. Clean forward with small PRs instead.
 
-The repository is public, but public visibility does not grant strangers push access. Branch protection is still used to prevent accidental owner/collaborator pushes, force-pushes and deletion of `main`.
+The repository is public, but public visibility does not grant strangers push access. The intended repository settings for `main` are: require a pull request, require all CI tiers, require linear history, block force-pushes and branch deletion, and require **0 approving reviews** for this solo project. Keep an administrator bypass only for genuine recovery work.
+
+Enable automatic deletion of merged head branches so the branch list stays short.
 
 ## Architecture
 
