@@ -93,13 +93,26 @@ CI runs the fast, playtest and long tiers for pull requests targeting `main`, re
 - Open a pull request back to `main` and use CI as the merge gate. This is useful even for solo development because the PR records the change and keeps broken commits out of `main`.
 - Prefer **squash merge** so one completed change becomes one readable commit on `main`.
 - Delete the head branch after merge. If a PR is abandoned or superseded, delete that branch too; revive the idea later from a fresh branch based on current `main`.
-- One GitHub Issue may be completed by several PRs. Branch names are implementation details; the Issue and merged PRs are the durable history.
+- Small Issues should normally stay one PR. Large Issues may be split across several coherent, independently mergeable PRs; the Issue closes only when its acceptance criteria are complete. Branch names are implementation details; the Issue and merged PRs are the durable history.
 - Avoid direct pushes to `main` for normal development. Repository-administration emergencies are the only intended exception.
 - Never rewrite published `main` history to make it look cleaner. Clean forward with small PRs instead.
 
 The repository is public, but public visibility does not grant strangers push access. The intended repository settings for `main` are: require a pull request, require all CI tiers, require linear history, block force-pushes and branch deletion, and require **0 approving reviews** for this solo project. Keep an administrator bypass only for genuine recovery work.
 
 Enable automatic deletion of merged head branches so the branch list stays short.
+
+## Project operations
+
+Pitwall Racer uses a repository-first operating model. GitHub — not chat history or model memory — is the durable project source of truth.
+
+- [Current project state](./docs/PROJECT_STATE.md) — canonical session-recovery snapshot
+- [Project operations](./docs/PROJECT_OPERATIONS.md) — information ownership, Issue/PR lifecycle, startup and handoff protocol
+- [ChatGPT Project + Work setup](./docs/CHATGPT_PROJECT_SETUP.md) — recommended Project instructions and Work startup prompt
+- [Design](./DESIGN.md) — durable product/design decisions
+- [Playtest gate](./PLAYTEST.md) — gameplay verification rules
+- [Agent instructions](./AGENTS.md) — compact non-negotiable agent rules
+
+GitHub Issues are the authoritative work queue and resume points. A new ChatGPT/Work session should be able to recover the project from these repository documents plus the relevant Issue/PR without prior conversation context.
 
 ## Architecture
 
