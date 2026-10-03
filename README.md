@@ -27,7 +27,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 
 ## Race setup
 
-The pre-race menu currently offers race-scale Pitwall GP plus six legacy miniature circuits:
+The pre-race menu currently offers circuits with explicit physical scale profiles. Circuit scale is independent from race duration: Compact tracks can keep short, dense laps while Standard tracks can use race-scale spacing.
 
 - Pitwall GP
 - Velocity Park
@@ -37,7 +37,7 @@ The pre-race menu currently offers race-scale Pitwall GP plus six legacy miniatu
 - Serra Circuit
 - Baku Street
 
-Choose a starting tyre and a **SHORT / STANDARD / LONG** race duration. Lap count is derived per circuit from its representative pace; STANDARD targets roughly **27 minutes**.
+Choose a starting tyre and a **SHORT / STANDARD / LONG** race duration. Lap count is derived per circuit from its representative pace; STANDARD targets roughly **27 minutes**. Serra Circuit is the Compact reference format (~23 s), while Pitwall GP is the Standard reference format (~90 s).
 
 The circuits deliberately have different characters: balanced, high-speed, technical, rhythm, street-style and short-lap layouts. Track presentation uses a common visual language for road edges, runoff, kerbs, barriers, pit buildings and trackside references.
 
@@ -83,7 +83,21 @@ npm run build
 
 Use `test:fast` while iterating. Gameplay changes should also run `test:playtest`. Run `test:long` directly when touching racing-line replay, long-run CPU behaviour, multi-circuit physics or the machine reference. Before merging a gameplay change, `npm test` and `npm run build` remain mandatory.
 
-CI runs the full test suite and production build on pushes to `main` and can also be started manually. Automated tests are guardrails, not a substitute for human feel.
+CI runs the fast, playtest and long tiers for pull requests targeting `main`, repeats them after pushes to `main`, and can also be started manually. The production build runs in the fast tier. Automated tests are guardrails, not a substitute for human feel.
+
+## Repository workflow
+
+`main` is the always-green integration branch.
+
+- Start normal code work from current `main` on a short-lived branch such as `feat/*`, `fix/*`, `chore/*`, `test/*` or `refactor/*`.
+- Open a pull request back to `main` and use CI as the merge gate. This is useful even for solo development because the PR records the change and keeps broken commits out of `main`.
+- Prefer **squash merge** so one completed change becomes one readable commit on `main`.
+- Delete the head branch after merge. If a PR is abandoned or superseded, delete that branch too; revive the idea later from a fresh branch based on current `main`.
+- One GitHub Issue may be completed by several PRs. Branch names are implementation details; the Issue and merged PRs are the durable history.
+- Avoid direct pushes to `main` for normal development. Repository-administration emergencies are the only intended exception.
+- Never rewrite published `main` history to make it look cleaner. Clean forward with small PRs instead.
+
+The repository is public, but public visibility does not grant strangers push access. Branch protection is still used to prevent accidental owner/collaborator pushes, force-pushes and deletion of `main`.
 
 ## Architecture
 
