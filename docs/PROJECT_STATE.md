@@ -86,8 +86,13 @@ transit no longer follows a clock or teleports to an exit-speed pose. All seven
 controlled routes enter on the requested lap and complete service/exit. Compact
 entry-to-exit player loss is about 9.75–11.15 s vs CPU 7.08–10.97 s, using each
 control's own mainline baseline; approach/recovery are excluded from this table.
-Final strategy tuning, full-cost calibration and human traffic feedback
-remain open; the fixed-speed estimate is not a measured player pit loss.
+Matched controls now include approach and exit +200/+400/+600 m, with each
+car's own no-stop baseline. A scripted Harbor player approach exposed a
+pre-service stall; shared pit-route bend braking fixes that condition. Measured
++600 m Compact losses are about 10.34–15.08 s CPU / 12.26–14.81 s instrumented
+player, with residual recovery on some routes. Final strategy/harness calibration
+and human traffic feedback remain open; the fixed-speed estimate is not a
+measured player pit loss. See DESIGN for controls, per-circuit values and limits.
 
 ## Recent structural work
 

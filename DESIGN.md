@@ -202,6 +202,54 @@ This is a product decision: **layout quality comes first**. A circuit should be 
 
 Compact layouts do create more frequent traffic and lapping opportunities because the field crosses the same point more often. That is treated as a format characteristic to monitor with the physical pack tests, not a reason to stretch every track. The current eight-car field remains the baseline; if a future Compact layout becomes traffic-saturated, field size or event format should be tuned explicitly for that circuit rather than lengthening good corners with low-interaction straights.
 
+### Matched approach/recovery controls — Issue #137
+
+Stop/no-stop controls now begin 260 m before entry at the identical centreline
+pose, 88 m/s and fresh Medium, with no traffic or penalty. Physical progress
+gates end at exit, then +200/+400/+600 m. Each car has its own matching no-stop
+baseline; CPU retains normal fixed race advantages outside pit approach/transit.
+The player is instrumented with reference steering, a scripted braking/merge
+approach, and the live `CoreRaceGame.stepPhysicalPit` method. This is repeatable
+automation, not human execution or equal CPU/player road performance.
+
+That new player approach reproduced a Harbor stall before service: at pit
+t=0.270 the car was about 3.1 m off the route and almost stationary. Starting
+directly at entry hid this failure. The shared assist now caps speed for the
+upcoming pit-route bend using a 12 m/s² lateral-acceleration budget and the
+existing lookahead. The exit merge keeps its prior speed target. This fixes the
+approach regression without teleporting, enlarging the docking gate or changing
+service/limiter profiles. Both controlled cars complete all seven routes.
+
+Measured net loss after the bend-control fix (seconds, same-section subtraction):
+
+| Circuit | CPU at exit | CPU +600 m | Player at exit | Player +600 m |
+| --- | ---: | ---: | ---: | ---: |
+| Pitwall GP | 8.57 | 10.34 | 10.52 | 12.26 |
+| Velocity Park | 12.87 | 15.08 | 12.70 | 14.81 |
+| Switchback Ring | 12.65 | 14.08 | 12.46 | 13.72 |
+| Sakura Esses | 12.74 | 14.46 | 12.30 | 14.17 |
+| Harbor Chicane | 10.58 | 12.00 | 10.95 | 12.42 |
+| Serra Circuit | 12.69 | 14.64 | 12.53 | 14.53 |
+| Baku Street | 22.49 | 25.03 | 21.52 | 23.86 |
+
+The verbose `PitEconomicsPlaytest` logs retain all intermediate gate times and
+speeds. +600 m is a reporting boundary, not a claim that recovery has finished:
+Pitwall CPU still has a ~5.6 m/s speed deficit and Baku ~12.4 m/s. Several other
+circuits meet a corner before that boundary and lose the acceleration deficit.
+CPU tyre wear is held fixed in this isolated cost experiment; the live player
+pit method retains its small transit wear and refreshes the same compound.
+Full worn-tyre races must supply the tyre-benefit evidence separately.
+
+Rejected alternatives: a global pit-time adjustment cannot describe the
+circuit-specific mainline pace and acceleration recovery; requiring every
+track to recover by 600 m would manufacture an invariant. A slower exit merge
+was also excluded because it adds avoidable time when rejoining traffic.
+The fixed-speed Compact estimate (6.40 s) and harness response coefficient
+remain uncalibrated. Do not use their near-tie as physical balance evidence.
+Next compare physical stint/stop windows with the independent harness,
+including its after-lap stops versus the physical driver's within-lap entry,
+then traffic and human feel. Issue #137 remains open.
+
 ## Balance gates
 
 Game design is treated as testable behaviour, not just tuning by intuition. Lightweight deterministic simulations and physical-pack tests protect the core loop.

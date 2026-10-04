@@ -3,6 +3,9 @@ import { pitLanePose, pitLaneTargetSpeed, projectPitLane, type PitStopState } fr
 import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
+const PIT_LOOKAHEAD_T = 0.026;
+const PIT_LATERAL_ACCELERATION = 12; // m/s²; shared route-following safety budget
+
 /** Shared pit assist; callers still integrate their real rigid body. */
 export function physicalPitControl(
   vehicle: VehicleState, state: PitStopState, previousSteer: number, dt: number,
@@ -10,7 +13,7 @@ export function physicalPitControl(
 ) {
   const projection = projectPitLane(vehicle.x, vehicle.y, state.t);
   let approachSteer: number | undefined;
-  let target = pitLanePose(Math.min(1, projection.t + 0.026));
+  let target = pitLanePose(Math.min(1, projection.t + PIT_LOOKAHEAD_T));
   if (approach) {
     const road = projectTrack(vehicle.x, vehicle.y);
     const entry = pitLanePose(0);
@@ -31,7 +34,17 @@ export function physicalPitControl(
   const steer = stepSteering(previousSteer, clamp(rawSteer * 0.72 + assist * 0.82, -1, 1), vehicle.speed, dt);
   let throttle = requestedThrottle;
   let brake = requestedBrake;
-  const targetSpeed = pitLaneTargetSpeed(state, projection.t);
+  let targetSpeed = pitLaneTargetSpeed(state, projection.t);
+  if (!approach && projection.t + PIT_LOOKAHEAD_T <= 0.90) {
+    // Offset pit routes can bend more sharply than the main road. Brake for
+    // their actual curvature before the steering assist runs out of authority.
+    // The exit merge retains its existing speed target for rejoining traffic.
+    const turn = Math.abs(Math.atan2(Math.sin(target.heading - projection.pose.heading),
+      Math.cos(target.heading - projection.pose.heading)));
+    const chord = Math.hypot(target.x - projection.pose.x, target.y - projection.pose.y);
+    if (turn > 0.02) targetSpeed = Math.min(targetSpeed,
+      Math.sqrt(PIT_LATERAL_ACCELERATION * Math.max(1, chord) / turn));
+  }
   if (vehicle.speed > targetSpeed) {
     throttle = 0;
     brake = Math.max(brake, Math.min(1, (vehicle.speed - targetSpeed) / 7 + 0.18));
