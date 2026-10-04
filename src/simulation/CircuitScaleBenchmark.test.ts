@@ -6,7 +6,7 @@ import { circuitScalePresetFor } from './TrackModel';
 
 describe('physical circuit scale benchmark', () => {
   it('keeps Compact and Standard race economies coherent on the same duration preset', () => {
-    const rows = (['serra-circuit', 'pitwall-gp'] as const).map((trackId) => {
+    const rows = (['serra-circuit', 'baku-street'] as const).map((trackId) => {
       const totalLaps = raceLapsForPreset(trackId, 'STANDARD');
       const race = strategyRaceProfile(trackId, totalLaps);
       const strategies = benchmarkStrategies(race);

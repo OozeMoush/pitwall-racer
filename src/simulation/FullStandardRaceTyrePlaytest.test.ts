@@ -39,7 +39,7 @@ afterEach(() => {
 it('runs a full physical STANDARD race through H/M/S wear, slides, and real pit stops', () => {
   setActiveTrack('pitwall-gp');
   const totalLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
-  expect(totalLaps).toBe(18);
+  expect(totalLaps).toBe(48);
 
   const source = createAiField(undefined, totalLaps);
   let field: DriverState[] = ['KITE', 'RIFT'].map((name, index) => {

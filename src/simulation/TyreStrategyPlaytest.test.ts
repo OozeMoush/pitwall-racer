@@ -7,8 +7,8 @@ import {
   type StrategyPlan,
 } from './StrategySimulator';
 
-const TOTAL_LAPS = raceLapsForPreset('pitwall-gp', 'STANDARD');
-const RACE = strategyRaceProfile('pitwall-gp', TOTAL_LAPS);
+const TOTAL_LAPS = raceLapsForPreset('baku-street', 'STANDARD');
+const RACE = strategyRaceProfile('baku-street', TOTAL_LAPS);
 
 const plans: StrategyPlan[] = [
   {

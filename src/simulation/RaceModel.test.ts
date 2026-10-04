@@ -179,8 +179,8 @@ describe('RaceModel', () => {
 
   it('lets a car on a separate lane keep its own pace without an attack state', () => {
     const [leader, chaser] = createAiField();
-    leader.progress = 0.25 + raceScaleDistance(50) / TRACK_LENGTH;
-    chaser.progress = 0.25;
+    leader.progress = 0.1 + raceScaleDistance(50) / TRACK_LENGTH;
+    chaser.progress = 0.1;
     leader.speed = 82;
     chaser.speed = 88;
     leader.skill = 0.94;

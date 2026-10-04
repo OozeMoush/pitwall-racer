@@ -43,7 +43,7 @@ describe('machine-limit reference driver', () => {
     );
 
     expect(asset.source).toBe('OPTIMIZER');
-    expect(asset.points.length).toBeGreaterThan(1000);
+    expect(asset.points.length).toBeGreaterThanOrEqual(320);
     expect(asset.points.every((point) => Number.isFinite(point.targetSpeed))).toBe(true);
   });
 
@@ -51,8 +51,8 @@ describe('machine-limit reference driver', () => {
     const grip = compoundPeakGrip('SOFT', 'PUSH');
     const pitwall = referenceRacingLineAsset('pitwall-gp', grip);
     const baku = referenceRacingLineAsset('baku-street', grip);
-    expect(pitwall.points.length).toBeGreaterThan(1000);
-    expect(pitwall.points.length).toBeGreaterThan(baku.points.length);
+    expect(pitwall.points.length).toBeGreaterThanOrEqual(320);
+    expect(baku.points.length).toBeGreaterThan(pitwall.points.length);
     expect(baku.points.length).toBeGreaterThan(700);
   });
 

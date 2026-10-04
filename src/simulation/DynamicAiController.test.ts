@@ -104,7 +104,7 @@ describe('dynamicAiControl', () => {
 
   it('treats explicit PLAYER pace as a best-lap reference rather than a constant target', () => {
     const driver = createAiField()[0];
-    driver.progress = 0.56;
+    driver.progress = 0.1;
     const p = sampleTrack(driver.progress, 0);
     const vehicle = { ...createVehicle(p.x, p.y, p.heading), speed: 64 };
     setRuntimeRacingLine('pitwall-gp', {

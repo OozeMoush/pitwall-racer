@@ -4,6 +4,7 @@ import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField, raceDistance } from './RaceModel';
 import { DEEP_CUT_DISTANCE } from './TrackLimitsModel';
 import { projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
+import { referenceLap } from './ReferenceDriverModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
@@ -59,7 +60,10 @@ describe('professional AI driving regression', () => {
     // A quick car can now cross the start line inside this window, so compare
     // total race distance rather than raw progress modulo one lap.
     const travelledMetres = (raceDistance(driver.lap, driver.progress) - startDistance) * TRACK_LENGTH;
-    expect(travelledMetres).toBeGreaterThan(2500);
+    // Tight compact corners lower average speed. Require progress against the
+    // unassisted machine lap rather than the old straight-heavy 321 km/h floor.
+    const reference = referenceLap('pitwall-gp', driver.tire.grip);
+    expect(travelledMetres).toBeGreaterThan(28 / reference.lapSeconds * TRACK_LENGTH * 0.8);
     expect(deepCuts / samples).toBeLessThan(0.025);
     // The racing line legitimately crosses the circuit between corners, but it
     // should not reverse direction every few tenths like a driver sawing at the

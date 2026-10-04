@@ -17,8 +17,8 @@ describe('track visual scale', () => {
     const pitwallSamples = trackMeshSampleCount();
     setActiveTrack('baku-street');
     const bakuSamples = trackMeshSampleCount();
-    expect(pitwallSamples).toBeGreaterThan(bakuSamples);
-    expect(pitwallSamples).toBeGreaterThan(1400);
+    expect(bakuSamples).toBeGreaterThan(pitwallSamples);
+    expect(pitwallSamples).toBeGreaterThanOrEqual(460);
     expect(bakuSamples).toBeGreaterThanOrEqual(460);
     expect(samplesForDistance(7000, 5, 460)).toBe(1400);
   });

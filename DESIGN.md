@@ -63,21 +63,49 @@ Physical circuit scale is **not** a race-duration setting.
 Pitwall Racer deliberately supports multiple physical formats:
 
 - **Compact** — purpose-built short laps, typically around 20–40 seconds. Serra Circuit is the reference Compact benchmark.
-- **Standard** — the current race-scale format, typically around 75–105 seconds. Pitwall GP is the reference Standard benchmark.
+- **Standard** — the current race-scale format, typically around 75–105 seconds. Baku Street retains the Standard format.
 - **Long** — available to the circuit editor for layouts that deliberately need more physical space. It is not a requirement for ordinary circuits.
 
-SHORT / STANDARD / LONG race-duration presets remain a separate axis. The same ~27-minute STANDARD event is therefore about 70 laps at Serra and 18 laps at Pitwall GP.
+SHORT / STANDARD / LONG race-duration presets remain a separate axis. The same ~27-minute STANDARD event is about 70 laps at Serra, 48 laps at compact Pitwall GP and 18 laps at Standard Baku. Event duration must not be implemented by stretching the track.
 
 The strategy model normalizes fixed per-lap tyre/slide effects by both representative lap duration and pit cost. This prevents a compact circuit from becoming a forced two-stop race merely because the same 27 minutes contains many more lap boundaries.
 
-Pit economics follow physical scale as well. The current benchmark is approximately:
+### Compact driving rhythm — Issue #137, first implementation slice
 
-| Circuit | Physical scale | Reference lap | STANDARD laps | Reference race | Net pit loss | Pit loss / lap |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| Serra Circuit | Compact | 23.119 s | ~70 | ~27 min | ~6.4 s | ~28% |
-| Pitwall GP | Standard | 90 s | 18 | 27 min | ~18.1 s | ~20% |
+Human playtesting rejected the fictional layouts' long straight extensions.
+Pitwall GP, Velocity Park, Switchback Ring, Sakura Esses and Harbor Chicane now
+remove their 2.8–3.2 km outward extensions; the existing corner sequences remain.
+Pitwall's original compact footprint needs a 1.4 spacing factor to keep its
+technical section physically readable and support CPU recovery. This increases
+corner radius and separation rather than padding the opening straights.
 
-The CI benchmark requires one-stop and two-stop families to remain within three seconds on both reference formats.
+The adopted shape comparison (machine reference on fresh Soft, not human lap times):
+
+| Circuit | Previous length | Current length | Previous reference | Current reference |
+| --- | ---: | ---: | ---: | ---: |
+| Pitwall GP | 8.07 km | 2.90 km | 82.1 s | 33.5 s |
+| Velocity Park | 8.37 km | 1.97 km | 79.8 s | 19.8 s |
+| Switchback Ring | 7.74 km | 1.76 km | 78.8 s | 21.2 s |
+| Sakura Esses | 7.61 km | 1.66 km | 73.9 s | 21.9 s |
+| Harbor Chicane | 7.74 km | 2.17 km | 82.4 s | 31.2 s |
+
+Rejected alternatives: simply deleting Pitwall's extension at its smallest
+footprint restores an ambiguous projection beside the technical section;
+shrinking every track indiscriminately would erase Baku's intended character.
+Serra and Baku therefore keep their geometry. The old extended Pitwall AUTO
+corner-speed allowance is disabled on Compact geometry: its lap-progress
+windows no longer describe the same complexes. CPU cars use the physical
+reference speed instead.
+
+All six fictional circuits now use the existing Compact pit profile (1.2 s
+service, abstract 130 km/h limiter); Baku keeps the Standard profile. These are
+an interim coherent baseline, not the completed pit-strategy rebalance. Issue
+#137 remains open for physical net-loss measurements and strategy tuning.
+
+The strategy harness's normalization baseline stays on Standard Baku so changing
+the default Pitwall layout does not silently multiply tyre effects everywhere.
+The existing one-stop/two-stop benchmark still covers Compact Serra and Standard
+Baku; its three-second guard is not proof that the new circuits feel balanced.
 
 This is a product decision: **layout quality comes first**. A circuit should be made longer because the intended racing needs more space, not because a global stopwatch target says every lap must approach 90 seconds. Target lap time is a design constraint only when deliberately chosen for that circuit.
 
