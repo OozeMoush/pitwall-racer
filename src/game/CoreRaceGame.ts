@@ -44,8 +44,9 @@ import {
   isPitActive,
   pitLanePose,
   pitLaneSpeedLimitActive,
+  pitSpeed,
   projectPitLane,
-  shouldEnterPit,
+  playerPitEntryProjection,
   stepPlayerPitStop,
   type PitStopState,
 } from '../simulation/PitLaneModel';
@@ -568,22 +569,8 @@ export class CoreRaceGame {
     this.updateSectorTiming();
     this.updateLapAndCheckpoints(afterPhysicalProjection.distance);
 
-    if (shouldEnterPit(
-      this.lastTrackProgress,
-      this.trackProgress,
-      afterPhysicalProjection.distance,
-      this.pitRequested,
-      afterTrack.laneOffset,
-    )) {
-      this.lineCandidate.markIneligible();
-      const initialPit = projectPitLane(
-        this.vehicle.x,
-        this.vehicle.y,
-        0,
-      );
-      this.pitStop = beginPitStop(PIT_BOX_T, initialPit.t);
-      this.pitRequested = false;
-    }
+    this.tryEnterPlayerPit(this.lastTrackProgress, this.trackProgress,
+      afterPhysicalProjection.distance, afterTrack.laneOffset);
 
     this.trafficPressure = this.estimateTrafficPressure();
     this.updateRaceIntervals();
@@ -610,6 +597,16 @@ export class CoreRaceGame {
     });
   }
 
+  private tryEnterPlayerPit(previousProgress: number, currentProgress: number,
+    distanceFromLine: number, laneOffset: number): void {
+    const entry = playerPitEntryProjection(this.vehicle, previousProgress, currentProgress,
+      distanceFromLine, laneOffset, this.pitRequested);
+    if (!entry) return;
+    this.lineCandidate.markIneligible();
+    this.pitStop = beginPitStop(PIT_BOX_T, entry.t);
+    this.pitRequested = false;
+  }
+
   private stepPhysicalPit(dt: number): boolean {
     if (!isPitActive(this.pitStop)) return false;
 
@@ -624,9 +621,10 @@ export class CoreRaceGame {
       this.physics.step(dt);
       this.vehicle = this.physics.playerState();
     } else {
-      const control = physicalPitControl(this.vehicle, this.pitStop, this.steerInput, dt,
-        (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0),
-        this.keys.has('KeyW') ? 1 : 0, this.keys.has('KeyS') ? 1 : 0);
+      // Once the driver physically commits to the requested lane, the pit
+      // crew assist owns transit. Releasing W or holding the entry turn must
+      // not strand the car before service. Movement still uses the real body.
+      const control = physicalPitControl(this.vehicle, this.pitStop, this.steerInput, dt);
       const before = control.projection;
       this.steerInput = control.steer;
       const { throttle, brake } = control;
@@ -1795,7 +1793,7 @@ export class CoreRaceGame {
       : this.pitStop.phase === 'SERVICE'
         ? `PIT BOX · ${this.pitStop.serviceRemaining.toFixed(1)}s`
         : isPitActive(this.pitStop)
-          ? `${pitLaneSpeedLimitActive(this.pitStop.t) ? 'PIT LIMIT 80' : 'PIT LANE'} · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
+          ? `AUTO PIT${pitLaneSpeedLimitActive(this.pitStop.t) ? ` · LIMIT ${Math.round(pitSpeed() * 3.6)}` : ''} · ${this.pitStop.phase === 'TRANSIT_IN' ? 'IN' : 'OUT'}`
           : this.pitRequested
             ? `BOX THIS LAP · TAKE RIGHT ENTRY → ${this.selectedCompound}`
             : this.trackLimitPenalty.pendingPitSeconds > 0

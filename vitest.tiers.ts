@@ -13,6 +13,7 @@ export const LONG_TEST_FILES = [
 export const PLAYTEST_TEST_FILES = [
   'src/game/GrandPrixPlaytest.test.ts',
   'src/game/PitEconomicsPlaytest.test.ts',
+  'src/game/PlayerPitCapturePlaytest.test.ts',
   'src/rendering3d/PitLane3D.test.ts',
   'src/simulation/AeroFeedbackRegression.test.ts',
   'src/simulation/AiStuckRecoveryPhysics.test.ts',

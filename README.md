@@ -67,6 +67,8 @@ During the race:
 - `R` — select Hard
 - `F` — box this lap / cancel pit request
 
+After a requested physical pit entry, AUTO PIT drives to the box, services the car and follows the lane to the exit. WASD resumes when the car rejoins; releasing the accelerator or holding the entry turn does not interrupt the stop. A pit request alone does not steer a car off the main road.
+
 After the race, `C` starts the same setup again.
 
 ## Verify
