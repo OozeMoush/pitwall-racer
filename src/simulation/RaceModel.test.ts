@@ -111,7 +111,83 @@ describe('RaceModel', () => {
     car.lap = 2;
     car.progress = 0.5 + 20 / TRACK_LENGTH;
     const close = aeroEffect(2, 0.5, [car]);
-    expect(close.tow).to…761 tokens truncated…ader.skill = 0.94;
+    expect(close.tow).toBeGreaterThan(0);
+    expect(close.dirtyAir).toBeGreaterThan(0);
+
+    car.progress = 0.5 + 80 / TRACK_LENGTH;
+    expect(aeroEffect(2, 0.5, [car]).dirtyAir).toBe(0);
+  });
+
+  it('does not finish an AI car merely by entering the final lap', () => {
+    const [car] = createAiField();
+    car.lap = 49;
+    car.progress = 0.999;
+    car.speed = 90;
+    const stepped = stepAi(car, 0.1, 50);
+    expect(stepped.lap).toBe(50);
+    expect(stepped.finished).toBe(false);
+  });
+
+  it('accelerates on a straight and brakes a Medium for a demanding corner', () => {
+    const samples = Array.from({ length: 240 }, (_, index) => ({
+      progress: index / 240,
+      profile: trackProfile(index / 240, 1, createTire('MEDIUM').grip),
+    }));
+    const straight = samples.reduce((best, sample) => sample.profile.targetSpeed > best.profile.targetSpeed ? sample : best);
+    const corner = samples.reduce((best, sample) => sample.profile.targetSpeed < best.profile.targetSpeed ? sample : best);
+
+    const [straightCar] = createAiField();
+    straightCar.tire = createTire('MEDIUM');
+    straightCar.progress = straight.progress;
+    straightCar.speed = 75;
+    expect(stepAi(straightCar, 0.2, 50).speed).toBeGreaterThan(75);
+
+    const [cornerCar] = createAiField();
+    cornerCar.tire = createTire('MEDIUM');
+    cornerCar.progress = corner.progress;
+    cornerCar.speed = 95;
+    expect(stepAi(cornerCar, 0.2, 50).speed).toBeLessThan(95);
+  });
+
+  it('follows a slower car longitudinally without changing its line', () => {
+    const [leader, chaser] = createAiField();
+    leader.progress = 0.5 + raceScaleDistance(68) / TRACK_LENGTH;
+    chaser.progress = 0.5;
+    leader.skill = 1.04;
+    chaser.skill = 0.92;
+    leader.laneOffset = 3;
+    chaser.laneOffset = -3;
+
+    const [baseline] = stepAiField([{ ...chaser }], 0.1, 50);
+    const [, nextChaser] = stepAiField([leader, chaser], 0.1, 50);
+    expect(nextChaser.battleState).toBe('FOLLOW');
+    expect(nextChaser.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
+  });
+
+  it('keeps a quicker close-range car in FOLLOW instead of inventing an attack lane', () => {
+    const [leader, chaser] = createAiField();
+    leader.tire = createTire('HARD');
+    chaser.tire = createTire('SOFT');
+    leader.progress = 0.5 + raceScaleDistance(40) / TRACK_LENGTH;
+    chaser.progress = 0.5;
+    leader.skill = 0.94;
+    chaser.skill = 1.08;
+    leader.laneOffset = 0;
+    chaser.laneOffset = 0;
+
+    const [, nextChaser] = stepAiField([leader, chaser], 0.1, 50);
+    expect(nextChaser.battleState).toBe('FOLLOW');
+    const [baseline] = stepAiField([{ ...chaser }], 0.1, 50);
+    expect(nextChaser.laneOffset).toBeCloseTo(baseline.laneOffset, 8);
+  });
+
+  it('lets a car on a separate lane keep its own pace without an attack state', () => {
+    const [leader, chaser] = createAiField();
+    leader.progress = 0.1 + raceScaleDistance(50) / TRACK_LENGTH;
+    chaser.progress = 0.1;
+    leader.speed = 82;
+    chaser.speed = 88;
+    leader.skill = 0.94;
     chaser.skill = 1.09;
     leader.laneOffset = -10;
     chaser.laneOffset = 10;
