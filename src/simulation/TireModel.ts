@@ -1,5 +1,6 @@
 export type Compound = 'SOFT' | 'MEDIUM' | 'HARD';
 export type PaceMode = 'CONSERVE' | 'BALANCED' | 'PUSH';
+export const LATE_TIRE_WEAR_START = 0.56;
 
 export interface TireState {
   compound: Compound;
@@ -89,7 +90,7 @@ export function stepTire(state: TireState, mode: PaceMode, load: number, dt: num
   const wear = Math.min(1, state.wear + wearRate * dt);
 
   const baseWearLoss = wear * 0.030;
-  const lateWear = Math.max(0, wear - 0.56);
+  const lateWear = Math.max(0, wear - LATE_TIRE_WEAR_START);
   const cliff = Math.pow(lateWear, 1.20) * 0.96;
   const temperatureLoss = Math.max(0, tempDelta - 5) * 0.0048;
   const tempGrip = Math.max(0.80, 1 - temperatureLoss);
