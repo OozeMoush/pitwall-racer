@@ -250,7 +250,7 @@ export function stepPlayerPitStop(
       ...state,
       phase: 'SERVICE',
       t: state.boxT,
-      serviceRemaining: PIT_SERVICE_SECONDS,
+      serviceRemaining: pitServiceSeconds(),
     };
   }
 

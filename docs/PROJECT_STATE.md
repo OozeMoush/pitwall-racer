@@ -9,8 +9,8 @@
 Last updated: **2026-10-04**
 
 - default branch: `main`
-- previous verified main: `7de3e21d736dbaeeee7805eeb27f61785005e196`, CI **#891 — success**
-- current code change: **Issue #137 compact circuit-rhythm slice**; use its implementation PR and current Actions for the merged SHA / CI status
+- previous verified main: `d46c54c4667b2d78ccade32dd78e22f18fbe9674`, CI **#893 — success**
+- current code change: **Issue #137 shared service / physical pit-calibration slice**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -78,8 +78,13 @@ race duration are not interchangeable.
 
 Issue #137 removes artificial 2.8–3.2 km straight extensions from five fictional
 circuits. Pitwall's compact corner spacing is enlarged 1.4× from the smallest
-footprint to keep projection and physical driving robust. Existing Compact pit
-economics are applied; physical net-loss and final strategy tuning remain open.
+footprint to keep projection and physical driving robust. Compact service timers are shared by player and CPU. Harbor pit entry moves
+to 0.75 on its straight to avoid a folded route at start/finish. Strategy
+harness tyre effects no longer follow pit cost. Controlled physical pit tests
+show player loss about 10–11.4 s vs CPU 5.8–7.1 s on Compact tracks; CPU transit
+is still clock-driven while player transit uses braking and acceleration.
+Final strategy tuning, equal stop-cost execution and human traffic feedback
+remain open; the fixed-speed estimate is not a measured player pit loss.
 
 ## Recent structural work
 
@@ -99,7 +104,7 @@ It is archival evidence, not active mainline architecture.
 
 ## Current work discovery
 
-Active gameplay: **Issue #137**, first compact-geometry slice; pit-loss/strategy tuning remains.
+Active gameplay: **Issue #137**, pit-cost execution / strategy calibration; human feel gate remains.
 Circuit editor improvements: **Issue #138**, separate work.
 Project-operations migration: **Issue #134**, external configuration / follow-up verification.
 

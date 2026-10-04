@@ -77,6 +77,17 @@ describe('PitLaneModel', () => {
     expect(state.phase).toBe('DONE');
   });
 
+  it.each(['pitwall-gp', 'serra-circuit', 'baku-street'] as const)(
+    'uses the same player and CPU service profile on %s', (trackId) => {
+      setActiveTrack(trackId);
+      const player = stepPlayerPitStop(beginPitStop(), 1 / 120, PIT_BOX_T);
+      let cpu = beginPitStop();
+      while (cpu.phase === 'TRANSIT_IN') cpu = stepPitStop(cpu, 1 / 120);
+      expect(player.serviceRemaining).toBe(pitServiceSecondsFor(trackId));
+      expect(player.serviceRemaining).toBe(cpu.serviceRemaining);
+    },
+  );
+
   it('projects exact pit-path poses back onto the same pit progress', () => {
     const pose = pitLanePose(0.43);
     const projected = projectPitLane(pose.x, pose.y, 0.40);
