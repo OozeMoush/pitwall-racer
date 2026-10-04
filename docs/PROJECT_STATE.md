@@ -9,8 +9,8 @@
 Last updated: **2026-10-04**
 
 - default branch: `main`
-- last verified code baseline: `a145f813aa8f231ae626b349a03608cb139dc9a3`
-- main CI: **#884 — success**
+- previous verified main: `7de3e21d736dbaeeee7805eeb27f61785005e196`, CI **#891 — success**
+- current code change: **Issue #137 compact circuit-rhythm slice**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -65,19 +65,21 @@ The current main branch includes:
 Issue #111 established **multiple physical circuit formats**:
 
 - **Compact** — reference: Serra Circuit, ~23.119 s/lap;
-- **Standard** — reference: Pitwall GP, ~90 s/lap;
+- **Standard** — Baku Street retains its authored long-straight format;
 - **Long** — available for deliberately large authored layouts.
 
 Race duration remains independent. A STANDARD event targets roughly 27 minutes on either Compact or Standard circuits.
 
-Current benchmark:
+Current fictional-circuit machine references range from about 20 to 34 seconds.
+Pitwall GP is 2.90 km / ~33.5 s, giving 48 laps for the ~27-minute STANDARD event.
+Serra remains 1.85 km / ~23.1 s / 70 laps; Baku retains its Standard geometry and
+90-second event-planning reference / 18 laps. Machine reference and actual human
+race duration are not interchangeable.
 
-| Circuit | Scale | Ref lap | STANDARD laps | Approx race | Net pit loss |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Serra Circuit | Compact | 23.119 s | 70 | 26.97 min | ~6.4 s |
-| Pitwall GP | Standard | 90 s | 18 | 27.0 min | ~18.1 s |
-
-Strategy effects are normalized so Compact layouts do not become automatically multi-stop dominant merely because they contain more lap boundaries.
+Issue #137 removes artificial 2.8–3.2 km straight extensions from five fictional
+circuits. Pitwall's compact corner spacing is enlarged 1.4× from the smallest
+footprint to keep projection and physical driving robust. Existing Compact pit
+economics are applied; physical net-loss and final strategy tuning remain open.
 
 ## Recent structural work
 
@@ -97,7 +99,9 @@ It is archival evidence, not active mainline architecture.
 
 ## Current work discovery
 
-Current project-operations migration: **Issue #134**.
+Active gameplay: **Issue #137**, first compact-geometry slice; pit-loss/strategy tuning remains.
+Circuit editor improvements: **Issue #138**, separate work.
+Project-operations migration: **Issue #134**, external configuration / follow-up verification.
 
 **GitHub Issues are the authoritative work queue.**
 

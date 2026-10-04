@@ -7,7 +7,7 @@ function oneLap(compound: 'SOFT' | 'MEDIUM' | 'HARD') {
     startCompound: compound,
     paceForLap: () => 'BALANCED',
   };
-  return simulateStrategy(plan, strategyRaceProfile('pitwall-gp', 1)).laps[0];
+  return simulateStrategy(plan, strategyRaceProfile('baku-street', 1)).laps[0];
 }
 
 describe('compound contrast', () => {

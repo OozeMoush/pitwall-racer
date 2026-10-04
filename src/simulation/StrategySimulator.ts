@@ -62,13 +62,13 @@ export interface BalanceSnapshot {
   spreadToSecond: number;
 }
 
-// Pitwall GP 2.0 preserved the old technical core and gained most of its lap
-// time through long straights. Keep the old ~10.8 s technical-corner budget
-// instead of multiplying tyre grip advantage by the entire ~90 s lap.
+// Keep the existing race-scale corner budget while compact layout changes
+// are validated. Baku supplies a stable Standard pit baseline; changing the
+// default circuit must not silently rescale every circuit's tyre economics.
 const MAX_REPRESENTATIVE_CORNER_SECONDS = 10.8;
 const STRATEGY_REFERENCE_LAP_SECONDS = 90;
 const STRATEGY_REFERENCE_PIT_LOSS_SECONDS =
-  pitStopTimeLossEstimateSecondsFor('pitwall-gp');
+  pitStopTimeLossEstimateSecondsFor('baku-street');
 const DT = 0.5;
 const GRIP_RESPONSE_EXPONENT = 0.85;
 const COMPOUNDS: readonly Compound[] = ['SOFT', 'MEDIUM', 'HARD'];

@@ -345,10 +345,13 @@ export function dynamicAiControl(
   // rotation. Once the real car is demonstrably on that machine line, allow a small
   // speed carry through the same two complexes. The better predictive follower
   // now has enough line margin to use more of the physical chassis while poor
-  // tracking still removes the allowance before it can become a cut. A
+  // tracking still removes the allowance before it can become a cut.
+  // This progress window belongs to the extended STANDARD layout; the compact
+  // layout must use its physical reference speed without this extra allowance.
   // PLAYER/EDITOR line is already physically demonstrated and must not receive
   // this extra speed injection.
-  if (!highFidelityLine && battleState === 'CLEAR' && !offRoad && trackId === 'pitwall-gp') {
+  if (!highFidelityLine && battleState === 'CLEAR' && !offRoad
+    && trackId === 'pitwall-gp' && getActiveTrack().scalePreset === 'STANDARD') {
     const lineError = Math.abs(referenceLaneNow - projection.laneOffset);
     const lineConfidence = 1 - clamp(lineError / 7.0, 0, 1);
     const technical = clamp((profile.severity - 0.16) / 0.76, 0, 1);

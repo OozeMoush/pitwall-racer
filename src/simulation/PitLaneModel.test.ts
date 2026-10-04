@@ -104,12 +104,12 @@ describe('PitLaneModel', () => {
     const pitwallLength = pitLaneLengthMetres();
     const pitwallDuration = pitStopDurationSeconds();
     const pitwallExit = pitExitProgress();
-    expect(pitwallLength).toBeCloseTo(480, 6);
-    expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
+    expect(pitwallLength).toBeCloseTo(342, 6);
+    expect(pitEntryProgress()).toBeCloseTo(0.91, 6);
 
     setActiveTrack('baku-street');
     expect(pitLaneLengthMetres()).toBeCloseTo(480, 6);
-    expect(pitStopDurationSeconds()).toBeCloseTo(pitwallDuration, 6);
+    expect(pitStopDurationSeconds()).toBeGreaterThan(pitwallDuration);
     expect(pitEntryProgress()).toBeCloseTo(0.985, 6);
     // Similar physical pit length, different circuit geometry/length.
     expect(pitExitProgress()).not.toBeCloseTo(pitwallExit, 3);
@@ -117,17 +117,18 @@ describe('PitLaneModel', () => {
 
   it('makes the pit lane a substantial strategy cost', () => {
     expect(PIT_SERVICE_SECONDS).toBeGreaterThanOrEqual(2.3);
+    setActiveTrack('baku-street');
     expect(pitStopDurationSeconds()).toBeGreaterThan(14);
     expect(pitStopDurationSeconds()).toBeLessThan(25);
   });
 
   it('uses shorter compact pit economics without changing the standard baseline', () => {
-    const standardLoss = pitStopTimeLossEstimateSecondsFor('pitwall-gp');
+    const standardLoss = pitStopTimeLossEstimateSecondsFor('baku-street');
     const compactLoss = pitStopTimeLossEstimateSecondsFor('serra-circuit');
 
-    expect(pitServiceSecondsFor('pitwall-gp')).toBeCloseTo(2.5, 6);
+    expect(pitServiceSecondsFor('baku-street')).toBeCloseTo(2.5, 6);
     expect(pitServiceSecondsFor('serra-circuit')).toBeCloseTo(1.2, 6);
-    expect(pitSpeedFor('pitwall-gp') * 3.6).toBeCloseTo(80, 6);
+    expect(pitSpeedFor('baku-street') * 3.6).toBeCloseTo(80, 6);
     expect(pitSpeedFor('serra-circuit') * 3.6).toBeCloseTo(130, 6);
     expect(standardLoss).toBeGreaterThanOrEqual(18);
     expect(standardLoss).toBeLessThanOrEqual(24);

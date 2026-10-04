@@ -200,7 +200,11 @@ function miniature(points: readonly TrackPoint[]): readonly TrackPoint[] {
   return scaleAroundCentre(points, MINIATURE_TRACK_SCALE);
 }
 
-const PITWALL_GP = miniature(PITWALL_GP_SOURCE);
+// Retain the compact corner sequence with enough radius for road/runoff
+// separation. Additional corner radius also gives the physical CPU pack
+// room to recover without restoring the removed straight extensions.
+const PITWALL_TRACK_SCALE = MINIATURE_TRACK_SCALE * 1.4;
+const PITWALL_GP = scaleAroundCentre(PITWALL_GP_SOURCE, PITWALL_TRACK_SCALE);
 const VELOCITY_PARK = miniature(VELOCITY_PARK_SOURCE);
 const SWITCHBACK_RING = miniature(SWITCHBACK_RING_SOURCE);
 const SAKURA_ESSES = miniature(SAKURA_ESSES_SOURCE);
@@ -213,86 +217,53 @@ export const TRACKS: TrackDefinition[] = [
   {
     id: 'pitwall-gp',
     name: 'PITWALL GP',
-    subtitle: 'GRAND PRIX · HIGH-SPEED FLOW · TECHNICAL CORE',
+    subtitle: 'COMPACT · HIGH-SPEED FLOW · TECHNICAL CORE',
     controls: PITWALL_GP,
-    geometry: 'pitwall-grand-prix',
     referenceLaneMode: 'centerline',
-    distanceScale: 1,
-    scalePreset: 'STANDARD',
-    referenceLapSeconds: 90,
-    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+    distanceScale: PITWALL_TRACK_SCALE,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 33.530,
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'velocity-park',
     name: 'VELOCITY PARK',
-    subtitle: 'GRAND PRIX · HIGH SPEED · HEAVY BRAKING',
+    subtitle: 'COMPACT · HIGH SPEED · HEAVY BRAKING',
     controls: VELOCITY_PARK,
-    stretch: {
-      extensionMetres: 3200,
-      outStart: 0.02,
-      outEnd: 0.28,
-      backStart: 0.46,
-      backEnd: 0.58,
-    },
-    distanceScale: 1,
-    scalePreset: 'STANDARD',
-    referenceLapSeconds: 90,
-    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+    distanceScale: MINIATURE_TRACK_SCALE,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 19.765,
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'switchback-ring',
     name: 'SWITCHBACK RING',
-    subtitle: 'GRAND PRIX · TECHNICAL · TYRE TEST',
+    subtitle: 'COMPACT · TECHNICAL · TYRE TEST',
     controls: SWITCHBACK_RING,
-    stretch: {
-      extensionMetres: 3000,
-      outStart: 0.02,
-      outEnd: 0.20,
-      backStart: 0.66,
-      backEnd: 0.82,
-    },
-    distanceScale: 1,
-    scalePreset: 'STANDARD',
-    referenceLapSeconds: 90,
-    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+    distanceScale: MINIATURE_TRACK_SCALE,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 21.196,
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'sakura-esses',
     name: 'SAKURA ESSES',
-    subtitle: 'GRAND PRIX · LINKED ESSES · HAIRPIN',
+    subtitle: 'COMPACT · LINKED ESSES · HAIRPIN',
     controls: SAKURA_ESSES,
-    stretch: {
-      extensionMetres: 3000,
-      outStart: 0.02,
-      outEnd: 0.30,
-      // The linked esses all travel broadly westward. Return the added X
-      // distance gradually across that whole sequence instead of forcing the
-      // entire 3 km correction into the short final arc, which created an
-      // artificial low-speed kink and pit-path discontinuity.
-      backStart: 0.47,
-      backEnd: 0.86,
-    },
-    distanceScale: 1,
-    scalePreset: 'STANDARD',
-    referenceLapSeconds: 90,
-    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+    distanceScale: MINIATURE_TRACK_SCALE,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 21.897,
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'harbor-chicane',
     name: 'HARBOR CHICANE',
     subtitle: 'CLOCKWISE · STREET · BRAKE & ROTATE',
     controls: HARBOR_CHICANE,
-    stretch: {
-      extensionMetres: 2800,
-      outStart: 0.18,
-      outEnd: 0.44,
-      backStart: 0.675,
-      backEnd: 0.966,
-    },
-    distanceScale: 1,
-    scalePreset: 'STANDARD',
-    referenceLapSeconds: 90,
-    pitLane: { entryProgress: 0.985, lengthMetres: 480, laneOffset: 34 },
+    distanceScale: MINIATURE_TRACK_SCALE,
+    scalePreset: 'COMPACT',
+    referenceLapSeconds: 31.153,
+    pitLane: DEFAULT_PIT_LANE_DEFINITION,
   },
   {
     id: 'serra-circuit',
@@ -333,6 +304,7 @@ export let RACING_LINE: readonly TrackPoint[] = [];
 export let TRACK_LENGTH = 0;
 let segments: Segment[] = [];
 
+TRACK_DISTANCE_SCALE = TRACKS[0].distanceScale ?? MINIATURE_TRACK_SCALE;
 rebuildTrack(TRACKS[0]);
 
 export function setActiveTrack(id: TrackId): void {

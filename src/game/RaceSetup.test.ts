@@ -19,16 +19,16 @@ describe('RaceSetup duration presets', () => {
   it('derives different lap counts from circuit pace', () => {
     const pitwall = raceLapsForPreset('pitwall-gp', 'STANDARD');
     const baku = raceLapsForPreset('baku-street', 'STANDARD');
-    expect(pitwall).toBeGreaterThanOrEqual(15);
-    expect(pitwall).toBeLessThanOrEqual(24);
+    expect(pitwall).toBeGreaterThan(45);
+    expect(pitwall).toBeLessThan(60);
     expect(baku).toBeGreaterThanOrEqual(15);
     expect(baku).toBeLessThanOrEqual(24);
-    expect(Math.abs(pitwall - baku)).toBeLessThanOrEqual(3);
+    expect(pitwall).toBeGreaterThan(baku * 2);
   });
 
   it('keeps compact and standard circuits on the same race-duration axis', () => {
     const compactLaps = raceLapsForPreset('serra-circuit', 'STANDARD');
-    const standardLaps = raceLapsForPreset('pitwall-gp', 'STANDARD');
+    const standardLaps = raceLapsForPreset('baku-street', 'STANDARD');
     const compactMinutes = compactLaps * 23.119 / 60;
     const standardMinutes = standardLaps * 90 / 60;
 

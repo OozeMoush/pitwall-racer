@@ -19,12 +19,12 @@ import {
 afterEach(() => setActiveTrack('pitwall-gp'));
 
 describe('TrackModel', () => {
-  it('builds Pitwall GP as a full race-scale circuit while retaining dense geometry', () => {
+  it('keeps Pitwall GP compact with dense geometry and room for its technical corners', () => {
     expect(MINIATURE_TRACK_SCALE).toBeGreaterThanOrEqual(0.35);
     expect(MINIATURE_TRACK_SCALE).toBeLessThanOrEqual(0.5);
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
-    expect(TRACK_LENGTH).toBeGreaterThan(7800);
-    expect(TRACK_LENGTH).toBeLessThan(8400);
+    expect(TRACK_LENGTH).toBeGreaterThan(2500);
+    expect(TRACK_LENGTH).toBeLessThan(3000);
   });
 
   it('changes the geometry revision when generated road points move', () => {
@@ -43,31 +43,29 @@ describe('TrackModel', () => {
     );
   });
 
-  it('supports multiple race-scale circuits alongside legacy miniature circuits', () => {
+  it('keeps fictional circuits dense instead of adding kilometres of flat running', () => {
     const lengths = TRACKS.map((track) => {
       setActiveTrack(track.id);
       expect(RACING_LINE.length).toBeGreaterThan(track.controls.length * 10);
-      if (track.id === 'pitwall-gp') {
-        expect(TRACK_LENGTH).toBeGreaterThan(7800);
-        expect(TRACK_LENGTH).toBeLessThan(8400);
-      } else if (track.id === 'baku-street') {
+      if (track.id === 'baku-street') {
         expect(TRACK_LENGTH).toBeGreaterThan(5500);
         expect(TRACK_LENGTH).toBeLessThan(6500);
-      } else if (track.id === 'velocity-park') {
-        expect(TRACK_LENGTH).toBeGreaterThan(7800);
-        expect(TRACK_LENGTH).toBeLessThan(9000);
-      } else if (track.id === 'switchback-ring') {
-        expect(TRACK_LENGTH).toBeGreaterThan(7000);
-        expect(TRACK_LENGTH).toBeLessThan(8500);
-      } else if (track.id === 'sakura-esses') {
-        expect(TRACK_LENGTH).toBeGreaterThan(7000);
-        expect(TRACK_LENGTH).toBeLessThan(8500);
-      } else if (track.id === 'harbor-chicane') {
-        expect(TRACK_LENGTH).toBeGreaterThan(7000);
-        expect(TRACK_LENGTH).toBeLessThan(8500);
       } else {
         expect(TRACK_LENGTH).toBeGreaterThan(1400);
-        expect(TRACK_LENGTH).toBeLessThan(2600);
+        expect(TRACK_LENGTH).toBeLessThan(3000);
+        // A near-straight is curvature below 1/1000 m. Include the seam so a
+        // long main straight cannot evade this guard by crossing start/finish.
+        let longest = 0;
+        let run = 0;
+        const step = TRACK_LENGTH / 720;
+        for (let i = 0; i < 1440; i++) {
+          const a = sampleTrack(i / 720);
+          const b = sampleTrack((i + 1) / 720);
+          const delta = Math.atan2(Math.sin(b.heading - a.heading), Math.cos(b.heading - a.heading));
+          run = Math.abs(delta) / step < 0.001 ? run + step : 0;
+          longest = Math.max(longest, run);
+        }
+        expect(longest, track.id).toBeLessThan(800);
       }
       return Math.round(TRACK_LENGTH);
     });
@@ -123,13 +121,13 @@ describe('TrackModel', () => {
     }
   });
 
-  it('keeps a displaced car on the correct branch of the spread-out Pitwall layout', () => {
+  it('keeps a displaced car on the correct branch of the compact Pitwall technical section', () => {
     const sourceProgress = 0.56;
     const point = sampleTrack(sourceProgress, -24);
     const globalProjection = projectTrack(point.x, point.y);
     const localProjection = projectTrackNear(point.x, point.y, sourceProgress);
 
-    // Pitwall GP 2.0 deliberately separates the formerly overlapping branches.
+    // Shortening must still leave room for an excursion beside the S-section.
     // Both global and continuity-aware projection should now agree on the road.
     expect(Math.abs(globalProjection.progress - sourceProgress)).toBeLessThan(0.006);
     expect(Math.abs(localProjection.progress - sourceProgress)).toBeLessThan(0.006);
