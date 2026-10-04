@@ -92,7 +92,10 @@ Try different compound sequences and both early and late stops.
 - Did the two-compound obligation create a decision rather than paperwork?
 - Does an undercut or overcut decision remain committed instead of reversing on the next controller tick?
 - Can player and CPU cars enter, service and leave the physical pit lane reliably?
-- Is the 80 km/h regulated section readable without making an extra stop automatically hopeless?
+- Is the circuit's limiter readable (Compact 130 km/h, Standard/Long 80 km/h) without making an extra stop automatically hopeless?
+- Measure total pit transit separately from net loss against the same entry-to-exit mainline section; report the control, tyre and traffic assumptions.
+- Compare player and CPU costs, including approach and recovery when judging a race strategy. Shared service timers alone do not establish equal execution.
+- Pit-cost experiments must not silently change tyre pace or wear in the strategy harness.
 
 There should be no obvious “always choose this tyre and pit on this lap” answer.
 

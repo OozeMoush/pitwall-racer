@@ -64,6 +64,30 @@ describe('StrategySimulator', () => {
     expect(snapshot.fastestTwoStop.legal).toBe(true);
   });
 
+  it('charges pit-time changes per stop without changing tyre pace or wear', () => {
+    const laps = raceLapsForPreset('pitwall-gp', 'STANDARD');
+    const cheap = strategyRaceProfile('pitwall-gp', laps, 6);
+    const costly = strategyRaceProfile('pitwall-gp', laps, 20);
+    const snapshot = benchmarkStrategies(cheap);
+    const oneStop: StrategyPlan = {
+      name: 'one', startCompound: 'MEDIUM',
+      stops: [{ afterLap: 16, compound: 'HARD' }], paceForLap: balancedPace,
+    };
+    const twoStop: StrategyPlan = {
+      name: 'two', startCompound: 'HARD',
+      stops: [{ afterLap: 19, compound: 'MEDIUM' }, { afterLap: 32, compound: 'HARD' }],
+      paceForLap: balancedPace,
+    };
+    expect(cheap.strategyEffectScale).toBe(costly.strategyEffectScale);
+    for (const [plan, count] of [[oneStop, 1], [twoStop, 2]] as const) {
+      const a = simulateStrategy(plan, cheap);
+      const b = simulateStrategy(plan, costly);
+      expect(b.totalTime - a.totalTime).toBeCloseTo(14 * count, 8);
+      expect(a.laps).toEqual(b.laps);
+    }
+    expect(snapshot.fastestOneStop.legal).toBe(true);
+  });
+
   it('keeps the dry two-compound rule as a hard legality constraint', () => {
     expect(simulateStrategy(noStopMedium, RACE).legal).toBe(false);
     expect(simulateStrategy(balanced, RACE).legal).toBe(true);

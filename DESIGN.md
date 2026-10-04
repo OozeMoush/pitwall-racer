@@ -68,7 +68,7 @@ Pitwall Racer deliberately supports multiple physical formats:
 
 SHORT / STANDARD / LONG race-duration presets remain a separate axis. The same ~27-minute STANDARD event is about 70 laps at Serra, 48 laps at compact Pitwall GP and 18 laps at Standard Baku. Event duration must not be implemented by stretching the track.
 
-The strategy model normalizes fixed per-lap tyre/slide effects by both representative lap duration and pit cost. This prevents a compact circuit from becoming a forced two-stop race merely because the same 27 minutes contains many more lap boundaries.
+The strategy harness normalizes per-lap tyre/slide effects by representative lap duration and a fixed format coefficient. Pit cost is an independent input: changing it must change only the cost of each stop, never tyre wear or on-track pace. The inherited Compact coefficient (0.35) remains an approximate harness calibration; it is not a measurement of physical tyre benefit.
 
 ### Compact driving rhythm — Issue #137, first implementation slice
 
@@ -102,10 +102,58 @@ service, abstract 130 km/h limiter); Baku keeps the Standard profile. These are
 an interim coherent baseline, not the completed pit-strategy rebalance. Issue
 #137 remains open for physical net-loss measurements and strategy tuning.
 
-The strategy harness's normalization baseline stays on Standard Baku so changing
-the default Pitwall layout does not silently multiply tyre effects everywhere.
-The existing one-stop/two-stop benchmark still covers Compact Serra and Standard
-Baku; its three-second guard is not proof that the new circuits feel balanced.
+### Pit calibration — Issue #137, measurement slice
+
+Player and CPU service timers must use the same circuit profile. The player
+previously retained a fixed 2.5 s service despite Compact CPUs using 1.2 s;
+that mismatch is corrected. Track-limit service penalties remain additive.
+
+Harbor's default entry at 0.91 carried its offset pit route around the tight
+start-line turn, folding the path into road barriers and stranding a physical
+player. Its entry is now 0.75 on the existing straight. Lane length, corner
+geometry and exit-side control remain unchanged.
+
+Controlled entry-to-exit measurements use fresh Medium, 88 m/s entry speed,
+no traffic and no penalty. The player holds throttle with the live pit assist;
+its mainline comparison uses the unassisted shared chassis reference. CPU
+mainline driving uses the same fixed driver in isolation. These are repeatable
+instrumented controls, not human lap times or an optimal pit execution claim.
+They exclude the approach before entry and recovery after exit.
+
+| Circuit | Player pit total | Player net loss | CPU pit total | CPU net loss |
+| --- | ---: | ---: | ---: | ---: |
+| Pitwall GP | 16.40 s | 11.41 s | 10.69 s | 5.83 s |
+| Velocity Park | 15.17 s | 11.10 s | 10.69 s | 6.71 s |
+| Switchback Ring | 15.18 s | 10.69 s | 10.69 s | 6.28 s |
+| Sakura Esses | 15.12 s | 10.01 s | 10.69 s | 5.86 s |
+| Harbor Chicane | 13.87 s | 10.12 s | 10.69 s | 7.13 s |
+| Serra Circuit | 15.17 s | 10.63 s | 10.69 s | 6.23 s |
+| Baku Street | 25.44 s | 20.48 s | 24.12 s | 19.26 s |
+
+Compact candidate measurements at Pitwall:
+
+| Limiter / service | Player net loss | CPU net loss |
+| --- | ---: | ---: |
+| 100 km/h / 2.5 s | 15.59 s | 9.97 s |
+| 130 km/h / 1.2 s (retained) | 11.41 s | 5.83 s |
+| 160 km/h / 0.8 s | 9.21 s | 3.66 s |
+
+The fast candidate saves player time but increases the player/CPU disparity.
+The slow candidate adds dead transit time. Neither resolves the underlying
+execution mismatch, so keep the current profile while measuring that problem.
+CPU pit movement remains clock-driven placement along the shared route; the
+player uses actual braking, docking and acceleration. A shared limiter and
+service duration do not imply equal physical stop costs.
+
+The old lane-length / fixed 80 m/s mainline subtraction estimates Compact net
+loss as 6.40 s on every circuit. That is not a calibrated player cost. Keep the
+estimate labeled as approximate; do not infer balance from it alone.
+
+The independent harness predicts its best two-stop relative to best one-stop
+at Pitwall as -0.25 s with 6 s pit cost, +4.75 s with 11 s, and +13.75 s with
+20 s. The same plans keep identical tyre wear and lap times across those
+experiments. These estimates explain why the earlier near-tie was misleading;
+physical strategy tests and human traffic/tyre feedback remain required.
 
 This is a product decision: **layout quality comes first**. A circuit should be made longer because the intended racing needs more space, not because a global stopwatch target says every lap must approach 90 seconds. Target lap time is a design constraint only when deliberately chosen for that circuit.
 

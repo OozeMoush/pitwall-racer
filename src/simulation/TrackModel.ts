@@ -263,7 +263,9 @@ export const TRACKS: TrackDefinition[] = [
     distanceScale: MINIATURE_TRACK_SCALE,
     scalePreset: 'COMPACT',
     referenceLapSeconds: 31.153,
-    pitLane: DEFAULT_PIT_LANE_DEFINITION,
+    // Keep the detached pit route on the straight, clear of the tight turn
+    // at start/finish where a 34 m inside offset folds into the road barriers.
+    pitLane: { ...DEFAULT_PIT_LANE_DEFINITION, entryProgress: 0.75 },
   },
   {
     id: 'serra-circuit',

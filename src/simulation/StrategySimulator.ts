@@ -1,5 +1,5 @@
 import { pitStopTimeLossEstimateSecondsFor } from './PitLaneModel';
-import { getTrackDefinition, type TrackId } from './TrackModel';
+import { circuitScalePresetFor, getTrackDefinition, type TrackId } from './TrackModel';
 import {
   createTire,
   gripRatioToMedium,
@@ -62,13 +62,12 @@ export interface BalanceSnapshot {
   spreadToSecond: number;
 }
 
-// Keep the existing race-scale corner budget while compact layout changes
-// are validated. Baku supplies a stable Standard pit baseline; changing the
-// default circuit must not silently rescale every circuit's tyre economics.
+// Preserve the existing per-format tyre response while separating stop cost
+// from driving performance. These are approximate harness coefficients, not
+// measured physical grip. A pit-time experiment must never rescale tyre pace.
 const MAX_REPRESENTATIVE_CORNER_SECONDS = 10.8;
 const STRATEGY_REFERENCE_LAP_SECONDS = 90;
-const STRATEGY_REFERENCE_PIT_LOSS_SECONDS =
-  pitStopTimeLossEstimateSecondsFor('baku-street');
+const COMPACT_STRATEGY_RESPONSE = 0.35;
 const DT = 0.5;
 const GRIP_RESPONSE_EXPONENT = 0.85;
 const COMPOUNDS: readonly Compound[] = ['SOFT', 'MEDIUM', 'HARD'];
@@ -88,20 +87,18 @@ const modeLapAdjustment: Record<PaceMode, number> = {
 export function strategyRaceProfile(
   trackId: TrackId,
   totalLaps: number,
+  pitLossSeconds = pitStopTimeLossEstimateSecondsFor(trackId),
 ): StrategyRaceProfile {
   const representativeLapSeconds = Math.max(
     15,
     getTrackDefinition(trackId).referenceLapSeconds ?? STRATEGY_REFERENCE_LAP_SECONDS,
   );
-  const pitLossSeconds = pitStopTimeLossEstimateSecondsFor(trackId);
-  // Equal-duration compact races have many more laps. If every lap retained
-  // the old fixed tyre/slide delta, changing only physical lap scale would
-  // multiply the strategic value of fresh rubber. Normalize the per-lap effect
-  // by both lap duration and the circuit's pit cost so one-stop/two-stop
-  // economics remain comparable without forcing every circuit toward 90 s.
+  // Lap-count normalization is independent from the pit-cost input. The
+  // inherited Compact response is held fixed until physical race calibration.
+  const formatResponse = circuitScalePresetFor(trackId) === 'COMPACT'
+    ? COMPACT_STRATEGY_RESPONSE : 1;
   const strategyEffectScale = clamp(
-    representativeLapSeconds / STRATEGY_REFERENCE_LAP_SECONDS
-      * pitLossSeconds / STRATEGY_REFERENCE_PIT_LOSS_SECONDS,
+    representativeLapSeconds / STRATEGY_REFERENCE_LAP_SECONDS * formatResponse,
     0.04,
     1.5,
   );
