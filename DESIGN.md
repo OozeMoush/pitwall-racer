@@ -246,9 +246,58 @@ track to recover by 600 m would manufacture an invariant. A slower exit merge
 was also excluded because it adds avoidable time when rejoining traffic.
 The fixed-speed Compact estimate (6.40 s) and harness response coefficient
 remain uncalibrated. Do not use their near-tie as physical balance evidence.
-Next compare physical stint/stop windows with the independent harness,
-including its after-lap stops versus the physical driver's within-lap entry,
-then traffic and human feel. Issue #137 remains open.
+The following comparison establishes the executable strategy gate. Human feel
+and broader traffic coverage remain open in Issue #137.
+
+### Physical strategy authority — Issue #137
+
+Strategy balance is judged with the live tyre model, controller and Rapier
+physics. `StrategySimulator` is an **unvalidated approximation**, useful for
+cheap sensitivity experiments but unused by the game. Do not fit its format
+coefficient to a few race totals or require its synthetic three-second tie as
+a gameplay invariant. This avoids duplicating physical tyre/recovery behavior
+in a second model. Pit-cost input remains independent of its tyre effects.
+
+The shared test runner can hold stop laps fixed to isolate stop economics, or
+allow the live controller to react to traffic. Every normal full-race plan must
+finish, use two compounds, enter on the requested laps and keep deep-cut samples
+below 3%. Fixed plans retain live wear, pace, braking, pit transit and recovery.
+
+Current isolated reference results (CONTROL skill 1.127, start progress 0.02,
+72 m/s, no traffic; stop numbers denote **entry on that lap**):
+
+| Circuit / race | Plan | Race time |
+| --- | --- | ---: |
+| Pitwall / 48 laps | M-H@14 | 1767.33 s |
+| Pitwall / 48 laps | M-H@16 | 1759.35 s |
+| Pitwall / 48 laps | M-H@18 | 1750.25 s |
+| Pitwall / 48 laps | H-M@32 | 1763.25 s |
+| Pitwall / 48 laps | H-M-H@19/32 | 1746.30 s |
+| Pitwall / 48 laps | H-S-H@19/29 | 1745.13 s |
+| Baku / 18 laps | M-H@6 | 1407.68 s |
+| Baku / 18 laps | H-M-H@7/12 | 1436.45 s |
+
+An extra stop gains 14.22 s against M-H@16, but only 5.12 s against M-H@18.
+On the tested Baku plans it loses 28.77 s. These are sampled windows, not global
+optima. Broad regression bounds protect useful tyre benefit and viable nearby
+windows without forcing every circuit to produce the same winner.
+
+With a 10.34 s Compact pit-cost input, the approximation predicts H-S-H to
+lose 5.90 s against M-H@16, opposite to the physical result. Its stops occur
+**after** whole laps rather than within the entry lap; both conventions are
+logged. This comparison exposes the approximation's limits, not calibration
+agreement. No physical tyre coefficients or pit timers were changed to fit it.
+
+Traffic alone does not justify an undercut: a healthy Medium-to-Hard change
+can lose clean-air pace. CPU early calls now require the existing late-wear
+region (56% wear), with useful life remaining, and commit to the current lap
+inside the two-lap window. A 120 s controlled Pitwall traffic experiment keeps
+45%-worn Medium on its planned lap 14; at 60% wear it stops on lap 12 and gains
+0.161 lap over the forced late control. The deliberately worn late control
+enters the tyre cliff and exceeds the normal path-error bound; the adaptive
+case stays below 3% and improves both progress and path error. That diagnostic
+does not relax the normal full-race guards or prove optimal decisions for all
+compound combinations. Human tyre feedback and pack racing remain required.
 
 ## Balance gates
 

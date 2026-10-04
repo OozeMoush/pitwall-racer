@@ -1,7 +1,7 @@
 import { aerodynamicEffect } from './AeroModel';
 import { aiGridSlot, gridPositionFor, gridSlotForPosition } from './GridModel';
 import { trackAiSafeLaneLimit } from './TrackLimitsModel';
-import { createTire, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
+import { createTire, LATE_TIRE_WEAR_START, stepTire, type Compound, type PaceMode, type TireState } from './TireModel';
 import { trackProfile } from './TrackProfile';
 import { raceScaleDistance, TRACK_LENGTH } from './TrackModel';
 
@@ -266,8 +266,13 @@ function choosePitStrategy(
   const earliest = Math.max(4, driver.plannedPitLap - reactionWindow);
   const latest = Math.min(totalLaps - 3, driver.plannedPitLap + reactionWindow);
 
-  if (driver.lap >= earliest && driver.lap < driver.plannedPitLap && battleState === 'FOLLOW' && gapMetres < raceScaleDistance(42) && tireHealth > 0.24) {
-    return { pitLap: earliest, intent: 'UNDERCUT' };
+  // Being blocked alone is not enough: a healthy Medium -> Hard change can
+  // lose more clean-air pace than it gains by escaping traffic. Reserve the
+  // early call for the model's late-wear region, with useful life still left.
+  if (driver.lap >= earliest && driver.lap < driver.plannedPitLap
+    && battleState === 'FOLLOW' && gapMetres < raceScaleDistance(42)
+    && tireHealth <= 1 - LATE_TIRE_WEAR_START && tireHealth > 0.24) {
+    return { pitLap: Math.max(earliest, driver.lap), intent: 'UNDERCUT' };
   }
 
   if (driver.lap >= driver.plannedPitLap && driver.lap < latest && battleState === 'CLEAR' && tireHealth > 0.52) {

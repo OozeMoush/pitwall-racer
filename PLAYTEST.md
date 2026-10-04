@@ -97,7 +97,9 @@ Try different compound sequences and both early and late stops.
 - Compare player and CPU costs, including approach and recovery when judging a race strategy. Shared service timers alone do not establish equal execution.
 - CPU pit transit must follow its actual body pose; pinning a car before the box must prevent service completion. Exit must preserve physical velocity.
 - All seven circuits must allow the controlled CPU to enter on the requested lap, rather than miss the gate and wait another lap.
-- Pit-cost experiments must not silently change tyre pace or wear in the strategy harness.
+- Pit-cost experiments must not silently change tyre pace or wear in the approximation. Strategy balance must be judged with the live physical race; `UNVALIDATED_APPROXIMATION` results are sensitivity experiments, not physical balance evidence.
+- Compare nearby stop windows, both stop families and Compact/Standard formats. Every normal full-race plan must finish legally, enter on schedule and keep deep-cut samples below 3%; do not force a universal three-second tie.
+- Compare clear, adaptive traffic and fixed late-stop controls. Healthy tyres should avoid a counterproductive early Medium-to-Hard change; worn tyres should show a physical benefit. A deliberately worn late control diagnoses the cliff and must not replace or weaken normal full-race guards.
 - Matched stop/no-stop controls must start from the same pose, speed, driver and tyre before braking. Measure physical gates at exit and +200/+400/+600 m; include gate speeds rather than assuming recovery is complete at a fixed distance.
 - Scripted player approach tests must reach service and exit on all seven circuits. Entry-to-exit tests alone do not cover the entry state created by braking/merging from the road.
 

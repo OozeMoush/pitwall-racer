@@ -26,6 +26,8 @@ export interface StrategyPlan {
 }
 
 export interface StrategyRaceProfile {
+  /** Synthetic sensitivity experiment, never the physical race balance gate. */
+  evidence: 'UNVALIDATED_APPROXIMATION';
   trackId: TrackId;
   totalLaps: number;
   representativeLapSeconds: number;
@@ -104,6 +106,7 @@ export function strategyRaceProfile(
   );
 
   return {
+    evidence: 'UNVALIDATED_APPROXIMATION',
     trackId,
     totalLaps: Math.max(1, Math.round(totalLaps)),
     representativeLapSeconds,

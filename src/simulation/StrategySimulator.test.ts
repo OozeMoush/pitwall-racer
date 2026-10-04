@@ -41,13 +41,11 @@ describe('StrategySimulator', () => {
     expect(RACE.pitLossSeconds).toBeLessThanOrEqual(24);
   });
 
-  it('keeps compact one-stop and two-stop economics coherent', () => {
+  it('reports compact strategy experiments as unvalidated approximations', () => {
     const compactLaps = raceLapsForPreset('serra-circuit', 'STANDARD');
     const compactRace = strategyRaceProfile('serra-circuit', compactLaps);
     const snapshot = benchmarkStrategies(compactRace);
-    const oneTwoGap = Math.abs(
-      snapshot.fastestOneStop.totalTime - snapshot.fastestTwoStop.totalTime,
-    );
+    expect(compactRace.evidence).toBe('UNVALIDATED_APPROXIMATION');
 
     expect(compactLaps).toBeGreaterThan(60);
     expect(compactRace.representativeLapSeconds).toBeCloseTo(23.119, 6);
@@ -59,7 +57,8 @@ describe('StrategySimulator', () => {
     expect(compactRace.pitLossSeconds).toBeLessThanOrEqual(7);
     expect(compactRace.strategyEffectScale).toBeGreaterThan(0.05);
     expect(compactRace.strategyEffectScale).toBeLessThan(0.10);
-    expect(oneTwoGap).toBeLessThan(3);
+    // Near-ties in this synthetic model are not a game-balance invariant.
+    // CompactStrategyPhysicsPlaytest protects actual fresh-tyre/stop benefit.
     expect(snapshot.fastestOneStop.legal).toBe(true);
     expect(snapshot.fastestTwoStop.legal).toBe(true);
   });

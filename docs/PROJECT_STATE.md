@@ -9,8 +9,8 @@
 Last updated: **2026-10-04**
 
 - default branch: `main`
-- previous verified main: `407516cd10920dd9baaf9b3f2ef4cbe6b4f93590`, CI **#895 — success**
-- current code change: **Issue #137 shared physical CPU/player pit-control slice**; use its implementation PR and current Actions for the merged SHA / CI status
+- previous verified main: `8f87441a7e21f01849f25229b38cc2d9064b38f4`, CI **#899 — success**
+- current code change: **Issue #137 physical strategy comparison / wear-aware traffic decisions**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -90,8 +90,13 @@ Matched controls now include approach and exit +200/+400/+600 m, with each
 car's own no-stop baseline. A scripted Harbor player approach exposed a
 pre-service stall; shared pit-route bend braking fixes that condition. Measured
 +600 m Compact losses are about 10.34–15.08 s CPU / 12.26–14.81 s instrumented
-player, with residual recovery on some routes. Final strategy/harness calibration
-and human traffic feedback remain open; the fixed-speed estimate is not a
+player, with residual recovery on some routes. Live physical comparisons now
+cover nearby Compact stop windows, Standard Baku and healthy/worn traffic
+controls. M-H@18 is 5.12 s behind the tested best two-stop on Pitwall; the tested
+Baku one-stop wins by 28.77 s. CPU undercuts require the existing late-wear region
+instead of traffic alone. The unused strategy approximation is explicitly
+unvalidated and no longer supplies the Compact near-tie balance gate. Broader
+traffic and human feedback remain open; the fixed-speed estimate is not a
 measured player pit loss. See DESIGN for controls, per-circuit values and limits.
 
 ## Recent structural work
