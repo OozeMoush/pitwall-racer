@@ -1,3 +1,4 @@
+import { physicalPitControl } from '../simulation/PhysicalPitControl';
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
 import { AiReferenceGhost } from '../simulation/AiReferenceGhost';
@@ -43,7 +44,6 @@ import {
   isPitActive,
   pitLanePose,
   pitLaneSpeedLimitActive,
-  pitLaneTargetSpeed,
   projectPitLane,
   shouldEnterPit,
   stepPlayerPitStop,
@@ -624,55 +624,13 @@ export class CoreRaceGame {
       this.physics.step(dt);
       this.vehicle = this.physics.playerState();
     } else {
-      const before = projectPitLane(
-        this.vehicle.x,
-        this.vehicle.y,
-        this.pitStop.t,
-      );
-      const rawSteer =
-        (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
-      const targetPose = pitLanePose(Math.min(1, before.t + 0.026));
-      const targetHeading = Math.atan2(
-        targetPose.y - this.vehicle.y,
-        targetPose.x - this.vehicle.x,
-      );
-      const headingError = wrapAngle(targetHeading - this.vehicle.heading);
-      const pathAssist = Math.max(
-        -1,
-        Math.min(
-          1,
-          headingError * 1.55 - before.lateralOffset * 0.038,
-        ),
-      );
-      const steerCommand = Math.max(
-        -1,
-        Math.min(1, rawSteer * 0.72 + pathAssist * 0.82),
-      );
-      this.steerInput = stepSteering(
-        this.steerInput,
-        steerCommand,
-        this.vehicle.speed,
-        dt,
-      );
-
-      let throttle = this.keys.has('KeyW') ? 1 : 0;
-      let brake = this.keys.has('KeyS') ? 1 : 0;
-      const targetSpeed = pitLaneTargetSpeed(this.pitStop, before.t);
-      if (this.vehicle.speed > targetSpeed) {
-        throttle = 0;
-        brake = Math.max(
-          brake,
-          Math.min(1, (this.vehicle.speed - targetSpeed) / 7 + 0.18),
-        );
-      }
-
-      const speedLoad = Math.min(1, this.vehicle.speed / 60);
-      const pitLoad = Math.min(
-        1.15,
-        Math.abs(this.steerInput) * speedLoad * 0.45
-          + brake * speedLoad * 0.55
-          + throttle * 0.08,
-      );
+      const control = physicalPitControl(this.vehicle, this.pitStop, this.steerInput, dt,
+        (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0),
+        this.keys.has('KeyW') ? 1 : 0, this.keys.has('KeyS') ? 1 : 0);
+      const before = control.projection;
+      this.steerInput = control.steer;
+      const { throttle, brake } = control;
+      const pitLoad = control.tyreLoad;
       this.tire = stepTire(this.tire, 'BALANCED', pitLoad, dt);
       this.physics.drivePlayer({
         throttle,

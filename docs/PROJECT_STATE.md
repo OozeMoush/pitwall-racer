@@ -9,8 +9,8 @@
 Last updated: **2026-10-04**
 
 - default branch: `main`
-- previous verified main: `d46c54c4667b2d78ccade32dd78e22f18fbe9674`, CI **#893 — success**
-- current code change: **Issue #137 shared service / physical pit-calibration slice**; use its implementation PR and current Actions for the merged SHA / CI status
+- previous verified main: `407516cd10920dd9baaf9b3f2ef4cbe6b4f93590`, CI **#895 — success**
+- current code change: **Issue #137 shared physical CPU/player pit-control slice**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -81,9 +81,12 @@ circuits. Pitwall's compact corner spacing is enlarged 1.4× from the smallest
 footprint to keep projection and physical driving robust. Compact service timers are shared by player and CPU. Harbor pit entry moves
 to 0.75 on its straight to avoid a folded route at start/finish. Strategy
 harness tyre effects no longer follow pit cost. Controlled physical pit tests
-show player loss about 10–11.4 s vs CPU 5.8–7.1 s on Compact tracks; CPU transit
-is still clock-driven while player transit uses braking and acceleration.
-Final strategy tuning, equal stop-cost execution and human traffic feedback
+now share actual braking/steering/acceleration and spatial pit progress. CPU
+transit no longer follows a clock or teleports to an exit-speed pose. All seven
+controlled routes enter on the requested lap and complete service/exit. Compact
+entry-to-exit player loss is about 9.75–11.15 s vs CPU 7.08–10.97 s, using each
+control's own mainline baseline; approach/recovery are excluded from this table.
+Final strategy tuning, full-cost calibration and human traffic feedback
 remain open; the fixed-speed estimate is not a measured player pit loss.
 
 ## Recent structural work

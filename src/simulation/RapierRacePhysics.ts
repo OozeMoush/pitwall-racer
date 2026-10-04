@@ -1,3 +1,4 @@
+import { physicalPitControl } from './PhysicalPitControl';
 import RAPIER from '@dimforge/rapier2d-compat';
 import { aerodynamicEffect, towDragMultiplier, towPowerBoost } from './AeroModel';
 import { controlArcadeCar, type ArcadeCarInput } from './ArcadeCarController';
@@ -19,9 +20,10 @@ import {
   isPitActive,
   pitBoxTForSlot,
   pitLanePose,
-  pitSpeed,
+  pitEntryProgress,
+  projectPitLane,
+  stepPlayerPitStop,
   shouldEnterPit,
-  stepPitStop,
   type PitStopState,
 } from './PitLaneModel';
 import type { DriverState, RaceTrafficCar } from './RaceModel';
@@ -30,7 +32,7 @@ import { createTire } from './TireModel';
 import { safetyBarrierSegments } from './TrackBarrierModel';
 import { TRACK_BARRIER_HALF_THICKNESS } from './TrackLimitsModel';
 import { createTyreSlideState, stepTyreSlide, type TyreSlideState } from './TyrePerformanceModel';
-import { projectTrack, projectTrackNear, sampleTrack } from './TrackModel';
+import { projectTrack, projectTrackNear, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
 // Match the collision footprint to the rendered car. The old 8.5 x 4.1 half-
@@ -38,6 +40,10 @@ import type { VehicleState } from './VehicleModel';
 // which made wheel-to-wheel racing register contact through empty space.
 export const CAR_COLLIDER_HALF_LENGTH = 4.65;
 export const CAR_COLLIDER_HALF_WIDTH = 2.15;
+// Brake along the racing line first; merge sideways only once lateral grip can support it.
+const AI_PIT_APPROACH_DISTANCE = 200; // metres
+const AI_PIT_LATERAL_APPROACH_SPEED = 65; // m/s
+
 // A tyre/sidepod brushing the wall while the car is travelling almost parallel
 // to it must not invalidate a racing-line trace. Normal speed alone is too
 // strict at racing speed: at 300 km/h even a ~4° graze exceeds 6 m/s laterally.
@@ -100,6 +106,7 @@ export class RapierRacePhysics {
   private readonly aiLaps: number[];
   private readonly lastAiProgress: number[];
   private readonly aiPitStops: PitStopState[];
+  private readonly aiPitSteering: number[] = [];
   private aiRecoveryStates: AiStuckRecoveryState[];
   private playerSlideState = createTyreSlideState(0.37);
   private playerSlideSeverityValue = 0;
@@ -193,6 +200,21 @@ export class RapierRacePhysics {
         return;
       }
 
+      const approachProjection = projectTrackNear(state.x, state.y, driver.progress);
+      const entryGap = ((pitEntryProgress() - approachProjection.progress + 1) % 1) * TRACK_LENGTH;
+      const wantsPit = (this.aiLaps[index] ?? driver.lap) >= driver.pitLap
+        && driver.pitStopIndex < driver.pitPlan.length;
+      if (wantsPit && entryGap > 0 && entryGap < AI_PIT_APPROACH_DISTANCE) {
+        const approach = physicalPitControl(state, beginPitStop(pitBoxTForSlot(index + 1)),
+          this.aiPitSteering[index] ?? 0, dt, 0, 1, 0, true);
+        if (state.speed > AI_PIT_LATERAL_APPROACH_SPEED) approach.steer = dynamicAiControl(driver, state, traffic).steer;
+        this.aiPitSteering[index] = approach.steer;
+        this.driveAi(index, { throttle: approach.throttle, brake: approach.brake,
+          steer: approach.steer, tireGrip: driver.tire.grip, tireWear: driver.tire.wear,
+          surfaceGrip: 1, powerBoost: CORE_POWER_BASELINE, powerMultiplier: 1,
+          rollingResistance: 0 }, dt);
+        return;
+      }
       const control = dynamicAiControl(driver, state, traffic);
       const projection = projectTrackNear(state.x, state.y, driver.progress);
       const recovery = stepAiStuckRecovery(
@@ -408,14 +430,37 @@ export class RapierRacePhysics {
       this.aiLaps[index] = driver.lap;
       this.lastAiProgress[index] = driver.progress;
       this.aiPitStops[index] = createPitStopState();
+      this.aiPitSteering[index] = 0;
     });
   }
 
   private stepAiPit(index: number, driver: DriverState, dt: number): void {
     const previous = this.aiPitStops[index];
-    const next = stepPitStop(previous, dt);
+    const vehicle = this.bodyState(this.aiBodies[index]);
+    let next = previous;
+    if (previous.phase === 'SERVICE') {
+      next = stepPlayerPitStop(previous, dt, previous.t);
+      const box = pitLanePose(previous.boxT);
+      this.setAiState(index, { x: box.x, y: box.y, heading: box.heading, speed: 0, yawRate: 0 });
+      this.aiPitSteering[index] = 0;
+    } else {
+      const observed = projectPitLane(vehicle.x, vehicle.y, previous.t);
+      next = stepPlayerPitStop(previous, dt, observed.t);
+      if (next.phase === 'SERVICE') {
+        // Match the player's one small final docking correction.
+        const box = pitLanePose(next.boxT);
+        this.setAiState(index, { x: box.x, y: box.y, heading: box.heading, speed: 0, yawRate: 0 });
+        this.aiPitSteering[index] = 0;
+      } else if (next.phase !== 'DONE') {
+        const control = physicalPitControl(vehicle, next, this.aiPitSteering[index] ?? 0, dt);
+        this.aiPitSteering[index] = control.steer;
+        this.driveAi(index, { throttle: control.throttle, brake: control.brake,
+          steer: control.steer, tireGrip: driver.tire.grip, tireWear: driver.tire.wear,
+          surfaceGrip: 1, powerBoost: CORE_POWER_BASELINE, powerMultiplier: 1,
+          rollingResistance: 0 }, dt);
+      }
+    }
     this.aiPitStops[index] = next;
-
     if (!previous.tyreChanged && next.tyreChanged) {
       driver.tire = createTire(driver.nextCompound);
       driver.usedCompounds = new Set(driver.usedCompounds);
@@ -427,42 +472,13 @@ export class RapierRacePhysics {
         driver.pitLap = followingStop.plannedLap;
         driver.nextCompound = followingStop.compound;
         driver.strategyIntent = 'PLAN';
-      } else {
-        driver.strategyIntent = 'DONE';
-      }
+      } else driver.strategyIntent = 'DONE';
     }
-
-    const pose = pitLanePose(next.t);
-    const limiterSpeed = pitSpeed();
-    const speed = next.phase === 'SERVICE' ? 0 : limiterSpeed;
-    const pitVehicle: VehicleState = {
-      x: pose.x,
-      y: pose.y,
-      heading: pose.heading,
-      speed,
-      yawRate: 0,
-    };
-    this.setAiState(index, pitVehicle);
-    driver.progress = pose.raceProgress;
-    driver.laneOffset = pose.laneOffset;
-    driver.speed = speed;
     driver.battleState = 'CLEAR';
-
     if (next.phase === 'DONE') {
-      const exit = pitLanePose(1);
-      const exitVehicle: VehicleState = {
-        x: exit.x,
-        y: exit.y,
-        heading: exit.heading,
-        speed: limiterSpeed,
-        yawRate: 0,
-      };
-      this.setAiState(index, exitVehicle);
-      driver.progress = exit.raceProgress;
-      driver.laneOffset = exit.laneOffset;
-      driver.speed = limiterSpeed;
-      this.lastAiProgress[index] = exit.raceProgress;
+      // Keep the physical exit pose and velocity; do not teleport to a limiter-speed pose.
       this.aiPitStops[index] = createPitStopState();
+      this.aiPitSteering[index] = 0;
     }
   }
 
@@ -513,7 +529,7 @@ export class RapierRacePhysics {
         && currentLap >= driver.pitLap
         && driver.pitStopIndex < driver.pitPlan.length;
       if (!isPitActive(this.aiPitStops[index])
-        && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit)) {
+        && shouldEnterPit(previous, projection.progress, projection.distance, wantsPit, projection.laneOffset)) {
         this.aiPitStops[index] = beginPitStop(pitBoxTForSlot(index + 1));
         driver.battleState = 'CLEAR';
       }
