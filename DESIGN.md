@@ -113,7 +113,7 @@ start-line turn, folding the path into road barriers and stranding a physical
 player. Its entry is now 0.75 on the existing straight. Lane length, corner
 geometry and exit-side control remain unchanged.
 
-Controlled entry-to-exit measurements use fresh Medium, 88 m/s entry speed,
+Historical PR #140 entry-to-exit measurements use fresh Medium, 88 m/s entry speed,
 no traffic and no penalty. The player holds throttle with the live pit assist;
 its mainline comparison uses the unassisted shared chassis reference. CPU
 mainline driving uses the same fixed driver in isolation. These are repeatable
@@ -141,9 +141,52 @@ Compact candidate measurements at Pitwall:
 The fast candidate saves player time but increases the player/CPU disparity.
 The slow candidate adds dead transit time. Neither resolves the underlying
 execution mismatch, so keep the current profile while measuring that problem.
-CPU pit movement remains clock-driven placement along the shared route; the
-player uses actual braking, docking and acceleration. A shared limiter and
-service duration do not imply equal physical stop costs.
+That historical CPU baseline used clock-driven placement. CPU transit now
+uses the player's shared pit assist and real rigid-body braking, steering and
+acceleration. Progress toward the box and exit follows the observed body pose;
+only the same final service docking correction may place the body. Exit keeps
+actual velocity. Planned CPUs brake over the last 200 m, follow the normal
+line above 65 m/s, then merge toward the entry. They must meet the same
+physical entry-side gate as the player. Pit approach/transit uses the shared
+chassis baseline, without race-CPU grip/power advantages. Ordinary race
+driving retains its stable constructor advantage.
+
+Updated isolated fresh-Medium measurements (no tyre benefit or penalty):
+
+| Circuit | Player pit total | Player net loss | CPU pit total | CPU net loss |
+| --- | ---: | ---: | ---: | ---: |
+| Pitwall GP | 16.40 s | 10.59 s | 15.33 s | 7.08 s |
+| Velocity Park | 15.18 s | 11.15 s | 13.98 s | 10.22 s |
+| Switchback Ring | 15.18 s | 10.86 s | 14.98 s | 10.97 s |
+| Sakura Esses | 15.13 s | 10.28 s | 14.01 s | 9.43 s |
+| Harbor Chicane | 13.87 s | 9.75 s | 13.63 s | 9.40 s |
+| Serra Circuit | 15.18 s | 10.66 s | 13.94 s | 9.68 s |
+| Baku Street | 25.44 s | 20.75 s | 24.48 s | 19.91 s |
+
+The mainline controls now warm up from 260 m before entry. CPU also approaches
+from there at 88 m/s; the player pit control still starts at entry at 88 m/s.
+The reported pit totals start at entry and end at exit, so they exclude approach
+and recovery. Net losses use each control's own same-section mainline timing.
+These are not identical initial entry states or evidence of equal overall
+strategy costs. Do not compare the historical net values as unchanged controls.
+All seven routes enter on the requested lap, complete service and exit;
+controlled transit durations differ by less than 1.5 s. A pinned body must not
+reach service just because time passes. Full races include approach/recovery,
+but isolated runs cannot establish traffic or human balance.
+
+Pitwall 48-lap physical runs with fixed CONTROL skill 1.127, start progress
+0.02 / speed 72 m/s and no traffic completed every planned stop:
+
+| Plan | Pit laps | Race time | Deep-cut sample ratio |
+| --- | --- | ---: | ---: |
+| M-H | 16 | 1755.45 s | 0.83% |
+| H-M | 32 | 1762.53 s | 0.88% |
+| H-M-H | 19 / 32 | 1744.90 s | 0.18% |
+| H-S-H | 19 / 29 | 1743.42 s | 0.41% |
+
+These include physical approach and recovery. The best tested two-stop gains
+12.03 s over the best tested one-stop; this is a result for four fixed plans,
+not an exhaustive optimum or a calibration of the approximate harness.
 
 The old lane-length / fixed 80 m/s mainline subtraction estimates Compact net
 loss as 6.40 s on every circuit. That is not a calibrated player cost. Keep the

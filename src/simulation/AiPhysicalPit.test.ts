@@ -4,7 +4,7 @@ import { pitEntryProgress, pitStopDurationSeconds } from './PitLaneModel';
 import { RapierRacePhysics } from './RapierRacePhysics';
 import { createAiField } from './RaceModel';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
-import { projectTrack, sampleTrack } from './TrackModel';
+import { projectTrack, sampleTrack, TRACK_LENGTH } from './TrackModel';
 import { createVehicle } from './VehicleModel';
 
 const DT = 1 / 120;
@@ -14,10 +14,35 @@ describe('physical AI pit stops', () => {
     await RAPIER.init();
   });
 
+  it('cannot reach service by elapsed time while its physical pit pose is pinned', () => {
+    const [driver] = createAiField();
+    driver.lap = driver.pitLap;
+    driver.progress = pitEntryProgress() - 0.001;
+    const pose = sampleTrack(driver.progress, 11);
+    const remote = sampleTrack(0.5, 260);
+    const physics = new RapierRacePhysics(createVehicle(remote.x, remote.y, remote.heading), [driver]);
+    physics.setAiState(0, { ...createVehicle(pose.x, pose.y, pose.heading), speed: 38 });
+    try {
+      for (let i = 0; i < 240 && !physics.isAiPitting(0); i++) {
+        physics.syncAiKinematics([driver], DT, -10);
+        physics.step(DT);
+      }
+      expect(physics.isAiPitting(0)).toBe(true);
+      const pinned = { ...physics.aiStates()[0], speed: 0, yawRate: 0 };
+      for (let i = 0; i < 8 / DT; i++) {
+        physics.setAiState(0, pinned);
+        physics.syncAiKinematics([driver], DT, -10);
+        physics.step(DT);
+      }
+      expect(driver.pitStopIndex).toBe(0);
+      expect(physics.isAiPitting(0)).toBe(true);
+    } finally { physics.world.free(); }
+  });
+
   it('drives an AI car down pit lane, services it, and rejoins on the same shared timing model', () => {
     const [driver] = createAiField();
     driver.lap = driver.pitLap;
-    driver.progress = pitEntryProgress() - 0.004;
+    driver.progress = pitEntryProgress() - 260 / TRACK_LENGTH;
     driver.speed = 88;
 
     const playerPose = sampleTrack(0.5);
@@ -58,7 +83,9 @@ describe('physical AI pit stops', () => {
     expect(enteredPit).toBe(true);
     expect(maximumPitOffset).toBeGreaterThan(TRACK_ROAD_HALF_WIDTH * 2);
     expect(completedStop).toBe(true);
-    expect(Math.abs(measuredPitSeconds - pitStopDurationSeconds())).toBeLessThan(0.12);
+    // Physical braking, docking and acceleration now cost more than the old clock estimate.
+    expect(measuredPitSeconds).toBeGreaterThan(pitStopDurationSeconds());
+    expect(measuredPitSeconds).toBeLessThan(pitStopDurationSeconds() + 8);
     expect(driver.tire.compound).toBe(driver.nextCompound);
     expect(driver.usedCompounds.has(driver.nextCompound)).toBe(true);
     expect(driver.strategyIntent).toBe('DONE');

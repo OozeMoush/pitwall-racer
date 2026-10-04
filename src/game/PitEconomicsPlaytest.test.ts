@@ -10,7 +10,7 @@ import { PlayerRacingLineCandidateRecorder } from '../simulation/PlayerRacingLin
 import { createTrackLimitPenaltyState } from '../simulation/TrackLimitPenaltyModel';
 import { beginPitStop, pitEntryProgress, pitExitProgress, pitLanePose,
   pitStopDurationSeconds, pitStopTimeLossEstimateSeconds } from '../simulation/PitLaneModel';
-import { sampleTrack, setActiveTrack, TRACKS } from '../simulation/TrackModel';
+import { sampleTrack, setActiveTrack, TRACKS, TRACK_LENGTH } from '../simulation/TrackModel';
 
 const DT = 1 / 120;
 beforeAll(async () => { await RAPIER.init(); });
@@ -43,14 +43,14 @@ function playerTransitSeconds(): number {
 }
 
 function playerMainlineSeconds(): number {
-  const start = pitEntryProgress() - 0.002;
+  const start = pitEntryProgress() - 260 / TRACK_LENGTH;
   const ghost = new AiReferenceGhost(start);
   ghost.driver.tire = createTire('MEDIUM');
   const initial = ghost.physics.aiStates()[0];
   ghost.physics.setAiState(0, { ...initial, speed: 88 });
   const span = (pitExitProgress() - pitEntryProgress() + 1) % 1;
   let previous = start;
-  let distance = -0.002;
+  let distance = -260 / TRACK_LENGTH;
   let seconds = 0;
   let started = false;
   try {
@@ -71,7 +71,7 @@ function playerMainlineSeconds(): number {
 
 function cpuTransitSeconds(pit: boolean): number {
   const [driver] = createAiField();
-  driver.progress = pitEntryProgress() - 0.002;
+  driver.progress = pitEntryProgress() - 260 / TRACK_LENGTH;
   driver.lap = 1;
   driver.pitLap = pit ? 1 : 999;
   driver.tire = createTire('MEDIUM');
@@ -83,7 +83,7 @@ function cpuTransitSeconds(pit: boolean): number {
   physics.setAiState(0, { ...createVehicle(pose.x, pose.y, pose.heading), speed: 88 });
   const span = (pitExitProgress() - pitEntryProgress() + 1) % 1;
   let previous = driver.progress;
-  let distance = -0.002;
+  let distance = -260 / TRACK_LENGTH;
   let seconds = 0;
   let started = false;
   try {
@@ -95,7 +95,10 @@ function cpuTransitSeconds(pit: boolean): number {
       if (delta > 0.5) delta -= 1;
       distance += delta;
       previous = driver.progress;
-      if (!started && (pit ? physics.isAiPitting(0) : distance >= 0)) started = true;
+      if (!started && (pit ? physics.isAiPitting(0) : distance >= 0)) {
+        if (pit) expect(driver.lap, 'must enter on the requested lap').toBe(1);
+        started = true;
+      }
       if (started) seconds += DT;
       if (started && (pit ? !physics.isAiPitting(0) : distance >= span)) return seconds;
     }
@@ -114,8 +117,8 @@ it('measures physical player / CPU pit time against the matching mainline entry-
       playerMainline, playerLoss: player - playerMainline, durationEstimate: pitStopDurationSeconds(),
       lossEstimate: pitStopTimeLossEstimateSeconds() };
     console.info(`PHYSICAL_PIT_ECONOMICS ${JSON.stringify(row)}`);
-    expect(Math.abs(cpu - row.durationEstimate)).toBeLessThan(0.12);
-    expect(player, track.id).toBeLessThan(cpu + 7);
+    expect(cpu).toBeGreaterThan(row.durationEstimate);
+    expect(Math.abs(player - cpu), track.id).toBeLessThan(1.5);
     expect(row.cpuLoss).toBeGreaterThan(0);
     expect(row.playerLoss).toBeGreaterThan(0);
     return row;

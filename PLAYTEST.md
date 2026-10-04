@@ -95,6 +95,8 @@ Try different compound sequences and both early and late stops.
 - Is the circuit's limiter readable (Compact 130 km/h, Standard/Long 80 km/h) without making an extra stop automatically hopeless?
 - Measure total pit transit separately from net loss against the same entry-to-exit mainline section; report the control, tyre and traffic assumptions.
 - Compare player and CPU costs, including approach and recovery when judging a race strategy. Shared service timers alone do not establish equal execution.
+- CPU pit transit must follow its actual body pose; pinning a car before the box must prevent service completion. Exit must preserve physical velocity.
+- All seven circuits must allow the controlled CPU to enter on the requested lap, rather than miss the gate and wait another lap.
 - Pit-cost experiments must not silently change tyre pace or wear in the strategy harness.
 
 There should be no obvious “always choose this tyre and pit on this lap” answer.
