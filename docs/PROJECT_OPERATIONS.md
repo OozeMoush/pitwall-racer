@@ -19,7 +19,6 @@ Avoid duplicating the same fact in several documents. Each artifact has one job.
 | `README.md` | onboarding, run/verify commands, repository workflow, high-level architecture | detailed current state or long design rationale |
 | `DESIGN.md` | durable product decisions, design principles, milestone intent | task status |
 | `docs/PROJECT_STATE.md` | concise current baseline, current playable shape, recent structural decisions, current risks | full history |
-| `AGENTS.md` | compact rules that every coding/AI agent must obey | project narrative |
 | `PLAYTEST.md` | gameplay verification and human/automated playtest gates | work queue |
 | GitHub Issue | a problem/goal, acceptance criteria, durable resume point | implementation diff |
 | Pull Request | one mergeable implementation unit and its verification evidence | long-term project state |
@@ -34,10 +33,10 @@ Avoid duplicating the same fact in several documents. Each artifact has one job.
 1. Sync/read current `main`.
 2. Read:
    - `README.md`
-   - `AGENTS.md`
    - `docs/PROJECT_STATE.md`
+   - `docs/PROJECT_OPERATIONS.md`
 3. Read the relevant Issue and any linked/open PR.
-4. For gameplay work, also read `PLAYTEST.md` and use the repo playtest skill.
+4. For gameplay work, also read `PLAYTEST.md`.
 5. If there is no Issue for substantial multi-step work, create one before implementation.
 6. Create a short-lived branch from current `main`.
 
@@ -50,7 +49,7 @@ Do not start from an old feature branch unless the explicit goal is archival rec
 - Small Issues should normally stay one PR.
 - Link every implementation PR to its Issue.
 - Put material design decisions in `DESIGN.md`, not only in PR discussion.
-- Put new permanent agent/process rules in `AGENTS.md` or this document.
+- Put permanent process rules in this document; put gameplay verification invariants in `PLAYTEST.md`.
 - Do not update `PROJECT_STATE.md` for every small commit; update it when the project baseline or direction materially changes.
 
 ### Before ending a Work/chat implementation session
@@ -133,7 +132,7 @@ Use this rule:
 - **what the project currently contains** → `PROJECT_STATE.md`
 - **what must be done** → Issue
 - **how it was implemented** → PR/code/tests
-- **how every agent should work** → `AGENTS.md` / `PROJECT_OPERATIONS.md`
+- **how ChatGPT/Work/project sessions should operate** → `PROJECT_OPERATIONS.md`
 
 No important decision should exist only in a ChatGPT conversation.
 
@@ -167,7 +166,7 @@ A Work task must bootstrap from GitHub, not from assumed memory.
 Recommended Work startup sequence:
 
 1. inspect `main`;
-2. read `README.md`, `AGENTS.md`, `docs/PROJECT_STATE.md`;
+2. read `README.md`, `docs/PROJECT_STATE.md`, `docs/PROJECT_OPERATIONS.md`;
 3. read the target Issue;
 4. inspect relevant code/tests/PR history;
 5. execute until acceptance criteria are met or a real blocker exists;

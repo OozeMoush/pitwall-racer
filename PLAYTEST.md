@@ -1,8 +1,17 @@
 # Pitwall Racer — Playtest Gate
 
-For gameplay/CPU debugging with Codex, use the repo-scoped `$pitwall-playtest` skill. Deterministic regressions and autonomous playtest evidence should come before asking for human feel.
+Deterministic regressions and autonomous playtest evidence should come before asking for human feel.
 
 Human play remains the final judge for subjective fun, but lap counting, qualifying, grid launches, pit entry, CPU stalls, path errors, racing-line seams, penalties and pace regressions should be automated wherever practical.
+
+Non-negotiable gameplay invariants:
+
+- `src/simulation/` owns authoritative race truth; rendering/HUD must not become the source of physics or timing truth.
+- Reproduce gameplay bugs with deterministic regressions/playtests whenever practical before fixing them.
+- Do not weaken an existing test merely to make CI green. If intended behaviour changes, explain the new invariant before updating the assertion.
+- REFERENCE GHOST is a calibration instrument: no race-CPU difficulty assists, traffic logic, rubber-banding or pit strategy.
+- Race CPU may use a small stable performance advantage, but never player-position rubber-banding.
+- Grand Prix track-limit warnings never delete the physical lap. Four wheels fully beyond the legal road is the warning condition; five warnings create the configured 5-second pit penalty. PLAYER racing-line eligibility is separate.
 
 ## Automated gate
 
