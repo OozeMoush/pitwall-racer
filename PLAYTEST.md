@@ -101,6 +101,8 @@ Try different compound sequences and both early and late stops.
 - Compare nearby stop windows, both stop families and Compact/Standard formats. Every normal full-race plan must finish legally, enter on schedule and keep deep-cut samples below 3%; do not force a universal three-second tie.
 - Compare clear, adaptive traffic and fixed late-stop controls. Healthy tyres should avoid a counterproductive early Medium-to-Hard change; worn tyres should show a physical benefit. A deliberately worn late control diagnoses the cliff and must not replace or weaken normal full-race guards.
 - Matched stop/no-stop controls must start from the same pose, speed, driver and tyre before braking. Measure physical gates at exit and +200/+400/+600 m; include gate speeds rather than assuming recovery is complete at a fixed distance.
+- Player capture must work for varied entry/late-merge positions, speeds and headings, with released pedals or held entry inputs. Once committed, AUTO PIT must complete real-body transit; a pinned player body before the box must never complete service.
+- Unrequested, mainline, reverse/opposite-direction and missed-ramp poses must not trigger player capture.
 - Scripted player approach tests must reach service and exit on all seven circuits. Entry-to-exit tests alone do not cover the entry state created by braking/merging from the road.
 
 There should be no obvious “always choose this tyre and pit on this lap” answer.

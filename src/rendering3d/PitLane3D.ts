@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  PIT_LANE_HALF_WIDTH,
   PIT_LIMIT_END_T,
   PIT_LIMIT_START_T,
   pitBoxTForSlot,
@@ -8,7 +9,7 @@ import {
 import { headingToYaw, toWorld } from './WorldTransform';
 
 const SAMPLES = 128;
-export const PIT_LANE_HALF_WIDTH = 7.5;
+export { PIT_LANE_HALF_WIDTH } from '../simulation/PitLaneModel';
 const EDGE_LINE_WIDTH = 0.45;
 const BOX_COLORS = [
   0x31b9ef,

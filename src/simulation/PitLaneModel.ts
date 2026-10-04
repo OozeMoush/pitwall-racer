@@ -12,6 +12,7 @@ import {
 /** Default entry retained for tests/tools that need the Pitwall GP baseline. */
 export const PIT_ENTRY_PROGRESS = DEFAULT_PIT_LANE_DEFINITION.entryProgress;
 export const PIT_ENTRY_MIN_LANE_OFFSET = 8;
+export const PIT_LANE_HALF_WIDTH = 7.5;
 export const PIT_SERVICE_SECONDS = 2.5;
 const COMPACT_PIT_SERVICE_SECONDS = 1.2;
 const LONG_PIT_SERVICE_SECONDS = 2.8;
@@ -117,6 +118,31 @@ export function shouldEnterPit(
   ) return false;
   const entryProgress = pitEntryProgress();
   return previousProgress < entryProgress && currentProgress >= entryProgress;
+}
+
+/**
+ * Requested player entry may finish merging just after the crossing tick.
+ * Capture only the first 30 m / entry ramp of the actual lane, travelling
+ * forward on its ribbon. A request on the mainline is not an autopilot trigger.
+ */
+export function playerPitEntryProjection(
+  vehicle: { x: number; y: number; heading: number },
+  previousProgress: number, currentProgress: number,
+  distanceFromLine: number, laneOffset: number, requested: boolean,
+): PitLaneProjection | undefined {
+  if (!requested || distanceFromLine > 48
+    || laneOffset * pitLaneSide() < PIT_ENTRY_MIN_LANE_OFFSET) return undefined;
+  const projection = projectPitLane(vehicle.x, vehicle.y, 0);
+  if (projection.distance > PIT_LANE_HALF_WIDTH
+    || Math.cos(vehicle.heading - projection.pose.heading) < 0.5) return undefined;
+  const crossed = shouldEnterPit(previousProgress, currentProgress,
+    distanceFromLine, requested, laneOffset);
+  const metresAfterEntry = (((currentProgress - pitEntryProgress() + 1.5) % 1) - 0.5) * TRACK_LENGTH;
+  const forwardProgress = ((currentProgress - previousProgress + 1.5) % 1) - 0.5;
+  const lateMerge = forwardProgress >= 0 && metresAfterEntry >= -PIT_LANE_HALF_WIDTH
+    && metresAfterEntry <= 30
+    && projection.t <= PIT_ENTRY_RAMP_T;
+  return crossed || lateMerge ? projection : undefined;
 }
 
 export function pitLaneLengthMetres(): number {

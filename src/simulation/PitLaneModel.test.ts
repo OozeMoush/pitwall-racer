@@ -20,11 +20,12 @@ import {
   pitStopTimeLossEstimateSecondsFor,
   projectPitLane,
   shouldEnterPit,
+  playerPitEntryProjection,
   stepPitStop,
   stepPlayerPitStop,
 } from './PitLaneModel';
 import { TRACK_ROAD_HALF_WIDTH } from './TrackLimitsModel';
-import { setActiveTrack } from './TrackModel';
+import { projectTrack, sampleTrack, setActiveTrack, TRACKS, TRACK_LENGTH } from './TrackModel';
 
 afterEach(() => setActiveTrack('pitwall-gp'));
 
@@ -37,6 +38,33 @@ describe('PitLaneModel', () => {
     expect(shouldEnterPit(before, after, 20, true, PIT_ENTRY_MIN_LANE_OFFSET - 1)).toBe(false);
     expect(shouldEnterPit(before, after, 20, false, PIT_ENTRY_MIN_LANE_OFFSET + 1)).toBe(false);
     expect(shouldEnterPit(before, after, 100, true, PIT_ENTRY_MIN_LANE_OFFSET + 1)).toBe(false);
+  });
+
+  it.each(TRACKS.map(track => track.id))('captures only a forward requested lane entry on %s', trackId => {
+    setActiveTrack(trackId);
+    const pose = pitLanePose(0.025);
+    const road = projectTrack(pose.x, pose.y);
+    const prior = road.progress - 0.1 / TRACK_LENGTH;
+    const capture = (vehicle: { x: number; y: number; heading: number } = pose, requested = true, previous = prior) => {
+      const onRoad = projectTrack(vehicle.x, vehicle.y);
+      return playerPitEntryProjection(vehicle, previous, onRoad.progress,
+        onRoad.distance, onRoad.laneOffset, requested);
+    };
+    expect(shouldEnterPit(prior, road.progress, road.distance, true, road.laneOffset)).toBe(false);
+    expect(capture()?.t).toBeCloseTo(0.025, 2);
+    expect(capture(pose, false)).toBeUndefined();
+    expect(capture({ ...pose, heading: pose.heading + Math.PI })).toBeUndefined();
+    expect(capture(pose, true, road.progress + 0.1 / TRACK_LENGTH)).toBeUndefined();
+    const mainline = sampleTrack(road.progress);
+    expect(capture(mainline)).toBeUndefined();
+    expect(capture({ ...pose, x: pose.x - Math.sin(pose.heading) * 20,
+      y: pose.y + Math.cos(pose.heading) * 20 })).toBeUndefined();
+    const missed = pitLanePose(0.15);
+    const missedRoad = projectTrack(missed.x, missed.y);
+    expect(capture(missed, true, missedRoad.progress - 0.1 / TRACK_LENGTH)).toBeUndefined();
+    const entry = pitLanePose(0);
+    const entryRoad = projectTrack(entry.x, entry.y);
+    expect(capture(entry, true, entryRoad.progress - 0.1 / TRACK_LENGTH)).toBeDefined();
   });
 
   it('keeps the AI time-based state machine and changes tyres once', () => {

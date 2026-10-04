@@ -299,6 +299,38 @@ case stays below 3% and improves both progress and path error. That diagnostic
 does not relax the normal full-race guards or prove optimal decisions for all
 compound combinations. Human tyre feedback and pack racing remain required.
 
+### Player pit capture — Issue #143
+
+A requested physical pit entry commits to AUTO PIT: the shared controller owns
+throttle, braking and steering until the exit. The driver chooses the request,
+compound and entry line; requiring continued W or a precisely released turn
+inside the lane adds no useful racing decision. With the old player input blend,
+releasing W at 22 m/s stranded the vehicle before service on all seven circuits.
+Input-independent transit still uses the real rigid body and spatial progress;
+only the final docking correction may place it at the box. Pinning the body
+before the box must prevent service. Shared CPU/player timers and exit velocity
+remain unchanged. The HUD identifies AUTO PIT and the actual circuit limiter.
+
+The old crossing-only gate also rejected a correct merge just after the entry
+tick. Player capture now requires a request, the entry-side offset, forward
+alignment within 60 degrees, and a body centre on the actual rendered pit
+ribbon. Its bounded entry window covers the first 30 mainline metres and first
+8% of the route; a ribbon-width allowance before the nominal mainline entry
+accounts for offset-route projection. Mainline, opposite direction, reverse
+progress, unrequested and missed-ramp poses are rejected. The ribbon half-width
+is owned by the simulation and shared with rendering. CPU entry scheduling is
+unchanged.
+
+Rejected alternatives: a broad road-distance trigger could capture an armed car
+that stays on the mainline; increasing box tolerance cannot repair a car stopped
+upstream; snapping a car to the route or advancing transit by time would hide
+physical stalls. The retained gate checks actual route proximity and limits the
+late merge window instead. Automated coverage includes entry and late-entry
+poses, 22/40/65 m/s, both lateral offsets, heading deviations, released pedals,
+held steering and simultaneous throttle/brake on all seven circuits. This
+reproduces concrete failure classes without claiming every human approach is
+covered.
+
 ## Balance gates
 
 Game design is treated as testable behaviour, not just tuning by intuition. Lightweight deterministic simulations and physical-pack tests protect the core loop.

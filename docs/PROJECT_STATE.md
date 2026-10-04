@@ -6,11 +6,11 @@
 
 ## Verified baseline
 
-Last updated: **2026-10-04**
+Last updated: **2026-10-05 JST**
 
 - default branch: `main`
-- previous verified main: `8f87441a7e21f01849f25229b38cc2d9064b38f4`, CI **#899 — success**
-- current code change: **Issue #137 physical strategy comparison / wear-aware traffic decisions**; use its implementation PR and current Actions for the merged SHA / CI status
+- previous verified main: `76da45a99d92bd39a8446aa8eb8ae7f791cb9d00`, CI **#902 — success**
+- current code change: **Issue #143 reliable player capture / AUTO PIT transit**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -99,6 +99,12 @@ unvalidated and no longer supplies the Compact near-tie balance gate. Broader
 traffic and human feedback remain open; the fixed-speed estimate is not a
 measured player pit loss. See DESIGN for controls, per-circuit values and limits.
 
+Player entry now accepts a bounded late merge on the actual pit ribbon. After
+physical commitment, AUTO PIT owns the controls through service and exit;
+released pedals and held entry steering cannot strand the car. Capture keeps
+request/side/direction checks; real-body movement and spatial service progress
+remain authoritative. See DESIGN and PLAYTEST for the tested entry envelope.
+
 ## Recent structural work
 
 Recently completed project-level work:
@@ -117,7 +123,9 @@ It is archival evidence, not active mainline architecture.
 
 ## Current work discovery
 
-Active gameplay: **Issue #137**, pit-cost execution / strategy calibration; human feel gate remains.
+Issue **#137** is closed at the user-approved strategy/layout checkpoint.
+Active gameplay: **Issue #143**, reliable player pit capture; **Issue #144**,
+PLAYER BEST updates reaching the CPU.
 Circuit editor improvements: **Issue #138**, separate work.
 Project-operations migration: **Issue #134**, external configuration / follow-up verification.
 
