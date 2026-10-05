@@ -73,6 +73,7 @@ The desired emotion is **“I can try that move again”**, not “the collision
 
 Compare AUTO, PLAYER BEST and the isolated REFERENCE GHOST.
 
+- Record a faster eligible lap with PLAYER BEST selected: verify persisted time/trace, live CPU target and update notice together. Also cover Time Trial/menu and qualifying/race activation; rejected or failed writes must preserve the old target and explain the outcome.
 - Does PLAYER BEST remain smooth through start/finish with no closing chord?
 - Does the REFERENCE GHOST reproduce a clean demonstrated line without race-CPU difficulty assists?
 - Do clear-running CPUs stay near their selected line rather than accumulating persistent path error?

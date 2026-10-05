@@ -489,3 +489,18 @@ These are not priorities until the basic race is demonstrably fun:
 5. All seven circuits must remain valid for projection, pits, compact grids, CPU driving and camera — not just render different shapes.
 6. The fixed camera must preserve GeneRally-style clarity while still selling 300+ km/h.
 7. Automated balance results must never replace actual playtesting; they only detect objective regressions.
+
+### PLAYER BEST save and activation outcome (#144)
+
+Session code uses an explicit save outcome, never asset object identity: geometry
+revision normalization copies the candidate. A successful eligible Grand Prix
+lap immediately reloads PLAYER BEST when PLAYER is selected, so CPU targets and
+HUD acknowledgement refer to the persisted trace. AUTO/EDITOR selection is not
+changed by recording. Time Trial re-enters session selection, and qualifying
+reloads the stored line before the race, through the existing bootstrap path.
+Equal-quality traces retain the fastest clean lap; richer traces may upgrade a
+slower record, and lower-quality traces cannot overwrite a richer one. Those
+rejections remain visible. Storage failures must not announce a saved line or
+switch CPU targets; failed Time Trial timing writes must not stop hotlapping.
+Changing the returned object to preserve identity was rejected because it would
+still conflate attempted writes with successful persistence.

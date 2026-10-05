@@ -124,7 +124,8 @@ It is archival evidence, not active mainline architecture.
 ## Current work discovery
 
 Issue **#137** is closed at the user-approved strategy/layout checkpoint.
-Active gameplay: **Issue #147**, severe CPU race FPS report; **Issue #143**,
+Issue **#147** is closed after PR #148 and user-confirmed race performance improvement.
+Active gameplay: **Issue #143**,
 player pit capture implemented and awaiting human confirmation; **Issue #144**,
 PLAYER BEST updates reaching the CPU.
 Circuit editor improvements: **Issue #138**, separate work.

@@ -167,10 +167,24 @@ export function racingLineTraceQuality(
   return 0;
 }
 
+export interface PlayerRacingLineSaveResult {
+  asset: RacingLineAsset;
+  status: 'SAVED' | 'KEPT_FASTER' | 'KEPT_RICHER' | 'STORAGE_FAILED';
+}
+
+// Compatibility for callers that only need the best asset. Session code must
+// use the explicit result: normalization deliberately creates a new object.
 export function saveBestPlayerRacingLineCandidate(
   storage: RacingLineCandidateStorage,
   candidate: RacingLineAsset,
 ): RacingLineAsset {
+  return savePlayerRacingLineCandidate(storage, candidate).asset;
+}
+
+export function savePlayerRacingLineCandidate(
+  storage: RacingLineCandidateStorage,
+  candidate: RacingLineAsset,
+): PlayerRacingLineSaveResult {
   const store = loadStore(storage);
   const currentRevision = trackGeometryRevision(candidate.trackId);
   const normalizedCandidate: RacingLineAsset = {
@@ -189,7 +203,7 @@ export function saveBestPlayerRacingLineCandidate(
     // Never trade replay fidelity for a headline lap time. Once a trace has
     // richer physical state (heading/yaw, acceleration, grip, AXF), a lower
     // fidelity race lap must not overwrite it even if that lap was faster.
-    if (candidateQuality < previousQuality) return previous;
+    if (candidateQuality < previousQuality) return { asset: previous, status: 'KEPT_RICHER' };
 
     // A richer trace is an upgrade even if slightly slower. At equal quality,
     // preserve the fastest clean demonstrated lap.
@@ -199,7 +213,7 @@ export function saveBestPlayerRacingLineCandidate(
       && normalizedCandidate.lapSeconds !== undefined
       && previous.lapSeconds <= normalizedCandidate.lapSeconds
     ) {
-      return previous;
+      return { asset: previous, status: 'KEPT_FASTER' };
     }
   }
 
@@ -207,9 +221,10 @@ export function saveBestPlayerRacingLineCandidate(
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
-    // A development aid must never break the playable race loop.
+    // A failed write must not announce success or replace the active CPU line.
+    return { asset: previous ?? normalizedCandidate, status: 'STORAGE_FAILED' };
   }
-  return normalizedCandidate;
+  return { asset: normalizedCandidate, status: 'SAVED' };
 }
 
 export function loadPlayerRacingLineCandidate(

@@ -21,7 +21,7 @@ import {
   loadPlayerRacingLineCandidate,
   PlayerRacingLineCandidateRecorder,
   racingLineTraceQuality,
-  saveBestPlayerRacingLineCandidate,
+  savePlayerRacingLineCandidate,
 } from '../simulation/PlayerRacingLineCandidate';
 import { activateStoredRacingLine } from '../simulation/RacingLineActivation';
 import {
@@ -873,13 +873,20 @@ export class CoreRaceGame {
 
     const previousQuality = racingLineTraceQuality(previous);
     const candidateQuality = racingLineTraceQuality(candidate);
-    const saved = saveBestPlayerRacingLineCandidate(
+    const result = savePlayerRacingLineCandidate(
       window.localStorage,
       candidate,
     );
-    const storedNewCandidate = saved === candidate;
+    const saved = result.asset;
+    const storedNewCandidate = result.status === 'SAVED';
 
     if (!storedNewCandidate) {
+      if (result.status === 'STORAGE_FAILED') {
+        this.lineCandidateStatus = 'REJECT · STORAGE FAILED';
+        this.racingLineNotice = 'LINE NOT SAVED · STORAGE FAILED';
+        this.racingLineNoticeRemaining = 3.2;
+        return;
+      }
       this.lineCandidateStatus = candidateQuality < previousQuality
         ? `REJECT · TRACE Q${candidateQuality}<Q${previousQuality}`
         : `KEPT · ${previousSeconds?.toFixed(3) ?? '—'}s`;
