@@ -12,7 +12,8 @@ import { loadPaceEvidence, savePaceEvidence } from '../simulation/PaceBenchmarkS
 import {
   loadPlayerRacingLineCandidate,
   PlayerRacingLineCandidateRecorder,
-  saveBestPlayerRacingLineCandidate,
+  type PlayerRacingLineSaveResult,
+  savePlayerRacingLineCandidate,
 } from '../simulation/PlayerRacingLineCandidate';
 import {
   qualifyingBenchmarkSeconds,
@@ -87,7 +88,7 @@ export function runTimeTrialSession(
   });
 }
 
-class QualifyingGame {
+export class QualifyingGame {
   private readonly container: HTMLElement;
   private readonly hud: HTMLElement;
   private readonly setup: RaceSetup;
@@ -478,11 +479,14 @@ class QualifyingGame {
       window.localStorage,
       this.setup.trackId,
     );
+    let saveStatus: PlayerRacingLineSaveResult['status'] | undefined;
     if (candidate) {
-      storedCandidate = saveBestPlayerRacingLineCandidate(
+      const result = savePlayerRacingLineCandidate(
         window.localStorage,
         candidate,
       );
+      storedCandidate = result.asset;
+      saveStatus = result.status;
       console.info('RACING_LINE_CANDIDATE', {
         trackId: storedCandidate.trackId,
         source: storedCandidate.source,
@@ -493,6 +497,7 @@ class QualifyingGame {
     }
 
     if (this.mode === 'TIME_TRIAL') {
+      let timingStorageFailed = false;
       this.completedLaps += 1;
       const s1 = this.sectorTimes[0];
       const s2 = this.sectorTimes[1];
@@ -514,21 +519,33 @@ class QualifyingGame {
         && s2 !== undefined
         && s3 !== undefined
       ) {
-        this.timeTrialRecord = saveTimeTrialLap(
-          window.localStorage,
-          this.setup.trackId,
-          completedLapTime,
-          [s1, s2, s3],
-        );
+        try {
+          this.timeTrialRecord = saveTimeTrialLap(
+            window.localStorage,
+            this.setup.trackId,
+            completedLapTime,
+            [s1, s2, s3],
+          );
+        } catch {
+          timingStorageFailed = true;
+        }
       }
-      const savedThisLap = candidate !== undefined && storedCandidate === candidate;
+      const savedThisLap = saveStatus === 'SAVED';
       const bestSeconds = storedCandidate?.lapSeconds;
       const pb = this.timeTrialRecord.bestLap;
-      this.lapNotice = savedThisLap
-        ? `PLAYER LINE UPDATED · ${completedLapTime.toFixed(3)}s`
-        : candidate
-          ? `CLEAN LAP · PB ${pb?.toFixed(3) ?? '—'}s · LINE BEST ${bestSeconds?.toFixed(3) ?? '—'}s`
-          : `LAP NOT RECORDED · ${this.lineTraceInvalidReason ?? 'INVALID TRACE'}`;
+      if (timingStorageFailed) {
+        this.lapNotice = 'TIME TRIAL RECORD NOT SAVED · STORAGE FAILED';
+      } else if (savedThisLap) {
+        this.lapNotice = `PLAYER LINE UPDATED · ${completedLapTime.toFixed(3)}s`;
+      } else if (saveStatus === 'STORAGE_FAILED') {
+        this.lapNotice = 'LINE NOT SAVED · STORAGE FAILED';
+      } else if (saveStatus === 'KEPT_RICHER') {
+        this.lapNotice = 'LINE NOT SAVED · LOWER TRACE QUALITY';
+      } else if (candidate) {
+        this.lapNotice = `CLEAN LAP · PB ${pb?.toFixed(3) ?? '—'}s · LINE BEST ${bestSeconds?.toFixed(3) ?? '—'}s`;
+      } else {
+        this.lapNotice = `LAP NOT RECORDED · ${this.lineTraceInvalidReason ?? 'INVALID TRACE'}`;
+      }
       this.lapNoticeRemaining = 3.0;
 
       // Stay on track and start the next hot lap immediately. Keeping the tyre
