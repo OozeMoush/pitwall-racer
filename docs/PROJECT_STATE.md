@@ -6,11 +6,11 @@
 
 ## Verified baseline
 
-Last updated: **2026-10-05 JST**
+Last updated: **2026-10-06 JST**
 
 - default branch: `main`
-- previous verified main: `76da45a99d92bd39a8446aa8eb8ae7f791cb9d00`, CI **#902 — success**
-- current code change: **Issue #143 reliable player capture / AUTO PIT transit**; use its implementation PR and current Actions for the merged SHA / CI status
+- previous verified main: `6172c31c3e1184f117b66aaea59c6974673eb66c`, CI **#904 — success**
+- current code change: **Issue #147 CPU race performance / cached geometry**; use its implementation PR and current Actions for the merged SHA / CI status
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -124,7 +124,8 @@ It is archival evidence, not active mainline architecture.
 ## Current work discovery
 
 Issue **#137** is closed at the user-approved strategy/layout checkpoint.
-Active gameplay: **Issue #143**, reliable player pit capture; **Issue #144**,
+Active gameplay: **Issue #147**, severe CPU race FPS report; **Issue #143**,
+player pit capture implemented and awaiting human confirmation; **Issue #144**,
 PLAYER BEST updates reaching the CPU.
 Circuit editor improvements: **Issue #138**, separate work.
 Project-operations migration: **Issue #134**, external configuration / follow-up verification.

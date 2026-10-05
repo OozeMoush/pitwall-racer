@@ -580,6 +580,13 @@ function runtimeLongitudinalAcceleration(
  * grip at which they were recorded; only the tyre-grip transfer factor is
  * bounded, rather than clipping the demonstrated speed trace itself.
  */
+/** Lane-only lookahead avoids building unused grip/speed envelopes in prediction. */
+export function activeReferenceLaneOffset(trackId: TrackId, progress: number, tireGrip: number): number {
+  const asset = active.get(trackId);
+  if (!asset || asset.points.length === 0) return referenceTarget(trackId, progress, tireGrip).laneOffset;
+  return seamSafeLaneOffset(asset, progress, sampleRacingLineAsset(asset, progress).laneOffset);
+}
+
 export function activeReferenceTarget(
   trackId: TrackId,
   progress: number,

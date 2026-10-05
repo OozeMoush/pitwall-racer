@@ -331,6 +331,43 @@ held steering and simultaneous throttle/brake on all seven circuits. This
 reproduces concrete failure classes without claiming every human approach is
 covered.
 
+### Race performance — Issue #147
+
+CPU performance must be checked with AUTO and PLAYER BEST, including legacy
+explicit lines without demonstrated heading/yaw metadata. Time Trial has no
+seven-car predictive control load and cannot establish race performance.
+
+`referenceLap` looked up its speed-envelope cache by geometry revision, but
+computing that revision rebuilt and hashed the entire centreline on every
+lookup. Legacy PLAYER prediction evaluates ten steering candidates over
+fourteen steps; those inner lookups multiplied the geometry work. Keep derived
+centreline/revision/length by definition identity and invalidate at
+`setActiveTrack` / `registerEditorTrack`, including same-identity editor
+re-registration and width changes. Edits must use those installation boundaries;
+in-place definition changes are not applied to running geometry implicitly.
+
+Repeated exact body coordinates may reuse nearest-road projection in a bounded
+64-entry cache, reset on track rebuild. Return copies to prevent caller mutation
+from corrupting cached values. Do not round coordinates or change continuity
+projection. Only scheduled pit approaches need their extra entry projection.
+Prediction requests that need only lane position skip unused grip/speed-envelope
+lookups while preserving seam repair and fallback lanes.
+
+Container measurements (Pitwall, 120 Hz, warm-up 120 ticks then 240 measured,
+synthetic 640-point PLAYER line, seven CPU cars, no rendering): legacy PLAYER
+controller time fell from 289.54 ms/tick to 3.38 ms/tick; final AUTO was 0.18 ms,
+PLAYER with demonstrated dynamics 0.64 ms. Ordinary pre-#141 AUTO already cost
+roughly 1.35 ms in a separate run, so the pit changes alone do not establish the
+onset of the user's symptom. The legacy PLAYER workload reproduces the severe
+failure class; the user's precise stored asset and browser FPS remain unobserved.
+
+The regression uses a generous 50 ms controller ceiling to catch catastrophic
+whole-circuit rebuilding across different CI hosts, not to certify 60 FPS.
+Rendering, HUD and the user machine require actual play confirmation. Reject
+lowering simulation frequency, reducing the field or discarding PLAYER BEST as
+the fix: redundant immutable geometry work can be removed without changing the
+race decisions, predictor horizon or reference-ghost behavior.
+
 ## Balance gates
 
 Game design is treated as testable behaviour, not just tuning by intuition. Lightweight deterministic simulations and physical-pack tests protect the core loop.
