@@ -200,11 +200,12 @@ export class RapierRacePhysics {
         return;
       }
 
-      const approachProjection = projectTrackNear(state.x, state.y, driver.progress);
-      const entryGap = ((pitEntryProgress() - approachProjection.progress + 1) % 1) * TRACK_LENGTH;
       const wantsPit = (this.aiLaps[index] ?? driver.lap) >= driver.pitLap
         && driver.pitStopIndex < driver.pitPlan.length;
-      if (wantsPit && entryGap > 0 && entryGap < AI_PIT_APPROACH_DISTANCE) {
+      const entryGap = wantsPit
+        ? ((pitEntryProgress() - projectTrackNear(state.x, state.y, driver.progress).progress + 1) % 1) * TRACK_LENGTH
+        : Number.POSITIVE_INFINITY;
+      if (entryGap > 0 && entryGap < AI_PIT_APPROACH_DISTANCE) {
         const approach = physicalPitControl(state, beginPitStop(pitBoxTForSlot(index + 1)),
           this.aiPitSteering[index] ?? 0, dt, 0, 1, 0, true);
         if (state.speed > AI_PIT_LATERAL_APPROACH_SPEED) approach.steer = dynamicAiControl(driver, state, traffic).steer;

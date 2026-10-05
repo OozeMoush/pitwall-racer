@@ -3,6 +3,7 @@ import { referenceTarget } from './ReferenceDriverModel';
 import { sampleTrack, trackLengthFor } from './TrackModel';
 import {
   activeReferenceTarget,
+  activeReferenceLaneOffset,
   racingLineBrakeIntent,
   racingLineLocalBrakeIntent,
   racingLineThrottleIntent,
@@ -16,6 +17,21 @@ afterEach(() => {
 });
 
 describe('RacingLineRuntime', () => {
+  it('preserves full target lane offsets in lane-only prediction including seam repair', () => {
+    for (const explicit of [false, true]) {
+      setRuntimeRacingLine('pitwall-gp', explicit ? { version: 1, trackId: 'pitwall-gp',
+        source: 'PLAYER', referenceGrip: 1.2, points: Array.from({ length: 320 }, (_, index) => ({
+          progress: index / 320, laneOffset: -8 + index / 319 * 16, targetSpeed: 70,
+        })) } : undefined);
+      for (const progress of [-0.001, 0, 0.001, 0.5, 0.999, 1.001]) {
+        for (const grip of [0.8, 1.2, 1.7]) {
+          expect(activeReferenceLaneOffset('pitwall-gp', progress, grip))
+            .toBe(activeReferenceTarget('pitwall-gp', progress, grip).laneOffset);
+        }
+      }
+    }
+  });
+
   it('computes a finite kinematic lap time from an explicit line asset', () => {
     const asset = {
       version: 1 as const,

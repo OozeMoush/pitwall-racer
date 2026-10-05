@@ -305,6 +305,13 @@ export let TRACK_CONTROLS: readonly TrackPoint[] = PITWALL_GP;
 export let RACING_LINE: readonly TrackPoint[] = [];
 export let TRACK_LENGTH = 0;
 let segments: Segment[] = [];
+const geometryCache = new WeakMap<TrackDefinition, {
+  points: readonly TrackPoint[]; revision: string; length: number;
+}>();
+// Exact-coordinate reuse only: no rounding or approximate spatial search.
+// A physics tick projects each body repeatedly for traffic/control/surface.
+const projectionCache: Array<{ x: number; y: number; result: TrackProjection }> = [];
+const PROJECTION_CACHE_LIMIT = 64;
 
 TRACK_DISTANCE_SCALE = TRACKS[0].distanceScale ?? MINIATURE_TRACK_SCALE;
 rebuildTrack(TRACKS[0]);
@@ -312,6 +319,7 @@ rebuildTrack(TRACKS[0]);
 export function setActiveTrack(id: TrackId): void {
   const definition = TRACKS.find((track) => track.id === id);
   if (!definition) throw new Error(`Unknown track: ${id}`);
+  geometryCache.delete(definition);
   activeTrackId = id;
   TRACK_DISTANCE_SCALE = definition.distanceScale ?? MINIATURE_TRACK_SCALE;
   TRACK_CONTROLS = definition.controls;
@@ -334,6 +342,7 @@ export function registerEditorTrack(definition: TrackDefinition): void {
   if (definition.id !== EDITOR_TRACK_ID) {
     throw new Error(`Editor track must use id ${EDITOR_TRACK_ID}`);
   }
+  geometryCache.delete(definition);
   const index = TRACKS.findIndex((track) => track.id === EDITOR_TRACK_ID);
   if (index >= 0) TRACKS[index] = definition;
   else TRACKS.push(definition);
@@ -351,8 +360,7 @@ export function sectorBoundariesFor(
 }
 
 export function trackCentreline(id: TrackId): readonly TrackPoint[] {
-  const definition = getTrackDefinition(id);
-  return buildTrackCentreline(definition);
+  return derivedGeometry(getTrackDefinition(id)).points;
 }
 
 /**
@@ -383,28 +391,31 @@ export function trackGeometryFingerprint(points: readonly TrackPoint[]): string 
 }
 
 export function trackGeometryRevision(id: TrackId): string {
-  const centrelineRevision = trackGeometryFingerprint(trackCentreline(id));
-  const widths = getTrackDefinition(id).roadHalfWidths;
-  if (!widths || widths.length === 0) return centrelineRevision;
-
-  // Width is part of playable geometry: narrowing a road can make a formerly
-  // valid racing line illegal even when the centreline itself did not move.
-  const widthRevision = trackGeometryFingerprint(
-    widths.map((width, index) => ({ x: index, y: width })),
-  );
-  return `${centrelineRevision}:w-${widthRevision}`;
+  return derivedGeometry(getTrackDefinition(id)).revision;
 }
 
 export function trackLengthFor(id: TrackId): number {
-  const points = trackCentreline(id);
-  let total = 0;
+  return derivedGeometry(getTrackDefinition(id)).length;
+}
+
+/** Geometry changes enter through setActiveTrack/registerEditorTrack. */
+function derivedGeometry(definition: TrackDefinition) {
+  const cached = geometryCache.get(definition);
+  if (cached) return cached;
+  const points = buildTrackCentreline(definition);
+  const centrelineRevision = trackGeometryFingerprint(points);
+  const widths = definition.roadHalfWidths;
+  const revision = widths?.length
+    ? `${centrelineRevision}:w-${trackGeometryFingerprint(widths.map((width, index) => ({ x: index, y: width })))}`
+    : centrelineRevision;
+  let length = 0;
   for (let index = 0; index < points.length; index++) {
-    total += Math.hypot(
-      points[(index + 1) % points.length].x - points[index].x,
-      points[(index + 1) % points.length].y - points[index].y,
-    );
+    const next = points[(index + 1) % points.length];
+    length += Math.hypot(next.x - points[index].x, next.y - points[index].y);
   }
-  return total;
+  const result = { points, revision, length };
+  geometryCache.set(definition, result);
+  return result;
 }
 
 export function samplesForDistance(
@@ -438,7 +449,12 @@ export function sampleTrack(progress: number, laneOffset = 0): TrackPoint & { he
 }
 
 export function projectTrack(x: number, y: number): TrackProjection {
-  return projectTrackInternal(x, y);
+  const cached = projectionCache.find(entry => entry.x === x && entry.y === y);
+  if (cached) return { ...cached.result };
+  const result = projectTrackInternal(x, y);
+  if (projectionCache.length >= PROJECTION_CACHE_LIMIT) projectionCache.shift();
+  projectionCache.push({ x, y, result });
+  return { ...result };
 }
 
 // On a miniature circuit, two unrelated pieces of track can be only a few car
@@ -455,7 +471,7 @@ export function projectTrackNear(
   referenceProgress: number,
   continuityWeight = 0.85,
 ): TrackProjection {
-  const nearest = projectTrackInternal(x, y);
+  const nearest = projectTrack(x, y);
   const jumpMetres = circularProgressDistance(nearest.progress, referenceProgress) * TRACK_LENGTH;
   const plausibleStepMetres = Math.max(5.5, raceScaleDistance(13));
   if (jumpMetres <= plausibleStepMetres) return nearest;
@@ -551,7 +567,8 @@ function circularProgressDistance(a: number, b: number): number {
 }
 
 function rebuildTrack(definition: TrackDefinition): void {
-  RACING_LINE = buildTrackCentreline(definition);
+  projectionCache.length = 0;
+  RACING_LINE = derivedGeometry(definition).points;
   const nextSegments: Segment[] = [];
   let total = 0;
   for (let i = 0; i < RACING_LINE.length; i++) {

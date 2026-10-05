@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  EDITOR_TRACK_ID,
   MINIATURE_TRACK_SCALE,
   RACING_LINE,
   TRACK_CONTROLS,
@@ -12,6 +13,9 @@ import {
   sampleTrack,
   samplesForDistance,
   setActiveTrack,
+  registerEditorTrack,
+  trackCentreline,
+  trackLengthFor,
   trackGeometryFingerprint,
   trackGeometryRevision,
 } from './TrackModel';
@@ -25,6 +29,47 @@ describe('TrackModel', () => {
     expect(RACING_LINE.length).toBeGreaterThan(TRACK_CONTROLS.length * 10);
     expect(TRACK_LENGTH).toBeGreaterThan(2500);
     expect(TRACK_LENGTH).toBeLessThan(3000);
+  });
+
+  it('reuses derived geometry and invalidates same-identity editor changes', () => {
+    const existing = TRACKS.find(track => track.id === EDITOR_TRACK_ID);
+    const definition = { ...TRACKS[0], id: EDITOR_TRACK_ID,
+      controls: TRACKS[0].controls.map(point => ({ ...point })) };
+    try {
+      registerEditorTrack(definition);
+      const points = trackCentreline(EDITOR_TRACK_ID);
+      const revision = trackGeometryRevision(EDITOR_TRACK_ID);
+      expect(trackCentreline(EDITOR_TRACK_ID)).toBe(points);
+      expect(trackGeometryRevision(EDITOR_TRACK_ID)).toBe(revision);
+      const length = trackLengthFor(EDITOR_TRACK_ID);
+      definition.controls = definition.controls.map((point, index) =>
+        index === 0 ? { ...point, x: point.x + 5 } : point);
+      registerEditorTrack(definition);
+      expect(trackGeometryRevision(EDITOR_TRACK_ID)).not.toBe(revision);
+      expect(trackLengthFor(EDITOR_TRACK_ID)).not.toBe(length);
+      const movedRevision = trackGeometryRevision(EDITOR_TRACK_ID);
+      definition.roadHalfWidths = definition.controls.map(() => 12);
+      registerEditorTrack(definition);
+      expect(trackGeometryRevision(EDITOR_TRACK_ID)).not.toBe(movedRevision);
+    } finally {
+      if (existing) registerEditorTrack(existing);
+      else TRACKS.splice(TRACKS.findIndex(track => track.id === EDITOR_TRACK_ID), 1);
+    }
+  });
+
+  it('keeps exact-coordinate projection reuse isolated from edits and returned-object mutations', () => {
+    const pose = sampleTrack(0.2);
+    const first = projectTrack(pose.x, pose.y);
+    const expected = { ...first };
+    first.progress = 999;
+    expect(projectTrack(pose.x, pose.y)).toEqual(expected);
+    const moved = projectTrack(pose.x + Math.cos(pose.heading) * 0.001,
+      pose.y + Math.sin(pose.heading) * 0.001);
+    expect(moved.progress).not.toBe(expected.progress);
+    setActiveTrack('baku-street');
+    expect(projectTrack(pose.x, pose.y)).not.toEqual(expected);
+    setActiveTrack('pitwall-gp');
+    expect(projectTrack(pose.x, pose.y)).toEqual(expected);
   });
 
   it('changes the geometry revision when generated road points move', () => {

@@ -1,6 +1,6 @@
 import { controlArcadeCar } from './ArcadeCarController';
 import { REFERENCE_POWER_BOOST } from './ReferenceDriverModel';
-import { activeReferenceTarget } from './RacingLineRuntime';
+import { activeReferenceLaneOffset, activeReferenceTarget } from './RacingLineRuntime';
 import { sampleTrack, TRACK_LENGTH, type TrackId } from './TrackModel';
 import type { VehicleState } from './VehicleModel';
 
@@ -187,11 +187,9 @@ function explicitPathPose(
   progress: number,
   tireGrip: number,
 ): { x: number; y: number; heading: number } {
-  const reference = activeReferenceTarget(trackId, progress, tireGrip);
-  const point = sampleTrack(progress, reference.laneOffset);
+  const point = sampleTrack(progress, activeReferenceLaneOffset(trackId, progress, tireGrip));
   const aheadProgress = wrap01(progress + 5 / TRACK_LENGTH);
-  const aheadReference = activeReferenceTarget(trackId, aheadProgress, tireGrip);
-  const ahead = sampleTrack(aheadProgress, aheadReference.laneOffset);
+  const ahead = sampleTrack(aheadProgress, activeReferenceLaneOffset(trackId, aheadProgress, tireGrip));
   return {
     x: point.x,
     y: point.y,

@@ -32,6 +32,13 @@ npm run build
 
 Run `test:long` explicitly when changing PLAYER-line replay, the reference ghost, long-run CPU behaviour, multi-circuit physics or the machine reference. Do not weaken a guardrail merely because the current build misses it. If intended behaviour changed, explain the new invariant and then update the test.
 
+Race performance: compare AUTO and PLAYER BEST with seven CPUs, including
+legacy and dynamics-bearing explicit lines. `RacePerformance.test.ts` reports
+controller and Rapier time independently after warm-up; its broad 50 ms ceiling
+is a catastrophic CPU-regression guard, not an FPS measurement. Confirm actual
+browser frame rate in a race as well as Time Trial. Geometry/cache changes must
+retain editor revision invalidation and unchanged racing-line/ghost behavior.
+
 ## 1. Session flow
 
 Verify all three entry paths:
