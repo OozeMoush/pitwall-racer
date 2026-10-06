@@ -1291,6 +1291,9 @@ export class CoreRaceGame {
   private updateAudio(dt: number): void {
     const surface = surfaceEffect(this.trackDistance, this.trackProgress);
     this.audio.update({
+      contactKind: this.physics.playerContactKind(),
+      impactSpeed: this.physics.playerImpactSpeed(),
+      inactive: this.flow.phase === 'FINISHED',
       speed: this.vehicle.speed,
       throttle: this.flow.phase === 'RACING' && this.keys.has('KeyW') && !isPitActive(this.pitStop) ? 1 : 0,
       brake: this.flow.phase === 'RACING' && this.keys.has('KeyS') && !isPitActive(this.pitStop) ? 1 : 0,

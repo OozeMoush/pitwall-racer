@@ -137,3 +137,11 @@ If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre 
 ## Current non-goals
 
 Do not request realism for its own sake. Fuel strategy, full FIA stewarding, safety cars, rain, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun. Hybrid energy is also parked outside the current playable core.
+
+### Issue #152: audio feedback foundation
+
+- Brake hard near an opponent without contact: no impact thump. Hit a car or barrier: one thump per contact episode; sustained rubbing stays quiet.
+- P / ESC pauses both driving and sound. Adjust VOLUME / MUTE in the pause screen; zero mutes. Resume and restart retain the selected session volume without replaying old start/contact sounds.
+- Finish and qualifying results hush continuous driving audio. Moving from qualifying to the race must not leave the old engine audible.
+- With seven CPUs, repeat contacts, pause/resume and qualifying retries; check audible comfort, frame time and Web Audio resources. Sound balance and these browser checks require human confirmation; unit tests/build do not replace them.
+- This slice uses only existing procedural oscillators/noise. Directional rival audio, position/pit/PB cues and richer finish presentation remain separate #152 work.
