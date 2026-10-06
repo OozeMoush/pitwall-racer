@@ -669,6 +669,9 @@ export class QualifyingGame {
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const surface = surfaceEffect(projection.distance, projection.progress);
     this.audio.update({
+      contactKind: this.physics.playerContactKind(),
+      impactSpeed: this.physics.playerImpactSpeed(),
+      inactive: this.phase === 'RESULTS',
       speed: this.vehicle.speed,
       throttle: this.phase === 'APPROACH' || this.phase === 'FLYING' ? (this.keys.has('KeyW') ? 1 : 0) : 0,
       brake: this.keys.has('KeyS') ? 1 : 0,
@@ -828,7 +831,7 @@ export class QualifyingGame {
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
     this.container.removeEventListener('pointerdown', this.onPointerDown);
-    this.audio.reset();
+    this.audio.dispose();
     this.renderer.dispose();
     this.container.innerHTML = '';
     this.hud.innerHTML = '';

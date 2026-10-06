@@ -137,3 +137,46 @@ If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre 
 ## Current non-goals
 
 Do not request realism for its own sake. Fuel strategy, full FIA stewarding, safety cars, rain, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun. Hybrid energy is also parked outside the current playable core.
+
+## Rival strategy readability (#150)
+
+Deterministic tests must cover matched samples/signs, no-data states, pit/out
+lap filtering, invalid/recovery samples, nonfinite times, timing-line lapping
+boundaries, opponent changes and physical phase notification deduplication,
+expiry and restart. A failed/recovered player lap may still count in the Grand
+Prix but must not supply clean pace evidence. Keep CPU future plans out of the
+normal strategy panel (debug is a separate diagnostic).
+
+Check the tower at desktop and smaller desktop sizes in a seven-CPU race:
+AHEAD/BEHIND must identify classification neighbours, show actual compounds,
+and distinguish a whole-lap deficit. Before enough clean matching laps, display
+no-data rather than a fabricated number. At physical pit entry/service/exit,
+check four-second short notices and no pile-up or centre warning overlap.
+Read pace/sample laps while driving; check player stops and rival overtakes.
+Measure AUTO and legacy/dynamics PLAYER controller/physics as usual; also
+compare live browser frame rate and HUD cost. Unit timings do not certify FPS.
+## Post-race review (#151)
+
+Deterministic gates: 1 Hz position/gap sampling, exact physical pit changes,
+missing intervals, whole-lap vs line-crossing offsets, counted vs unknown-clean
+laps, idempotent finish, player DSQ/pending penalties and unfinished CPU cutoff.
+Exercise long-session sample/event/lap bounds, snapshot ownership, independent
+restart, changed line fingerprints and cached review rendering. Retain the
+physical GP pit regression: exported phases must match actual entry/service/
+exit and actual fitted compound. No future CPU plan belongs in the summary.
+
+Human checks: finish a race, scroll the review without resets, select rivals,
+read position/gap traces and both pit histories. Confirm missing/lapped gaps do
+not join into an apparent measured time delta. Observe before/after both pit
+rejoins; do not attribute all delta to strategy. Download JSON and verify setup,
+line changes, timestamps and cutoff states. Retry identical setup and a changed
+starting tyre: grid/initial runtime line restore, saved PLAYER BEST survives,
+recording starts empty. Check finish on a shorter desktop and keyboard focus.
+Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.
+### Issue #152: audio feedback foundation
+
+- Brake hard near an opponent without contact: no impact thump. Hit a car or barrier: one thump per contact episode; sustained rubbing stays quiet.
+- P / ESC pauses both driving and sound. Adjust VOLUME / MUTE in the pause screen; zero mutes. Resume and restart retain the selected session volume without replaying old start/contact sounds.
+- Finish and qualifying results hush continuous driving audio. Moving from qualifying to the race must not leave the old engine audible.
+- With seven CPUs, repeat contacts, pause/resume and qualifying retries; check audible comfort, frame time and Web Audio resources. Sound balance and these browser checks require human confirmation; unit tests/build do not replace them.
+- This slice uses only existing procedural oscillators/noise. Directional rival audio, position/pit/PB cues and richer finish presentation remain separate #152 work.

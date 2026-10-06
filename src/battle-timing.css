@@ -17,3 +17,17 @@
 .tower .tower-best.timing-purple{font-weight:950}
 @media(max-width:1450px){.tower{min-width:425px!important}.tower-head,.tower>span{grid-template-columns:28px 68px minmax(70px,1fr) 68px 72px 72px!important}.tower>span>strong{font-size:13px}.tower>span>b{font-size:13px}.tower>span>small{font-size:10px}.tower-tyre em{font-size:12px!important}.tower-wear-value{font-size:10px}}
 @media(max-width:1050px){.tower{min-width:324px!important}.tower-head,.tower>span{grid-template-columns:27px 60px minmax(65px,1fr) 67px 70px!important}.tower-head i:nth-child(5),.tower>span>small:not(.tower-best){display:none}.tower>span>b{font-size:12px}.tower-wear-meter{height:3px}}
+
+/* Strategy stays in the tower footprint; warnings retain the centre screen. */
+.rival-strategy{border-top:1px solid #44534d;padding:10px 11px;background:rgba(8,12,14,.92);text-shadow:none}
+.rival-strategy header{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:850;color:#cad6d0}
+.rival-strategy header span{display:inline!important;padding:0!important;font-size:9px!important;color:#93a59a!important}
+.rival-row{display:grid;grid-template-columns:54px minmax(0,1fr);gap:3px 8px;margin-top:10px}
+.rival-row small{font-size:10px;color:#93a59a;align-self:center}
+.rival-row strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rival-row i{font-style:normal;margin-left:8px}
+.rival-row em{font-size:10px;color:#94cfe3;font-style:normal;margin-left:6px}
+.tower .rival-row span{display:block!important;grid-column:2;padding:0!important;font-size:11px!important;color:#d4dfd9!important;font-variant-numeric:tabular-nums}
+.rival-pit-notice{margin-top:8px;padding-top:6px;border-top:1px solid #32473f;font-size:12px;color:#8dd9ec;font-weight:750}
+@media(max-width:1050px){.rival-strategy header span{display:none!important}.rival-row{grid-template-columns:45px minmax(0,1fr);gap:3px 4px;margin-top:7px}.tower .rival-row span{font-size:10px!important}.rival-row strong{font-size:12px}}
+@media(max-height:740px){.tower>span{padding-top:5px!important;padding-bottom:5px!important}.rival-strategy{padding-top:7px;padding-bottom:7px}.rival-row{margin-top:6px}}

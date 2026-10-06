@@ -1,3 +1,5 @@
+import { getRaceAudioVolume, setRaceAudioVolume } from '../audio/RaceAudio';
+
 interface PauseRow {
   position: string;
   tyres: string;
@@ -99,6 +101,7 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
           <div><small>RACE PAUSED</small><h2>${escapeHtml(raceTitle)}</h2></div>
           <strong>PAUSED</strong>
         </header>
+        <label>VOLUME / MUTE <input class="race-volume" type="range" min="0" max="100" value="${Math.round(getRaceAudioVolume() * 100)}" aria-label="Race audio volume (zero mutes)"></label>
         <div class="pause-scroll">
           <div class="pause-score-head"><i>P</i><i>TYRES</i><i>DRIVER</i><i>GAP</i><i>LAST</i><i>BEST</i></div>
           <div class="pause-score-list">${rowHtml}</div>
@@ -114,6 +117,9 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
         </div>
         <footer>P / ESC · RESUME${debugEnabled ? ' · CPU HISTORY ENABLED' : ' · F3 BEFORE PAUSE FOR CPU HISTORY'}</footer>
       </section>`;
+    overlay.querySelector<HTMLInputElement>('.race-volume')?.addEventListener('input', (event) => {
+      setRaceAudioVolume(Number((event.target as HTMLInputElement).value) / 100);
+    });
     container.appendChild(overlay);
   };
 
@@ -127,6 +133,7 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
     if (!paused) return;
     paused = false;
     document.documentElement.classList.remove('race-paused');
+    window.dispatchEvent(new CustomEvent('race-audio-pause', { detail: false }));
     overlay?.remove();
     overlay = undefined;
 
@@ -140,6 +147,7 @@ export function installRacePauseController(container: HTMLElement, hud: HTMLElem
     clearDrivingKeys();
     paused = true;
     document.documentElement.classList.add('race-paused');
+    window.dispatchEvent(new CustomEvent('race-audio-pause', { detail: true }));
     renderOverlay();
   };
 
