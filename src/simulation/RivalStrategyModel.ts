@@ -18,23 +18,17 @@ export interface RivalCar {
   phase: ObservedPitPhase;
 }
 
-/** Use matching lap numbers in the last three jointly completed laps. Never
- * substitute older pre-stop pace. Lap 1 and the lap after a pit lap are excluded
- * conservatively, even when the pit exit occurred before the timing line. */
+/** Compare the latest jointly completed lap, including start/pit/out/invalid laps.
+ * Nonfinite or unfinished timing still cannot produce a meaningful difference. */
 export function compareRivalPace(player: readonly PaceLap[], rival: readonly PaceLap[], completedLap: number): { delta?: number; laps: number[] } {
-  const laps: number[] = [];
-  let sum = 0;
-  for (let lap = Math.max(2, completedLap - 2); lap <= completedLap; lap++) {
+  for (let lap = completedLap; lap >= 1; lap--) {
     const a = player.find(row => row.lap === lap);
     const b = rival.find(row => row.lap === lap);
-    const eligible = (row: PaceLap | undefined, rows: readonly PaceLap[]) => row !== undefined
-      && Number.isFinite(row.lapTime) && row.lapTime > 0 && row.valid !== false && row.paceValid !== false
-      && !row.pitted && !rows.some(previous => previous.lap === lap - 1 && previous.pitted);
-    if (!eligible(a, player) || !eligible(b, rival)) continue;
-    sum += b!.lapTime - a!.lapTime;
-    laps.push(lap);
+    if (!a || !b) continue;
+    if (!Number.isFinite(a.lapTime) || !Number.isFinite(b.lapTime) || a.lapTime <= 0 || b.lapTime <= 0) continue;
+    return { delta: b.lapTime - a.lapTime, laps: [lap] };
   }
-  return { delta: laps.length ? sum / laps.length : undefined, laps };
+  return { delta: undefined, laps: [] };
 }
 
 /** Classification neighbours, not nearest cars on the physical road. A lap

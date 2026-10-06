@@ -1878,17 +1878,15 @@ export class CoreRaceGame {
   private renderPaceCell(id: string): string {
     const driver = this.ai.find(car => car.id === id);
     if (!driver || this.flow.phase !== 'RACING') return '<small class="tower-pace">—</small>';
-    const index = this.ai.indexOf(driver);
-    const lapped = Math.abs(raceDistance(this.lap, this.trackProgress) - raceDistance(driver.lap, driver.progress)) >= 1;
     const history = this.aiLapClocks.get(id)?.laps ?? [];
     const pace = compareRivalPace(this.lapHistory.slice(-5), history.slice(-5), Math.min(this.lap, driver.lap) - 1);
-    if (lapped || this.physics.aiPitPhase(index) !== 'NONE' || pace.delta === undefined) {
-      return '<small class="tower-pace" title="No comparable clean laps, pit activity or lap deficit">—</small>';
+    if (pace.delta === undefined) {
+      return '<small class="tower-pace" title="No jointly completed lap yet">—</small>';
     }
     // Model uses rival minus player; display player minus rival (negative is faster).
     const delta = Math.abs(pace.delta) < 0.005 ? 0 : -pace.delta;
     const tone = delta < 0 ? 'pace-gain' : delta > 0 ? 'pace-loss' : 'pace-even';
-    return `<small class="tower-pace ${tone}" title="Player minus rival seconds/lap; matched laps ${pace.laps.join('/')} (${pace.laps.length})">${delta > 0 ? '+' : ''}${delta.toFixed(2)}</small>`;
+    return `<small class="tower-pace ${tone}" title="Player minus rival on latest shared completed lap ${pace.laps.join('/')} (${pace.laps.length})">${delta > 0 ? '+' : ''}${delta.toFixed(2)}</small>`;
   }
 
   private renderHud(): void {

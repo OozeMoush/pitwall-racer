@@ -4,23 +4,18 @@ const lap = (lap: number, lapTime = 30, pitted = false): PaceLap => ({ lap, lapT
 const car = (id: string, lap = 3, progress = 0.5): RivalCar => ({ id, name: id, lap, progress, compound: 'MEDIUM', phase: 'NONE' });
 
 describe('rival pace evidence', () => {
-  it('averages matching recent completed laps with an explicit player-relative sign', () => {
-    expect(compareRivalPace([lap(2), lap(3), lap(4)], [lap(2,31),lap(3,32),lap(4,33)],4)).toEqual({ delta:2,laps:[2,3,4] });
-    expect(compareRivalPace([lap(2,32)], [lap(2,30)],2).delta).toBe(-2);
+  it('uses the latest shared completed lap and updates every lap', () => {
+    expect(compareRivalPace([lap(1),lap(2)], [lap(1,31),lap(2,32)],2)).toEqual({delta:2,laps:[2]});
+    expect(compareRivalPace([lap(1)], [lap(1,31)],1)).toEqual({delta:1,laps:[1]});
   });
-  it('rejects start, pit, out, invalid, nonfinite and unfinished laps without old-data fallback', () => {
-    const a = [lap(1),lap(2),lap(3,40,true),lap(4),{...lap(5),paceValid:false},lap(6,NaN),lap(7)];
-    const b = Array.from({length:7},(_,i)=>lap(i+1,31));
-    expect(compareRivalPace(a,b,6)).toEqual({delta:undefined,laps:[]});
-    expect(compareRivalPace(a,b,3)).toEqual({delta:1,laps:[2]});
-    expect(compareRivalPace([lap(2)], [{...lap(2),valid:false}],2).delta).toBeUndefined();
+  it('includes pit, out and invalid laps as requested', () => {
+    expect(compareRivalPace([{...lap(3,40,true),valid:false,paceValid:false}], [lap(3,31)],3)).toEqual({delta:-9,laps:[3]});
+    expect(compareRivalPace([lap(4)], [lap(4,31)],4)).toEqual({delta:1,laps:[4]});
+  });
+  it('cannot compare missing, unfinished or invalid numeric times', () => {
     expect(compareRivalPace([lap(2)], [lap(3)],3).delta).toBeUndefined();
+    expect(compareRivalPace([lap(2,NaN)], [lap(2)],2).delta).toBeUndefined();
     expect(compareRivalPace([lap(2,0)], [lap(2)],2).delta).toBeUndefined();
-  });
-  it('excludes the out lap for either participant and includes the next clean lap', () => {
-    const a = [lap(2),lap(3),lap(4),lap(5)];
-    const b = [lap(2,40,true),lap(3),lap(4,31),lap(5,31)];
-    expect(compareRivalPace(a,b,4)).toEqual({delta:1,laps:[4]});
   });
 });
 describe('classification neighbours', () => {

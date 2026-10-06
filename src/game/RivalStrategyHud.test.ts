@@ -26,11 +26,10 @@ describe('live rival pace column',()=>{
     expect(game.renderPaceCell(ai[0].id)).toContain('+1.00');
     expect(game.renderPaceCell(ai[0].id)).not.toContain('YOU SLOWER');
   });
-  it('suppresses incomparable pace in pits, with whole-lap deficits and outside racing',()=>{
+  it('keeps the latest comparison during pits or lap deficits, and hides outside racing',()=>{
     const {game,ai}=fixture();game.physics.aiPitPhase=()=> 'SERVICE';
-    expect(game.renderPaceCell(ai[0].id)).toContain('>—<');
-    game.physics.aiPitPhase=()=> 'NONE';ai[0].lap=5;
-    expect(game.renderPaceCell(ai[0].id)).toContain('>—<');
+    expect(game.renderPaceCell(ai[0].id)).toContain('-1.00');
+    ai[0].lap=5;expect(game.renderPaceCell(ai[0].id)).toContain('-1.00');
     game.flow.phase='FINISHED';expect(game.renderPaceCell(ai[1].id)).toContain('>—<');
   });
 });

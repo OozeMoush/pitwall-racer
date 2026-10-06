@@ -1,5 +1,5 @@
 .tower{min-width:492px!important}
-.tower-head,.tower>span{display:grid!important;grid-template-columns:31px 76px minmax(82px,1fr) 78px 84px 84px!important;align-items:center}
+.tower-head,.tower>span{display:grid!important;grid-template-columns:27px 60px minmax(70px,1fr) 68px 72px 58px 72px!important;align-items:center}
 .tower-head{padding:5px 11px 7px;color:#798680;font-size:10px;font-weight:900;letter-spacing:.105em;border-bottom:1px solid rgba(255,255,255,.09);text-shadow:none}
 .tower-head i{font-style:normal}.tower-head i:nth-child(n+4){text-align:right}
 .tower>span>strong{overflow:hidden;text-overflow:ellipsis;font-size:15px;font-weight:800;white-space:nowrap}
@@ -15,8 +15,8 @@
 .tower-wear-meter.healthy>i{background:#45dc82}.tower-wear-meter.warning>i{background:#ffd166}.tower-wear-meter.critical>i{background:#ff5f6d;box-shadow:0 0 7px rgba(255,95,109,.5)}
 .tower .gap-ahead{color:#45dc82}.tower .gap-behind{color:#e4eae7}.tower .gap-self{color:#31b9ef}
 .tower .tower-best.timing-purple{font-weight:950}
-@media(max-width:1450px){.tower{min-width:425px!important}.tower-head,.tower>span{grid-template-columns:28px 68px minmax(70px,1fr) 68px 72px 72px!important}.tower>span>strong{font-size:13px}.tower>span>b{font-size:13px}.tower>span>small{font-size:10px}.tower-tyre em{font-size:12px!important}.tower-wear-value{font-size:10px}}
-@media(max-width:1050px){.tower{min-width:324px!important}.tower-head,.tower>span{grid-template-columns:27px 60px minmax(65px,1fr) 67px 70px!important}.tower-head i:nth-child(5),.tower>span>small:not(.tower-best){display:none}.tower>span>b{font-size:12px}.tower-wear-meter{height:3px}}
+@media(max-width:1450px){.tower{min-width:425px!important}.tower-head,.tower>span{grid-template-columns:25px 56px minmax(65px,1fr) 62px 66px 54px 66px!important}.tower>span>strong{font-size:13px}.tower>span>b{font-size:13px}.tower>span>small{font-size:10px}.tower-tyre em{font-size:12px!important}.tower-wear-value{font-size:10px}}
+@media(max-width:1050px){.tower{min-width:324px!important}.tower-head,.tower>span{grid-template-columns:23px 48px minmax(60px,1fr) 58px 50px 62px!important}.tower-head i:nth-child(5),.tower>span>small:not(.tower-best):not(.tower-pace){display:none}.tower>span>b{font-size:12px}.tower-wear-meter{height:3px}}
 
 
 .tower .tower-pace.pace-gain{color:#45dc82}.tower .tower-pace.pace-loss{color:#ff5f6d}.tower .tower-pace.pace-even{color:#94a09a}
@@ -25,3 +25,5 @@
 @media(max-height:740px){.tower>span{padding-top:5px!important;padding-bottom:5px!important}}
 
 .tower-pit{margin-left:5px;color:#94cfe3;font-size:10px;font-style:normal}
+
+.tower-head,.tower>span{grid-auto-flow:row;column-gap:3px}

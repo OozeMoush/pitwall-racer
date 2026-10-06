@@ -186,3 +186,5 @@ Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.
 - Rival pace now appears in the existing tower as Δ PACE, in seconds/lap: player minus rival. Negative/green is gaining, positive/red is losing, zero is neutral. This is recent matched clean-lap pace, not the instantaneous GAP column. Pit/lap-deficit/no-data rows show a dash; actual CPU pit phases appear as IN/BOX/OUT in the driver row. Separate AHEAD/BEHIND cards are removed.
 - Check this column at narrow viewport widths, without extra tower rows.
 - Scroll up/down over the driving canvas in qualifying and race: verify bounded zoom and retained player follow. Resize and restart; verify UI/result panels still scroll normally.
+
+Human feedback correction: Δ PACE uses the latest jointly completed lap, including start, pit, out and invalid laps; only missing/nonfinite/nonpositive times are unavailable. The tower explicitly allocates seven desktop columns (P, TYRES, DRIVER, GAP, LAST, Δ PACE, BEST); narrow screens hide LAST and allocate six columns, retaining pace and BEST horizontally.

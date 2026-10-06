@@ -574,3 +574,5 @@ actual recorded data. Automatic persistent/multi-session history is deferred to
 Human playtest refinement (#150): comparative pace belongs in the existing classification tower as one numeric column, player-minus-rival seconds/lap, negative green / positive red. Separate textual faster/slower rival cards are removed. Existing clean-lap and pit/lap-deficit exclusions still apply. Actual pit status stays in each driver row.
 
 Camera zoom (#160): bounded wheel zoom changes orthographic scale only, preserving camera orientation and player follow. Canvas-only handling leaves panel scrolling and browser pinch zoom available.
+
+Human feedback correction: Δ PACE uses the latest jointly completed lap, including start, pit, out and invalid laps; only missing/nonfinite/nonpositive times are unavailable. The tower explicitly allocates seven desktop columns (P, TYRES, DRIVER, GAP, LAST, Δ PACE, BEST); narrow screens hide LAST and allocate six columns, retaining pace and BEST horizontally.
