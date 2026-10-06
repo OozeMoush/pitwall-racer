@@ -1,3 +1,4 @@
+import { installCameraZoom } from '../ui/CameraZoom';
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
 import { createFormulaCar } from '../rendering3d/Car3D';
@@ -100,6 +101,7 @@ export class QualifyingGame {
   private readonly camera = new THREE.OrthographicCamera(-40, 40, CAMERA_HALF_HEIGHT, -CAMERA_HALF_HEIGHT, 0.1, 460);
   private readonly keys = new Set<string>();
   private readonly car = createFormulaCar(0x31b9ef, 'SOFT', true);
+  private removeCameraZoom?: () => void;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly audio = new RaceAudio();
   private readonly physics: RapierRacePhysics;
@@ -171,6 +173,7 @@ export class QualifyingGame {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
+    this.removeCameraZoom = installCameraZoom(this.renderer.domElement, this.camera);
 
     this.setupWorld();
     this.scene.add(this.car.root);
@@ -832,6 +835,7 @@ export class QualifyingGame {
     window.removeEventListener('blur', this.onBlur);
     this.container.removeEventListener('pointerdown', this.onPointerDown);
     this.audio.dispose();
+    this.removeCameraZoom?.();
     this.renderer.dispose();
     this.container.innerHTML = '';
     this.hud.innerHTML = '';

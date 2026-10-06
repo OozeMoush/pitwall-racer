@@ -139,3 +139,5 @@ The older energy model remains in the repository as a deferred system and still 
 ## Design rule
 
 If a race is not fun before another major system is added, that system is not the fix. Driving, CPU pressure, tyre feel and pit timing must stand on their own first. See [DESIGN.md](./DESIGN.md).
+
+Mouse wheel over the driving canvas zooms in/out in race and qualifying (0.5×–2.5×). UI panels retain normal scrolling.

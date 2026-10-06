@@ -16,20 +16,21 @@ function fixture() {
   const standings=[{id:ai[0].id,name:ai[0].name,lap:3,progress:0.6},{id:'player',name:'YOU',lap:3,progress:0.5},{id:ai[1].id,name:ai[1].name,lap:3,progress:0.4}];
   return {game,ai,standings};
 }
-describe('live rival HUD integration',()=>{
-  it('shows current classification opponents, actual tyres and sample evidence without future plans',()=>{
-    const {game,ai,standings}=fixture();
-    ai[0].name='<script>';ai[0].pitLap=99;ai[0].nextCompound='HARD';
-    const html=game.renderRivalStrategy(standings);
-    expect(html).toContain('YOU FASTER');expect(html).toContain('L2 (1)');
-    expect(html).toContain('&lt;script&gt;');expect(html).not.toContain('L99');
-    expect(html).not.toContain('HARD');
+describe('live rival pace column',()=>{
+  it('shows player-minus-rival numeric pace, green when gaining and red when losing',()=>{
+    const {game,ai}=fixture();
+    expect(game.renderPaceCell(ai[0].id)).toContain('pace-gain');
+    expect(game.renderPaceCell(ai[0].id)).toContain('-1.00');
+    game.aiLapClocks.get(ai[0].id).laps[0].lapTime=29;
+    expect(game.renderPaceCell(ai[0].id)).toContain('pace-loss');
+    expect(game.renderPaceCell(ai[0].id)).toContain('+1.00');
+    expect(game.renderPaceCell(ai[0].id)).not.toContain('YOU SLOWER');
   });
-  it('suppresses pace for observed pit activity and whole-lap deficits, and hides outside racing',()=>{
-    const {game,standings}=fixture();game.physics.aiPitPhase=()=> 'SERVICE';
-    expect(game.renderRivalStrategy(standings)).toContain('PACE — · IN PIT');
-    standings[0].lap=5;
-    expect(game.renderRivalStrategy(standings)).toContain('LAPS AHEAD');
-    game.flow.phase='FINISHED';expect(game.renderRivalStrategy(standings)).toBe('');
+  it('suppresses incomparable pace in pits, with whole-lap deficits and outside racing',()=>{
+    const {game,ai}=fixture();game.physics.aiPitPhase=()=> 'SERVICE';
+    expect(game.renderPaceCell(ai[0].id)).toContain('>—<');
+    game.physics.aiPitPhase=()=> 'NONE';ai[0].lap=5;
+    expect(game.renderPaceCell(ai[0].id)).toContain('>—<');
+    game.flow.phase='FINISHED';expect(game.renderPaceCell(ai[1].id)).toContain('>—<');
   });
 });

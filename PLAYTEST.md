@@ -180,3 +180,9 @@ Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.
 - Finish and qualifying results hush continuous driving audio. Moving from qualifying to the race must not leave the old engine audible.
 - With seven CPUs, repeat contacts, pause/resume and qualifying retries; check audible comfort, frame time and Web Audio resources. Sound balance and these browser checks require human confirmation; unit tests/build do not replace them.
 - This slice uses only existing procedural oscillators/noise. Directional rival audio, position/pit/PB cues and richer finish presentation remain separate #152 work.
+
+### Integrated human feedback: #150 / #160
+
+- Rival pace now appears in the existing tower as Δ PACE, in seconds/lap: player minus rival. Negative/green is gaining, positive/red is losing, zero is neutral. This is recent matched clean-lap pace, not the instantaneous GAP column. Pit/lap-deficit/no-data rows show a dash; actual CPU pit phases appear as IN/BOX/OUT in the driver row. Separate AHEAD/BEHIND cards are removed.
+- Check this column at narrow viewport widths, without extra tower rows.
+- Scroll up/down over the driving canvas in qualifying and race: verify bounded zoom and retained player follow. Resize and restart; verify UI/result panels still scroll normally.

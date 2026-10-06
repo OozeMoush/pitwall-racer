@@ -1,3 +1,4 @@
+import { installCameraZoom } from '../ui/CameraZoom';
 import { compareRivalPace, rivalNeighbours, RivalPitObserver, type RivalCar } from '../simulation/RivalStrategyModel';
 import { RaceSummaryRecorder, summaryFingerprint, type RaceSummary, type SummaryCar } from '../simulation/RaceSummaryModel';
 import { renderRaceReview } from '../ui/RaceReview';
@@ -278,6 +279,7 @@ export class CoreRaceGame {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
+    installCameraZoom(this.renderer.domElement, this.camera);
 
     this.setupWorld();
     this.playerCar = createFormulaCar(0x31b9ef, this.tire.compound, true);
@@ -1873,25 +1875,20 @@ export class CoreRaceGame {
     </div>`;
   }
 
-  private renderRivalStrategy(standings: readonly LiveStandingEntry[]): string {
-    if (this.flow.phase !== 'RACING') return '';
-    const cars = this.rivalCars();
-    const ordered = standings.map(entry => ({ ...cars.find(car => car.id === entry.id)!, lap: entry.lap, progress: entry.progress }));
-    const rows = rivalNeighbours(ordered).map(({ side, car, lapped }) => {
-      if (!car) return `<div class="rival-row"><small>${side}</small><strong>—</strong><span>NO RIVAL</span></div>`;
-      const history = this.aiLapClocks.get(car.id)?.laps ?? [];
-      const pace = compareRivalPace(this.lapHistory.slice(-5), history.slice(-5), Math.min(this.lap, car.lap) - 1);
-      const phase = car.phase === 'NONE' ? 'ON TRACK' : car.phase === 'TRANSIT_IN' ? 'PIT IN' : car.phase === 'SERVICE' ? 'PIT BOX' : 'PIT OUT';
-      const paceText = lapped ? (side === 'AHEAD' ? 'LAPS AHEAD' : 'LAPPED')
-        : car.phase !== 'NONE' ? 'PACE — · IN PIT'
-        : pace.delta === undefined ? 'PACE — · NO MATCHED CLEAN LAPS'
-        : Math.abs(pace.delta) < 0.005 ? 'EVEN PACE'
-        : `${Math.abs(pace.delta).toFixed(2)}s/LAP ${pace.delta > 0 ? 'YOU FASTER' : 'YOU SLOWER'}`;
-      const sample = pace.laps.length && !lapped && car.phase === 'NONE' ? ` · L${pace.laps.join('/')} (${pace.laps.length})` : '';
-      return `<div class="rival-row"><small>${side}</small><strong>${escapeHud(car.name)} <i class="tyre-${car.compound.toLowerCase()}">${car.compound[0]}</i> <em>${phase}</em></strong><span>${paceText}${sample}</span></div>`;
-    }).join('');
-    const notices = this.rivalPits.visible(this.timing.raceTime).map(notice => `<div class="rival-pit-notice">${escapeHud(notice.text)}</div>`).join('');
-    return `<section class="rival-strategy" aria-label="Classification rivals and matched recent lap pace"><header>RIVALS <span>LAST 3 SHARED LAPS · EXCL START/PIT/OUT</span></header>${rows}${notices}</section>`;
+  private renderPaceCell(id: string): string {
+    const driver = this.ai.find(car => car.id === id);
+    if (!driver || this.flow.phase !== 'RACING') return '<small class="tower-pace">—</small>';
+    const index = this.ai.indexOf(driver);
+    const lapped = Math.abs(raceDistance(this.lap, this.trackProgress) - raceDistance(driver.lap, driver.progress)) >= 1;
+    const history = this.aiLapClocks.get(id)?.laps ?? [];
+    const pace = compareRivalPace(this.lapHistory.slice(-5), history.slice(-5), Math.min(this.lap, driver.lap) - 1);
+    if (lapped || this.physics.aiPitPhase(index) !== 'NONE' || pace.delta === undefined) {
+      return '<small class="tower-pace" title="No comparable clean laps, pit activity or lap deficit">—</small>';
+    }
+    // Model uses rival minus player; display player minus rival (negative is faster).
+    const delta = Math.abs(pace.delta) < 0.005 ? 0 : -pace.delta;
+    const tone = delta < 0 ? 'pace-gain' : delta > 0 ? 'pace-loss' : 'pace-even';
+    return `<small class="tower-pace ${tone}" title="Player minus rival seconds/lap; matched laps ${pace.laps.join('/')} (${pace.laps.length})">${delta > 0 ? '+' : ''}${delta.toFixed(2)}</small>`;
   }
 
   private renderHud(): void {
@@ -2040,6 +2037,8 @@ export class CoreRaceGame {
         : towerWearPct >= 58
           ? 'warning'
           : 'healthy';
+      const pitPhase = aiIndex >= 0 ? this.physics.aiPitPhase(aiIndex) : 'NONE';
+      const pitLabel = pitPhase === 'SERVICE' ? 'BOX' : pitPhase === 'TRANSIT_IN' ? 'IN' : pitPhase === 'TRANSIT_OUT' ? 'OUT' : '';
       const carColor = aiIndex >= 0 ? AI_COLORS[aiIndex] ?? 0xffffff : 0x31b9ef;
       const carColorHex = `#${carColor.toString(16).padStart(6, '0')}`;
       const carBadge = driver.id === 'player'
@@ -2049,7 +2048,7 @@ export class CoreRaceGame {
         <div class="tower-tyre-top"><em class="tyre-${compound.toLowerCase()}" data-current-tyre="${compound[0]}">${compound[0]}</em><u class="tower-wear-value ${towerWearClass}">${towerWearPct}%</u></div>
         <u class="tower-wear-meter ${towerWearClass}" aria-hidden="true"><i style="width:${towerWearPct}%"></i></u>
       </div>`;
-      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i>${tyreCell}<strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small></span>`;
+      return `<span class="${driver.id === 'player' ? 'you' : ''}"><i>${index + 1}</i>${tyreCell}<strong style="display:flex;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${carBadge}${driver.name}${pitLabel ? ` <em class="tower-pit">${pitLabel}</em>` : ''}</strong><b class="${gapClass}">${formatSignedRaceGap(gap)}</b><small>${lastLap === undefined ? '—' : formatLapTime(lastLap)}</small>${this.renderPaceCell(driver.id)}</span>`;
     }).join('');
 
     const pauseTimingData = this.renderPauseTimingData();
@@ -2058,7 +2057,7 @@ export class CoreRaceGame {
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 BEST <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 BEST <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 BEST <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
-      <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i></div>${towerHtml}${this.renderRivalStrategy(standings)}</div>
+      <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i><i>Δ PACE</i></div>${towerHtml}</div>
       <div class="race-telemetry">
         <div class="mini-map"><header><b>TRACK</b><span>LIVE POSITION</span></header>${this.miniMapSvg()}</div>
         <div class="lap-board"><header><b>LAPS</b><span>TYRE/PIT · S1 · S2 · S3 · LAP</span></header><div class="lap-head" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><i>#</i><i>TYRE</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i></div>${this.renderLapBoard()}</div>

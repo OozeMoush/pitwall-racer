@@ -570,3 +570,7 @@ Legacy C continues its usual original setup behavior. Runtime restoration does
 not overwrite the saved PLAYER BEST. JSON export is user initiated and contains
 actual recorded data. Automatic persistent/multi-session history is deferred to
 #155; no old results are fabricated from a single saved PB.
+
+Human playtest refinement (#150): comparative pace belongs in the existing classification tower as one numeric column, player-minus-rival seconds/lap, negative green / positive red. Separate textual faster/slower rival cards are removed. Existing clean-lap and pit/lap-deficit exclusions still apply. Actual pit status stays in each driver row.
+
+Camera zoom (#160): bounded wheel zoom changes orthographic scale only, preserving camera orientation and player follow. Canvas-only handling leaves panel scrolling and browser pinch zoom available.
