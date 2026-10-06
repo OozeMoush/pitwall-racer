@@ -137,3 +137,22 @@ If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre 
 ## Current non-goals
 
 Do not request realism for its own sake. Fuel strategy, full FIA stewarding, safety cars, rain, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun. Hybrid energy is also parked outside the current playable core.
+
+## Post-race review (#151)
+
+Deterministic gates: 1 Hz position/gap sampling, exact physical pit changes,
+missing intervals, whole-lap vs line-crossing offsets, counted vs unknown-clean
+laps, idempotent finish, player DSQ/pending penalties and unfinished CPU cutoff.
+Exercise long-session sample/event/lap bounds, snapshot ownership, independent
+restart, changed line fingerprints and cached review rendering. Retain the
+physical GP pit regression: exported phases must match actual entry/service/
+exit and actual fitted compound. No future CPU plan belongs in the summary.
+
+Human checks: finish a race, scroll the review without resets, select rivals,
+read position/gap traces and both pit histories. Confirm missing/lapped gaps do
+not join into an apparent measured time delta. Observe before/after both pit
+rejoins; do not attribute all delta to strategy. Download JSON and verify setup,
+line changes, timestamps and cutoff states. Retry identical setup and a changed
+starting tyre: grid/initial runtime line restore, saved PLAYER BEST survives,
+recording starts empty. Check finish on a shorter desktop and keyboard focus.
+Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.

@@ -504,3 +504,43 @@ rejections remain visible. Storage failures must not announce a saved line or
 switch CPU targets; failed Time Trial timing writes must not stop hotlapping.
 Changing the returned object to preserve identity was rejected because it would
 still conflate attempted writes with successful persistence.
+
+### Post-race observation and retry — Issue #151
+
+Race review is an observation at **player finish cutoff**, matching the current
+simulation stop. It is not a fabricated complete eight-car classification:
+unfinished CPUs remain UNFINISHED, not DNF. Distance order, whole-lap offsets,
+DSQ and outstanding player pit penalties remain separate. No CPU retirement or
+penalty is invented where the live model supplies none.
+
+Version-1 race summaries carry a unique session ID, UTC start timestamp, RACE
+mode, circuit geometry revision, lap count, actual starting compound, grid,
+duration/qualifying setting, balance rules version and value fingerprint of the
+initial CPU line. Runtime line changes are timestamped; different line values
+must not become indistinguishable just because both say PLAYER. The summary
+records observed fitted tyres, wear, completed lap/pit history and known state,
+not future CPU plans. GP counted validity is not a claim of driving cleanliness;
+clean evidence is explicitly unknown until its definition/collection in #155.
+
+Position and measured timing-loop gaps sample at 1 Hz. Missing gap values stay
+null. Pit entry/service/out/rejoin changes retain fixed-step timestamps. At most
+2048 position samples are kept, thinning older samples by two and increasing
+future cadence when full; 512 events / 4096 laps use bounded retention with
+explicit omitted counters. Finish is idempotent and includes an exact cutoff.
+Reset creates a new recorder. Page abandonment drops the in-memory partial race;
+the recorder schema also supports ABORTED for future session-ending flows.
+
+The review shows overview then selected rival, measured gap trace, both pit
+histories and matching lap rows. Graph gaps break at missing values/whole-lap
+deficits. Pit laps are labeled, never averaged into a synthetic clean pace.
+Comparisons use both rivals' completed rejoin points; observed delta includes
+traffic, driving and tyre effects and is not causal strategy benefit. The static
+review is cached so refreshes do not destroy scroll position or keyboard focus.
+
+The explicit retry buttons restore the initial CPU-line asset and grid, then
+restart with the same or chosen starting tyre. Stochastic live CPU form and
+player inputs still vary; this is comparable setup, not identical future results.
+Legacy C continues its usual original setup behavior. Runtime restoration does
+not overwrite the saved PLAYER BEST. JSON export is user initiated and contains
+actual recorded data. Automatic persistent/multi-session history is deferred to
+#155; no old results are fabricated from a single saved PB.

@@ -1,3 +1,6 @@
+import { RaceSummaryRecorder, summaryFingerprint, type RaceSummary, type SummaryCar } from '../simulation/RaceSummaryModel';
+import { renderRaceReview } from '../ui/RaceReview';
+import { trackGeometryRevision } from '../simulation/TrackModel';
 import { physicalPitControl } from '../simulation/PhysicalPitControl';
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
@@ -28,6 +31,7 @@ import {
   activeReferenceTarget,
   racingLineTraceLapSeconds,
   runtimeRacingLine,
+  setRuntimeRacingLine,
   sampleRuntimeRacingLinePose,
 } from '../simulation/RacingLineRuntime';
 import { selectedRacingLineSource } from '../simulation/RacingLineSelectionStore';
@@ -188,6 +192,13 @@ export class CoreRaceGame {
   private lapForwardProgress = 0;
   private pitRequested = false;
   private finishMessage = '';
+  private summaryRecorder?: RaceSummaryRecorder;
+  private raceSummary?: RaceSummary;
+  private summaryLineAsset?: ReturnType<typeof runtimeRacingLine>;
+  private summaryInitialLine?: ReturnType<typeof runtimeRacingLine>;
+  private reviewDriverId = 'ai-0';
+  private reviewHtml = '';
+  private renderedReviewHtml = '';
   private steerInput = 0;
   private trackDistance = 0;
   private trafficPressure = 0;
@@ -272,6 +283,7 @@ export class CoreRaceGame {
       return car;
     });
     this.physics = new RapierRacePhysics(this.vehicle, this.ai);
+    this.resetSummary();
     this.resetAiTiming();
     this.setupAiDebugVisuals();
 
@@ -305,6 +317,23 @@ export class CoreRaceGame {
   }
 
   private bindInput(): void {
+    this.hud.addEventListener('click', (event) => {
+      const target = (event.target as HTMLElement).closest<HTMLElement>('[data-review-driver], [data-review-retry], [data-review-download]');
+      if (!target || this.flow.phase !== 'FINISHED' || !this.raceSummary) return;
+      if (target.dataset.reviewDriver) {
+        this.reviewDriverId = target.dataset.reviewDriver;
+        this.reviewHtml = renderRaceReview(this.raceSummary, this.reviewDriverId);
+      } else if (target.hasAttribute('data-review-download')) {
+        const blob = new Blob([JSON.stringify(this.raceSummary, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'pitwall-race-summary-v1.json';
+        anchor.click(); URL.revokeObjectURL(url);
+      } else {
+        setRuntimeRacingLine(this.setup.trackId, this.summaryInitialLine);
+        const compound = target.dataset.reviewRetry;
+        this.resetRace(compound === 'SOFT' || compound === 'MEDIUM' || compound === 'HARD' ? compound : this.raceSummary.context.startCompound);
+      }
+    });
     window.addEventListener('keydown', (event) => {
       this.audio.unlock();
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
@@ -609,6 +638,7 @@ export class CoreRaceGame {
 
   private stepPhysicalPit(dt: number): boolean {
     if (!isPitActive(this.pitStop)) return false;
+    this.lapPitted = true;
 
     this.lineCandidate.markIneligible();
     const beforeState = this.pitStop;
@@ -793,6 +823,9 @@ export class CoreRaceGame {
       s3,
       lapTime,
     });
+    this.summaryRecorder?.recordLap({ driverId: 'player', lap: this.lap, seconds: lapTime,
+      time: this.timing.raceTime, startCompound: this.lapStartCompound, endCompound: this.tire.compound,
+      pitted: this.lapPitted, counted: true });
     this.lapHistory = this.lapHistory.slice(-this.totalLaps);
     if (validLap && this.lap >= 2 && lapTime > 10) this.registerSessionFastest(lapTime);
     this.commitRaceLineCandidate(lapTime, validLap);
@@ -967,6 +1000,9 @@ export class CoreRaceGame {
             s3,
             lapTime: completedLap,
           });
+          this.summaryRecorder?.recordLap({ driverId: driver.id, lap: clock.lap, seconds: completedLap,
+            time: this.timing.raceTime, startCompound: clock.lapStartCompound, endCompound: driver.tire.compound,
+            pitted: clock.pittedThisLap || driver.pitStopIndex > clock.lapStartPitStopIndex, counted: true });
           if (clock.laps.length > this.totalLaps) clock.laps.shift();
         }
         if (clock.lap >= 2 && completedLap > 10) {
@@ -1007,6 +1043,49 @@ export class CoreRaceGame {
       { id: 'player', lap: this.lap, progress: this.trackProgress },
       ...this.ai.map((driver) => ({ id: driver.id, lap: driver.lap, progress: driver.progress })),
     ], this.timing.raceTime);
+    this.recordSummary();
+  }
+
+  private resetSummary(): void {
+    this.summaryLineAsset = runtimeRacingLine(this.setup.trackId);
+    this.summaryInitialLine = this.summaryLineAsset;
+    this.summaryRecorder = new RaceSummaryRecorder({
+      trackId: this.setup.trackId, trackRevision: trackGeometryRevision(this.setup.trackId),
+      totalLaps: this.totalLaps, startCompound: this.tire.compound,
+      gridOrder: this.setup.gridOrder ? [...this.setup.gridOrder] : ['ai-0','ai-1','ai-2','ai-3','ai-4','ai-5','ai-6','player'],
+      raceLength: this.setup.raceLength, qualifyingTime: this.setup.qualifyingTime,
+      line: { source: this.summaryLineAsset?.source ?? 'AUTO', fingerprint: summaryFingerprint(this.summaryLineAsset ?? {source:'AUTO'}) },
+      rulesVersion: 'core-dry-3b952669',
+    });
+    this.raceSummary = undefined;
+    this.reviewHtml = '';
+    this.renderedReviewHtml = '';
+    this.reviewDriverId = this.ai[0]?.id ?? 'player';
+  }
+
+  private recordSummary(): void {
+    if (!this.summaryRecorder) return;
+    const cars: SummaryCar[] = [
+      {id:'player',name:'YOU',lap:this.lap,progress:this.trackProgress,compound:this.tire.compound,
+        wear:this.tire.wear,pitPhase: isPitActive(this.pitStop) ? this.pitStop.phase as SummaryCar['pitPhase'] : 'NONE',
+        finished:this.lap > this.totalLaps,pendingPenaltySeconds:this.trackLimitPenalty.pendingPitSeconds,
+        disqualified:this.flow.phase === 'FINISHED' && (!isTwoCompoundLegal(this.usedCompounds) || this.trackLimitPenalty.pendingPitSeconds > 0)},
+      ...this.ai.map((driver,index):SummaryCar=>({id:driver.id,name:driver.name,lap:driver.lap,progress:driver.progress,
+        compound:driver.tire.compound,wear:driver.tire.wear,pitPhase:this.physics.aiPitPhase(index),finished:driver.finished})),
+    ];
+    const player = cars[0];
+    const gap = (id: string) => { const other = cars.find(car => car.id === id); return other ? this.raceIntervals.gapSeconds(player,other) : undefined; };
+    const line = runtimeRacingLine(this.setup.trackId);
+    if (line !== this.summaryLineAsset) {
+      this.summaryLineAsset = line;
+      this.summaryRecorder.lineChanged(this.timing.raceTime,{source:line?.source ?? 'AUTO',fingerprint:summaryFingerprint(line ?? {source:'AUTO'})});
+    }
+    this.summaryRecorder.observe(this.timing.raceTime,cars,gap);
+    if (this.flow.phase === 'FINISHED' && !this.raceSummary) {
+      this.summaryRecorder.finish('PLAYER_FINISHED',this.timing.raceTime,cars,gap);
+      this.raceSummary = this.summaryRecorder.snapshot();
+      this.reviewHtml = renderRaceReview(this.raceSummary,this.reviewDriverId);
+    }
   }
 
   private registerSessionFastest(lapTime: number): void {
@@ -1345,11 +1424,11 @@ export class CoreRaceGame {
     this.trackDistance = 0;
   }
 
-  private resetRace(): void {
+  private resetRace(startCompound: Compound = this.startCompound): void {
     this.ai = createAiField(this.setup.gridOrder, this.totalLaps);
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     this.vehicle = this.startVehicle();
-    const selection = selectStartingTyre(this.startCompound);
+    const selection = selectStartingTyre(startCompound);
     this.tire = createTire(selection.startCompound);
     this.timing = createTiming();
     this.flow = createRaceFlow();
@@ -1397,13 +1476,14 @@ export class CoreRaceGame {
     this.impactDamageNoticeRemaining = 0;
     this.physics.reset(this.vehicle, this.ai);
     this.resetAiTiming();
+    this.resetSummary();
     if (this.debugEnabled) {
       this.clearAiDebugTrails();
       this.resetAiDebugGhost();
       this.refreshAiDebugReferenceLine();
     }
     this.audio.reset();
-    this.playerCar.setCompound(this.startCompound);
+    this.playerCar.setCompound(startCompound);
     this.syncVisuals(true);
   }
 
@@ -1767,6 +1847,10 @@ export class CoreRaceGame {
   }
 
   private renderHud(): void {
+    // A stopped review must retain scroll, button focus and selection. Replacing
+    // it at display refresh rate makes a long results table unusable.
+    if (this.flow.phase === 'FINISHED' && this.reviewHtml && this.renderedReviewHtml === this.reviewHtml) return;
+    this.renderedReviewHtml = this.reviewHtml;
     const standings = this.standings();
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
     const position = playerIndex + 1;
@@ -1921,7 +2005,7 @@ export class CoreRaceGame {
     }).join('');
 
     const pauseTimingData = this.renderPauseTimingData();
-    this.hud.innerHTML = `${bannerHtml}${launchHtml}${finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}${pauseTimingData}
+    this.hud.innerHTML = `${bannerHtml}${launchHtml}${this.reviewHtml || finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}${pauseTimingData}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 BEST <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 BEST <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 BEST <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>

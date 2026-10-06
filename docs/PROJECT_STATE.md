@@ -48,6 +48,9 @@ The current main branch includes:
 - AUTO and PLAYER BEST CPU racing-line sources;
 - five-light reaction start;
 - lap / sector / history / standings HUD;
+- #151 implementation: bounded version-1 race summary and post-race observation
+  review with rival selection, pit history, retry buttons and JSON export;
+  human readability/FPS validation is pending in the implementation PR;
 - tow and dirty air;
 - track limits and race penalties;
 - multiple selectable circuits;
