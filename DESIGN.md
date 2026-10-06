@@ -504,3 +504,30 @@ rejections remain visible. Storage failures must not announce a saved line or
 switch CPU targets; failed Time Trial timing writes must not stop hotlapping.
 Changing the returned object to preserve identity was rejected because it would
 still conflate attempted writes with successful persistence.
+
+### Rival strategy evidence — Issue #150
+
+The live tower adds only classification neighbours AHEAD/BEHIND, their actual
+fitted compound and physical pit phase. They are not the nearest road traffic.
+A full race-distance difference of at least one lap is labeled separately;
+merely straddling the start line is not lapping. CPU future plans remain hidden.
+
+Pace uses matching lap numbers within the last three jointly completed laps,
+with the sample laps/count shown. Delta is rival minus player lap time, labeled
+YOU FASTER / YOU SLOWER instead of an ambiguous sign. Lap 1, pit laps, the full
+lap following a pit lap, invalid/recovery laps and nonfinite/nonpositive times
+are excluded. The post-pit exclusion is conservative even if exit preceded the
+line. No old pre-stop or predicted pace substitutes for missing recent evidence.
+Player pace eligibility is separate from Grand Prix physical lap validity.
+
+Physical phase transitions generate PIT IN / PIT BOX / PIT OUT / REJOINED
+notices, refreshed rather than queued per rival, at most two for four seconds
+of simulation time. Current or immediately previous neighbours qualify; a
+visible notice follows its car through stop-induced ranking changes. Restart
+clears observations. The tower contains the information; warning and launch
+areas keep priority. No audio or centre-screen strategy prompts are added.
+
+Rejected alternatives: nearest-road cars mix race opponents with lapped traffic;
+last-lap-only pace mistakes pit transit for slow driving; future CPU plans leak
+unobservable information; pit rejoin prediction needs measured loss and traffic
+uncertainty and remains deferred. Actual driving decisions are unchanged.

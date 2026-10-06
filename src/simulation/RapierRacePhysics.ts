@@ -370,6 +370,12 @@ export class RapierRacePhysics {
     return this.aiRecoveryStates[index]?.phase ?? 'NORMAL';
   }
 
+  /** Actual physical state only; never exposes the driver's future pit plan. */
+  aiPitPhase(index: number): 'NONE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT' {
+    const phase = this.aiPitStops[index]?.phase;
+    return phase === 'TRANSIT_IN' || phase === 'SERVICE' || phase === 'TRANSIT_OUT' ? phase : 'NONE';
+  }
+
   isAiPitting(index: number): boolean {
     return isPitActive(this.aiPitStops[index] ?? createPitStopState());
   }

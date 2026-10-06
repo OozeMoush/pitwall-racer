@@ -1,3 +1,4 @@
+import { compareRivalPace, rivalNeighbours, RivalPitObserver, type RivalCar } from '../simulation/RivalStrategyModel';
 import { physicalPitControl } from '../simulation/PhysicalPitControl';
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
@@ -120,6 +121,7 @@ interface LapTelemetry {
   endCompound: Compound;
   pitted: boolean;
   valid: boolean;
+  paceValid?: boolean;
   s1: number;
   s2: number;
   s3: number;
@@ -131,6 +133,7 @@ interface AiLapTelemetry {
   startCompound: Compound;
   endCompound: Compound;
   pitted: boolean;
+  valid?: boolean;
   s1: number;
   s2: number;
   s3: number;
@@ -143,6 +146,7 @@ interface AiLapClock {
   lapStartCompound: Compound;
   lapStartPitStopIndex: number;
   pittedThisLap: boolean;
+  paceInvalid?: boolean;
   bestLap?: number;
   lastLap?: number;
   laps: AiLapTelemetry[];
@@ -169,6 +173,7 @@ export class CoreRaceGame {
   private readonly physics: RapierRacePhysics;
   private readonly audio = new RaceAudio();
   private readonly raceIntervals = new RaceIntervalTracker();
+  private readonly rivalPits = new RivalPitObserver();
   private readonly lapValidity = new LapValidityTracker();
   private readonly lineCandidate = new PlayerRacingLineCandidateRecorder();
   private lastFrame = performance.now();
@@ -609,6 +614,7 @@ export class CoreRaceGame {
 
   private stepPhysicalPit(dt: number): boolean {
     if (!isPitActive(this.pitStop)) return false;
+    this.lapPitted = true;
 
     this.lineCandidate.markIneligible();
     const beforeState = this.pitStop;
@@ -788,6 +794,7 @@ export class CoreRaceGame {
       endCompound: this.tire.compound,
       pitted: this.lapPitted,
       valid: validLap,
+      paceValid: !this.lapValidity.invalid,
       s1,
       s2,
       s3,
@@ -943,6 +950,7 @@ export class CoreRaceGame {
         continue;
       }
       if (this.physics.isAiPitting(index)) clock.pittedThisLap = true;
+      if (this.physics.aiRecoveryPhase?.(index) && this.physics.aiRecoveryPhase(index) !== 'NORMAL') clock.paceInvalid = true;
 
       if (driver.lap > clock.lap) {
         const completedLap = this.timing.raceTime - clock.lapStartTime;
@@ -966,6 +974,7 @@ export class CoreRaceGame {
             s2,
             s3,
             lapTime: completedLap,
+            valid: !clock.paceInvalid && driver.lap === clock.lap + 1,
           });
           if (clock.laps.length > this.totalLaps) clock.laps.shift();
         }
@@ -973,6 +982,7 @@ export class CoreRaceGame {
           clock.bestLap = clock.bestLap === undefined ? completedLap : Math.min(clock.bestLap, completedLap);
           this.registerSessionFastest(completedLap);
         }
+        clock.paceInvalid = false;
         clock.lap = driver.lap;
         clock.lapStartTime = this.timing.raceTime;
         clock.lapStartCompound = driver.tire.compound;
@@ -1007,6 +1017,20 @@ export class CoreRaceGame {
       { id: 'player', lap: this.lap, progress: this.trackProgress },
       ...this.ai.map((driver) => ({ id: driver.id, lap: driver.lap, progress: driver.progress })),
     ], this.timing.raceTime);
+    const cars = this.rivalCars();
+    const ordered = [...cars].sort((a, b) => raceDistance(b.lap, b.progress) - raceDistance(a.lap, a.progress));
+    const ids = rivalNeighbours(ordered).flatMap(row => row.car ? [row.car.id] : []);
+    this.rivalPits.update(cars, ids, this.timing.raceTime);
+  }
+
+  private rivalCars(): RivalCar[] {
+    return [
+      { id: 'player', name: 'YOU', lap: this.lap, progress: this.trackProgress, compound: this.tire.compound, phase: 'NONE' },
+      ...this.ai.map((driver, index): RivalCar => ({
+        id: driver.id, name: driver.name, lap: driver.lap, progress: driver.progress,
+        compound: driver.tire.compound, phase: this.physics.aiPitPhase(index),
+      })),
+    ];
   }
 
   private registerSessionFastest(lapTime: number): void {
@@ -1392,6 +1416,7 @@ export class CoreRaceGame {
     this.launchRequiresRelease = false;
     this.launchReactionRecorded = false;
     this.raceIntervals.reset();
+    this.rivalPits.reset();
     this.impactDamage.reset();
     this.impactDamageNotice = '';
     this.impactDamageNoticeRemaining = 0;
@@ -1766,6 +1791,27 @@ export class CoreRaceGame {
     </div>`;
   }
 
+  private renderRivalStrategy(standings: readonly LiveStandingEntry[]): string {
+    if (this.flow.phase !== 'RACING') return '';
+    const cars = this.rivalCars();
+    const ordered = standings.map(entry => ({ ...cars.find(car => car.id === entry.id)!, lap: entry.lap, progress: entry.progress }));
+    const rows = rivalNeighbours(ordered).map(({ side, car, lapped }) => {
+      if (!car) return `<div class="rival-row"><small>${side}</small><strong>—</strong><span>NO RIVAL</span></div>`;
+      const history = this.aiLapClocks.get(car.id)?.laps ?? [];
+      const pace = compareRivalPace(this.lapHistory.slice(-5), history.slice(-5), Math.min(this.lap, car.lap) - 1);
+      const phase = car.phase === 'NONE' ? 'ON TRACK' : car.phase === 'TRANSIT_IN' ? 'PIT IN' : car.phase === 'SERVICE' ? 'PIT BOX' : 'PIT OUT';
+      const paceText = lapped ? (side === 'AHEAD' ? 'LAPS AHEAD' : 'LAPPED')
+        : car.phase !== 'NONE' ? 'PACE — · IN PIT'
+        : pace.delta === undefined ? 'PACE — · NO MATCHED CLEAN LAPS'
+        : Math.abs(pace.delta) < 0.005 ? 'EVEN PACE'
+        : `${Math.abs(pace.delta).toFixed(2)}s/LAP ${pace.delta > 0 ? 'YOU FASTER' : 'YOU SLOWER'}`;
+      const sample = pace.laps.length && !lapped && car.phase === 'NONE' ? ` · L${pace.laps.join('/')} (${pace.laps.length})` : '';
+      return `<div class="rival-row"><small>${side}</small><strong>${escapeHud(car.name)} <i class="tyre-${car.compound.toLowerCase()}">${car.compound[0]}</i> <em>${phase}</em></strong><span>${paceText}${sample}</span></div>`;
+    }).join('');
+    const notices = this.rivalPits.visible(this.timing.raceTime).map(notice => `<div class="rival-pit-notice">${escapeHud(notice.text)}</div>`).join('');
+    return `<section class="rival-strategy" aria-label="Classification rivals and matched recent lap pace"><header>RIVALS <span>LAST 3 SHARED LAPS · EXCL START/PIT/OUT</span></header>${rows}${notices}</section>`;
+  }
+
   private renderHud(): void {
     const standings = this.standings();
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
@@ -1926,7 +1972,7 @@ export class CoreRaceGame {
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
         <div class="timing-strip"><span>S1 BEST <b class="${this.timingClass(sectorDisplay[0].tone)}">${sectorDisplay[0].text}</b></span><span>S2 BEST <b class="${this.timingClass(sectorDisplay[1].tone)}">${sectorDisplay[1].text}</b></span><span>S3 BEST <b class="${this.timingClass(sectorDisplay[2].tone)}">${sectorDisplay[2].text}</b></span><span>LAST <b class="${this.timingClass(lastTone)}">${formatLapTime(this.timing.lastLapTime)}</b></span><span>PB <b class="${this.timingClass(bestTone)}">${formatLapTime(playerBest)}</b></span><span>FASTEST <b class="timing-purple">${fastestText}</b></span><span>Δ <b>${delta}</b></span></div>
       </div>
-      <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i></div>${towerHtml}</div>
+      <div class="tower"><div class="tower-head"><i>P</i><i>T</i><i>DRIVER</i><i>GAP</i><i>LAST</i></div>${towerHtml}${this.renderRivalStrategy(standings)}</div>
       <div class="race-telemetry">
         <div class="mini-map"><header><b>TRACK</b><span>LIVE POSITION</span></header>${this.miniMapSvg()}</div>
         <div class="lap-board"><header><b>LAPS</b><span>TYRE/PIT · S1 · S2 · S3 · LAP</span></header><div class="lap-head" style="grid-template-columns:34px 58px 72px 72px 72px 1fr"><i>#</i><i>TYRE</i><i>S1</i><i>S2</i><i>S3</i><i>LAP</i></div>${this.renderLapBoard()}</div>
@@ -1955,4 +2001,8 @@ function formatShortTime(seconds?: number): string {
   if (seconds === undefined || !Number.isFinite(seconds)) return '—';
   if (seconds >= 60) return formatLapTime(seconds);
   return seconds.toFixed(3);
+}
+
+function escapeHud(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

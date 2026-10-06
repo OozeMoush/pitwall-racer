@@ -48,6 +48,8 @@ The current main branch includes:
 - AUTO and PLAYER BEST CPU racing-line sources;
 - five-light reaction start;
 - lap / sector / history / standings HUD;
+- Issue #150 implementation branch: classification rival pace / physical pit feedback;
+  visual readability and browser performance still require verification before merge;
 - tow and dirty air;
 - track limits and race penalties;
 - multiple selectable circuits;

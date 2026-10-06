@@ -137,3 +137,21 @@ If yes, the core loop is working. If no, diagnose **driving feel, battles, tyre 
 ## Current non-goals
 
 Do not request realism for its own sake. Fuel strategy, full FIA stewarding, safety cars, rain, setup engineering and multiplayer remain deferred until the dry single-player race is consistently fun. Hybrid energy is also parked outside the current playable core.
+
+## Rival strategy readability (#150)
+
+Deterministic tests must cover matched samples/signs, no-data states, pit/out
+lap filtering, invalid/recovery samples, nonfinite times, timing-line lapping
+boundaries, opponent changes and physical phase notification deduplication,
+expiry and restart. A failed/recovered player lap may still count in the Grand
+Prix but must not supply clean pace evidence. Keep CPU future plans out of the
+normal strategy panel (debug is a separate diagnostic).
+
+Check the tower at desktop and smaller desktop sizes in a seven-CPU race:
+AHEAD/BEHIND must identify classification neighbours, show actual compounds,
+and distinguish a whole-lap deficit. Before enough clean matching laps, display
+no-data rather than a fabricated number. At physical pit entry/service/exit,
+check four-second short notices and no pile-up or centre warning overlap.
+Read pace/sample laps while driving; check player stops and rival overtakes.
+Measure AUTO and legacy/dynamics PLAYER controller/physics as usual; also
+compare live browser frame rate and HUD cost. Unit timings do not certify FPS.
