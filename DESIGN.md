@@ -590,11 +590,11 @@ Graph x is completed player laps plus current-lap progress, clamped to race
 length (start of timed L1 = zero); y is observed rival gap relative to player,
 negative when player is behind, positive when ahead. Zero and symmetric ticks
 keep sign readable. Missing gaps/lap deficits break the trace; no gap estimates
-fill holes. Exact PIT_IN/REJOIN events from either car share this graph, with
-player solid/top and rival dashed/bottom stems, entry triangles / rejoin circles,
+fill holes. One PIT_IN marker per visit from either car shares this graph, with
+player solid/top and rival dashed/bottom stems, entry triangles,
 and actual fitted-compound colours. Event x interpolates the player's observed
 progress at that timestamp; out-of-range or recovery intervals stay unplaced,
-while the exact event remains in pit history. It is not an inferred pit benefit.
+while raw phase events remain in exported JSON. It is not an inferred pit benefit.
 Pointer/tap and keyboard range selection expose measured lap/time/gap. Readout
 updates and refresh frames preserve scroll/focus/open details. Rival changes
 preserve open details, scroll and the selected button's focus.
@@ -628,3 +628,23 @@ fractional window to lap 2 through totalLaps - 3. The existing adaptive decision
 can delay a healthy stop; early QUICK windows remain eligible. Normal-format
 plans are unchanged. Player stops remain manually requested. Setup explains
 these rules before either qualifying or skip; retry preserves the format.
+
+
+### Fullscreen review and pit recovery — #166 / #167
+
+The finish review is centred and bounded to 1100px wide / 900px high with
+viewport margins and internal scrolling. The graph never grows beyond 900px.
+Pit history shows one visit per row: entry lap, driver and physical PIT_IN to
+REJOIN elapsed time. Tyre-service and departure phases remain in the exported
+JSON, not ordinary history rows or additional graph markers. Missing entry,
+unfinished and overlapping evidence shows an unknown duration. This is elapsed
+pit time, not a counterfactual net loss against staying on track.
+
+A stationary physical pit transit offers explicit C recovery after 1.5 seconds
+of negligible movement. Recovery recentres at the existing pit coordinate,
+invalidates lap/line evidence, and resets steering without advancing phases,
+changing tyres or serving penalties. Transit then continues through real physics.
+Before capture, a requested pit entry touching a wall at under 2.2 m/s also
+permits normal road recovery even inside the usual off-track distance threshold.
+Geometric wall contact is separate from speed-gated impact/clean-lap evidence.
+Pit entry still requires request, correct side, heading and physical lane capture.

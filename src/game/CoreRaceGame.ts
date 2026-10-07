@@ -640,8 +640,11 @@ export class CoreRaceGame {
     if (!entry) return;
     this.lineCandidate.markIneligible();
     this.pitStop = beginPitStop(PIT_BOX_T, entry.t);
+    this.pitStallSeconds = 0;
     this.pitRequested = false;
   }
+
+  private pitStallSeconds = 0;
 
   private stepPhysicalPit(dt: number): boolean {
     if (!isPitActive(this.pitStop)) return false;
@@ -649,6 +652,7 @@ export class CoreRaceGame {
 
     this.lineCandidate.markIneligible();
     const beforeState = this.pitStop;
+    const beforeVehicle = this.vehicle;
 
     if (this.pitStop.phase === 'SERVICE') {
       this.pitStop = stepPlayerPitStop(this.pitStop, dt, this.pitStop.t);
@@ -699,6 +703,10 @@ export class CoreRaceGame {
         this.physics.setPlayerState(this.vehicle);
       }
     }
+
+    const moved = Math.hypot(this.vehicle.x - beforeVehicle.x, this.vehicle.y - beforeVehicle.y);
+    this.pitStallSeconds = beforeState.phase !== 'SERVICE' && this.vehicle.speed < 2.2 && moved < dt * 1.5
+      ? (this.pitStallSeconds ?? 0) + dt : 0;
 
     if (
       beforeState.phase !== 'SERVICE'
@@ -1435,19 +1443,30 @@ export class CoreRaceGame {
     if (this.flow.phase !== 'FINISHED' && !isPitActive(this.pitStop)) this.selectedCompound = compound;
   }
 
+  private canRecoverPlayer(): boolean {
+    if (this.flow.phase !== 'RACING') return false;
+    if (isPitActive(this.pitStop)) {
+      return this.pitStop.phase !== 'SERVICE' && this.vehicle.speed < 2.2 && (this.pitStallSeconds ?? 0) >= 1.5;
+    }
+    return canRecover(this.trackDistance, this.vehicle.speed)
+      || (this.pitRequested && this.vehicle.speed < 2.2 && this.physics.playerTouchesBarrier());
+  }
+
   private handleRecoveryOrRestart(): void {
     if (this.flow.phase === 'FINISHED') {
       this.resetRace();
       return;
     }
-    if (isPitActive(this.pitStop)) return;
-    if (this.flow.phase !== 'RACING' || !canRecover(this.trackDistance, this.vehicle.speed)) return;
+    if (!this.canRecoverPlayer()) return;
     if (this.lap >= 1) {
       this.lapValidity.invalidate();
       this.lineCandidate.markIneligible();
     }
-    const p = sampleTrack(this.trackProgress);
+    // Explicit recovery recentres at the current lane coordinate only. It
+    // cannot skip transit, serve a penalty or change tyres.
+    const p = isPitActive(this.pitStop) ? pitLanePose(this.pitStop.t) : sampleTrack(this.trackProgress);
     this.vehicle = createVehicle(p.x, p.y, p.heading);
+    this.pitStallSeconds = 0;
     this.physics.setPlayerState(this.vehicle);
     this.steerInput = 0;
     this.trackDistance = 0;
@@ -1462,6 +1481,7 @@ export class CoreRaceGame {
     this.timing = createTiming();
     this.flow = createRaceFlow();
     this.pitStop = createPitStopState();
+    this.pitStallSeconds = 0;
     this.selectedCompound = selection.suggestedNextCompound;
     this.usedCompounds = new Set([selection.startCompound]);
     this.lap = 0;
@@ -1911,7 +1931,7 @@ export class CoreRaceGame {
     const obligation = this.flow.phase === 'RACING'
       ? twoCompoundWarning(this.usedCompounds, this.tire.compound, this.selectedCompound, displayLap, this.totalLaps, this.pitRequested || isPitActive(this.pitStop))
       : undefined;
-    const recovery = this.flow.phase === 'RACING' && !isPitActive(this.pitStop) && canRecover(this.trackDistance, this.vehicle.speed);
+    const recovery = this.canRecoverPlayer();
     const speed = Math.round(this.vehicle.speed * 3.6);
     const wearPct = Math.round(this.tire.wear * 100);
     const tyreWearClass = wearPct >= 80

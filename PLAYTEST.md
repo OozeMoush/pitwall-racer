@@ -208,3 +208,17 @@ must retain normal-format pit/tyre regressions. Human: select QUICK, qualify or
 skip, finish legally using two compounds, retry with same/different tyre; check
 approximate duration (qualifying excluded), seven-CPU FPS and whether one physical
 stop leaves enough meaningful racing. No accelerated wear is expected.
+
+
+## Fullscreen review / stranded pit entry — #166 / #167
+
+Automated: one visit elapsed-time pairing (including missing, incomplete and
+ambiguous evidence); only entry markers; real Rapier wall obstruction in committed
+pit transit; C at unchanged pit coordinate and subsequent physical service after
+removing the obstruction; stationary wall contact before capture without implicit
+pit admission; existing all-track pit capture and pinned-body no-service checks.
+Human: fullscreen at 1920×1080 and ultrawide, then 390px width; ensure bounded
+review/graph, visible retry, scrolling and pointer cursor alignment. Reproduce
+actual entry-wall impacts on the user's circuit, wait for STRANDED, press C and
+complete the stop. No browser visual, real race or FPS verification is claimed by
+the automated fixtures. Recovery is explicit C, not an automatic teleport.

@@ -165,6 +165,21 @@ export class RapierRacePhysics {
     return this.playerLongitudinalAccelerationValue;
   }
 
+  /** Geometric wall contact remains true at rest; impact classification is
+   * deliberately speed-gated and cannot be used to detect a stranded car. */
+  playerTouchesBarrier(): boolean {
+    const collider = this.playerCollider;
+    if (!collider) return false;
+    let touching = false;
+    this.world.contactPairsWith(collider, other => {
+      if (!other.parent()?.isFixed()) return;
+      this.world.contactPair(collider, other, manifold => {
+        if (manifold.numContacts() > 0) touching = true;
+      });
+    });
+    return touching;
+  }
+
   playerContactKind(): 'NONE' | 'CAR' | 'BARRIER' {
     return this.playerContactKindValue;
   }
