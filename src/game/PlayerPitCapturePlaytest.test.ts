@@ -129,6 +129,7 @@ it('allows a requested-entry wall recovery near the road but never captures a pi
   physics.world.createCollider(RAPIER.ColliderDesc.cuboid(4, 4), wall);
   const game = Object.assign(Object.create(CoreRaceGame.prototype), {
     vehicle, physics, pitStop: createPitStopState(), pitRequested: true,
+    lapValidity: { clearContactGrace: vi.fn() },
     flow: { phase: 'RACING' }, lap: 0, trackDistance: 10, trackProgress: pitEntryProgress(),
   });
   try {
