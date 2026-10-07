@@ -9,6 +9,9 @@ export interface RaceAudioInput {
   pitService: boolean;
   slideSeverity?: number;
   banner?: string;
+  contactKind?: 'NONE' | 'CAR' | 'BARRIER';
+  impactSpeed?: number;
+  inactive?: boolean;
 }
 
 export interface RaceAudioParameters {
@@ -45,6 +48,24 @@ export function raceAudioParameters(input: RaceAudioInput): RaceAudioParameters 
  * Browsers require a user gesture before audio starts; unlock() is therefore
  * called from the first keyboard/pointer input.
  */
+export class ContactAudioGate {
+  private touching = false;
+  update(kind = 'NONE', impactSpeed = 0): number {
+    const contact = kind !== 'NONE';
+    const amount = contact && !this.touching && impactSpeed > 2 ? clamp01(impactSpeed / 22) : 0;
+    this.touching = contact;
+    return amount;
+  }
+  reset(): void { this.touching = false; }
+}
+
+let audioVolume = 1;
+export function getRaceAudioVolume(): number { return audioVolume; }
+export function setRaceAudioVolume(value: number): void {
+  audioVolume = Number.isFinite(value) ? clamp01(value) : 0;
+  window.dispatchEvent(new Event('race-audio-volume'));
+}
+
 export class RaceAudio {
   private context?: AudioContext;
   private master?: GainNode;
@@ -55,17 +76,55 @@ export class RaceAudio {
   private tireGain?: GainNode;
   private surfaceGain?: GainNode;
   private lastBanner?: string;
-  private lastSpeed = 0;
-  private collisionCooldown = 0;
+  private readonly contacts = new ContactAudioGate();
+  private paused = false;
+  private inactive = false;
+  private readonly transients = new Set<OscillatorNode>();
+  private readonly onPause = (event: Event) => {
+    this.paused = (event as CustomEvent<boolean>).detail;
+    this.clearTransients();
+    this.applyVolume();
+  };
+  private readonly onVolume = () => this.applyVolume();
+
+  constructor() {
+    window.addEventListener('race-audio-pause', this.onPause);
+    window.addEventListener('race-audio-volume', this.onVolume);
+  }
+
+  private applyVolume(): void {
+    if (!this.context || !this.master) return;
+    const gain = this.paused || this.inactive ? 0 : 0.42 * audioVolume;
+    this.master.gain.setTargetAtTime(gain, this.context.currentTime, 0.015);
+  }
+
+  private clearTransients(): void {
+    for (const node of this.transients) { node.stop(); node.disconnect(); }
+    this.transients.clear();
+  }
+
+  dispose(): void {
+    window.removeEventListener('race-audio-pause', this.onPause);
+    window.removeEventListener('race-audio-volume', this.onVolume);
+    this.clearTransients();
+    void this.context?.close().catch(() => {});
+  }
 
   unlock(): void {
     if (!this.context) this.createGraph();
-    void this.context?.resume();
+    if (!this.paused) void this.context?.resume().catch(() => {});
   }
 
   update(input: RaceAudioInput, dt: number): void {
     const context = this.context;
     if (!context || context.state === 'closed') return;
+    this.inactive = input.inactive ?? false;
+    this.applyVolume();
+    if (this.paused || this.inactive) {
+      this.lastBanner = input.banner;
+      this.contacts.update(input.contactKind, input.impactSpeed);
+      return;
+    }
     const now = context.currentTime;
     const params = raceAudioParameters(input);
 
@@ -82,25 +141,22 @@ export class RaceAudio {
       this.lastBanner = input.banner;
     }
 
-    this.collisionCooldown = Math.max(0, this.collisionCooldown - dt);
-    const speedDrop = this.lastSpeed - input.speed;
-    if (speedDrop > 8 && input.trafficPressure > 0.28 && this.collisionCooldown === 0) {
-      this.thump(Math.min(1, speedDrop / 22));
-      this.collisionCooldown = 0.18;
-    }
-    this.lastSpeed = input.speed;
+    const impact = this.contacts.update(input.contactKind, input.impactSpeed);
+    if (impact > 0) this.thump(impact);
   }
 
   reset(): void {
     this.lastBanner = undefined;
-    this.lastSpeed = 0;
-    this.collisionCooldown = 0;
+    this.contacts.reset();
+    this.clearTransients();
+    this.inactive = false;
+    this.applyVolume();
   }
 
   private createGraph(): void {
     const context = new AudioContext({ latencyHint: 'interactive' });
     const master = context.createGain();
-    master.gain.value = 0.42;
+    master.gain.value = this.paused ? 0 : 0.42 * audioVolume;
     master.connect(context.destination);
 
     const engineFilter = context.createBiquadFilter();
@@ -173,6 +229,8 @@ export class RaceAudio {
     level.gain.setValueAtTime(gain, context.currentTime);
     level.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
     osc.connect(level).connect(master);
+    this.transients.add(osc);
+    osc.onended = () => { osc.disconnect(); level.disconnect(); this.transients.delete(osc); };
     osc.start();
     osc.stop(context.currentTime + duration);
   }
@@ -189,6 +247,8 @@ export class RaceAudio {
     gain.gain.setValueAtTime(0.12 * amount, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.09);
     osc.connect(gain).connect(master);
+    this.transients.add(osc);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); this.transients.delete(osc); };
     osc.start();
     osc.stop(context.currentTime + 0.1);
   }

@@ -1,3 +1,5 @@
+import { RivalPitObserver } from '../simulation/RivalStrategyModel';
+import { RaceSummaryRecorder } from '../simulation/RaceSummaryModel';
 import RAPIER from '@dimforge/rapier2d-compat';
 import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { CoreRaceGame } from './CoreRaceGame';
@@ -33,7 +35,8 @@ it('starts lap 1 timing at the first start-line crossing instead of the grid', (
     steerInput: 0, trafficPressure: 0, nextSector: 3, sectorStartTime: 0,
     sectorTimes: [1.2, 1.3], sectorTones: [], lapHistory: [],
     lapStartCompound: 'SOFT', lapPitted: false, sessionFastestSectors: [],
-    aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(),
+    summaryRecorder: new RaceSummaryRecorder({trackId:'pitwall-gp',trackRevision:'test',totalLaps:10,startCompound:'SOFT',gridOrder:[],line:{source:'AUTO',fingerprint:'auto'},rulesVersion:'test'}),
+    aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(), rivalPits: new RivalPitObserver(),
     lapValidity: new LapValidityTracker(), lineCandidate: new PlayerRacingLineCandidateRecorder(),
     trackLimitPenalty: createTrackLimitPenaltyState(), impactDamage: new ImpactDamageTracker(),
     playerCar: { setCompound: vi.fn() }, launchEffectRemaining: 0,
@@ -66,7 +69,8 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     lap: 1, trackProgress: 0, lastTrackProgress: 0, lapForwardProgress: 0, pitRequested: false,
     steerInput: 0, trafficPressure: 0, nextSector: 1, sectorStartTime: 0, sectorTimes: [], sectorTones: [],
     lapHistory: [], lapStartCompound: 'SOFT', lapPitted: false, sessionFastestSectors: [],
-    aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(), lapValidity: new LapValidityTracker(),
+    summaryRecorder: new RaceSummaryRecorder({trackId:'pitwall-gp',trackRevision:'test',totalLaps:10,startCompound:'SOFT',gridOrder:[],line:{source:'AUTO',fingerprint:'auto'},rulesVersion:'test'}),
+    aiLapClocks: new Map(), raceIntervals: new RaceIntervalTracker(), rivalPits: new RivalPitObserver(), lapValidity: new LapValidityTracker(),
     lineCandidate: new PlayerRacingLineCandidateRecorder(),
     trackLimitPenalty: createTrackLimitPenaltyState(), impactDamage: new ImpactDamageTracker(),
     playerCar: { setCompound: vi.fn() }, launchEffectRemaining: 0,
@@ -101,6 +105,9 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     expect(game.trackLimitPenalty.pendingPitSeconds).toBe(5);
     expect(game.lap).toBe(3);
     expect(game.lapHistory[1].valid).toBe(true);
+    expect(game.lapHistory[1].paceValid).toBe(false);
+    expect(game.summaryRecorder.snapshot().laps).toHaveLength(2);
+    expect(game.summaryRecorder.snapshot().laps[1]).toMatchObject({driverId:'player',lap:2,counted:true});
     expect(game.lapHistory[1].lapTime).toBeCloseTo(30, 1);
     expect(game.lapHistory[1].s1).toBeCloseTo(10, 1);
     expect(game.lapHistory[1].s2).toBeCloseTo(10, 1);
@@ -121,6 +128,9 @@ it('counts GP laps and all sectors on kerbs, then enters and serves a requested 
     game.keys.delete('KeyW');
     expect(game.pitStop.phase).toBe('IDLE');
     expect(game.tire.compound).toBe('MEDIUM');
+    const summary = game.summaryRecorder.snapshot();
+    expect(summary.events.map((row: {kind:string})=>row.kind)).toEqual(['PIT_IN','SERVICE','PIT_OUT','REJOIN']);
+    expect(summary.events.at(-1).compound).toBe('MEDIUM');
     expect(game.lap).toBe(4);
   } finally { physics.world.free(); }
 }, 20_000);

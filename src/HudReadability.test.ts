@@ -12,7 +12,9 @@ describe('desktop HUD readability', () => {
   });
 
   it('keeps live tyre wear legible in the standings tower', () => {
-    expect(battleTimingCss).toContain('grid-template-columns:31px 76px minmax(82px,1fr) 78px 84px 84px');
+    expect(battleTimingCss).toContain('grid-template-columns:27px 60px minmax(70px,1fr) 68px 72px 58px 72px');
+    expect(battleTimingCss).toContain('grid-template-columns:23px 48px minmax(60px,1fr) 58px 50px 62px');
+    expect(battleTimingCss).toContain('small:not(.tower-best):not(.tower-pace)');
     expect(battleTimingCss).toContain('.tower-wear-value.healthy{color:#45dc82}');
     expect(battleTimingCss).toContain('.tower-wear-meter{display:block;width:100%;height:4px');
   });

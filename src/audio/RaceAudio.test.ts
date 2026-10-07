@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { raceAudioParameters } from './RaceAudio';
+import { describe, expect, it, vi } from 'vitest';
+import { ContactAudioGate, raceAudioParameters } from './RaceAudio';
 
 const base = {
   speed: 0,
@@ -41,5 +41,61 @@ describe('raceAudioParameters', () => {
     const track = raceAudioParameters({ ...base, speed: 70, surfaceSeverity: 0 });
     const grass = raceAudioParameters({ ...base, speed: 70, surfaceSeverity: 1 });
     expect(grass.surfaceGain).toBeGreaterThan(track.surfaceGain);
+  });
+});
+
+
+describe('contact audio gate', () => {
+  it('does not invent a collision from braking or nearby traffic', () => {
+    const gate = new ContactAudioGate();
+    expect(gate.update('NONE', 30)).toBe(0);
+    expect(gate.update('NONE', 0)).toBe(0);
+  });
+  it('sounds a real impact once until separation, including barriers', () => {
+    const gate = new ContactAudioGate();
+    expect(gate.update('CAR', 11)).toBe(0.5);
+    expect(gate.update('CAR', 30)).toBe(0);
+    gate.update('NONE');
+    expect(gate.update('BARRIER', 44)).toBe(1);
+  });
+  it('suppresses gentle rubbing and rearms after restart', () => {
+    const gate = new ContactAudioGate();
+    expect(gate.update('CAR', 1)).toBe(0);
+    gate.reset();
+    expect(gate.update('CAR', 11)).toBe(0.5);
+  });
+});
+
+describe('audio lifecycle', () => {
+  it('hushes on pause and finish, restores chosen volume, and removes session listeners', async () => {
+    const events = new EventTarget();
+    vi.stubGlobal('window', events);
+    const { RaceAudio, setRaceAudioVolume } = await import('./RaceAudio');
+    const audio = new RaceAudio();
+    const gain = { setTargetAtTime: vi.fn() };
+    const close = vi.fn().mockResolvedValue(undefined);
+    const state = audio as unknown as { context: unknown; master: unknown };
+    state.context = { state: 'running', currentTime: 0, close };
+    state.master = { gain };
+    setRaceAudioVolume(0.5);
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.21, 0, 0.015);
+    const pause = new Event('race-audio-pause');
+    Object.assign(pause, { detail: true });
+    events.dispatchEvent(pause);
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.015);
+    const resume = new Event('race-audio-pause');
+    Object.assign(resume, { detail: false });
+    events.dispatchEvent(resume);
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.21, 0, 0.015);
+    audio.update({ ...base, inactive: true }, 0.016);
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0, 0, 0.015);
+    audio.reset();
+    expect(gain.setTargetAtTime).toHaveBeenLastCalledWith(0.21, 0, 0.015);
+    audio.dispose();
+    expect(close).toHaveBeenCalledOnce();
+    gain.setTargetAtTime.mockClear();
+    setRaceAudioVolume(1);
+    expect(gain.setTargetAtTime).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

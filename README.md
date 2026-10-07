@@ -69,7 +69,13 @@ During the race:
 
 After a requested physical pit entry, AUTO PIT drives to the box, services the car and follows the lane to the exit. WASD resumes when the car rejoins; releasing the accelerator or holding the entry turn does not interrupt the stop. A pit request alone does not steer a car off the main road.
 
-After the race, `C` starts the same setup again.
+After the race, the review shows observed position/gap traces, a selected rival's
+pit history and matching lap times. Unfinished CPUs remain identified at the
+player finish cutoff. Review buttons retry the initial CPU line/grid with the
+same or a different starting tyre; F still controls pit timing during the retry.
+The JSON export preserves comparison settings and recorded evidence for later
+analysis. Records stay in memory until you export or restart; persistent driving
+progress is separate work. `C` retains its original quick-restart behavior.
 
 ## Verify
 
@@ -133,3 +139,5 @@ The older energy model remains in the repository as a deferred system and still 
 ## Design rule
 
 If a race is not fun before another major system is added, that system is not the fix. Driving, CPU pressure, tyre feel and pit timing must stand on their own first. See [DESIGN.md](./DESIGN.md).
+
+Mouse wheel over the driving canvas zooms in/out in race and qualifying (0.5×–2.5×). UI panels retain normal scrolling.
