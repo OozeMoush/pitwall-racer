@@ -9,6 +9,8 @@ export interface AiStuckRecoveryState {
 export interface AiStuckRecoveryInput {
   speed: number;
   targetSpeed: number;
+  /** Explicit transit intent allows recovery on deliberately slow pit bends. */
+  movementRequested?: boolean;
 }
 
 export const AI_STUCK_SPEED_THRESHOLD = 2.2;
@@ -36,7 +38,7 @@ export function stepAiStuckRecovery(
   if (state.phase === 'NORMAL') {
     const genuinelyStalled =
       input.speed < AI_STUCK_SPEED_THRESHOLD
-      && input.targetSpeed > AI_STUCK_TARGET_SPEED_THRESHOLD;
+      && (input.movementRequested ?? input.targetSpeed > AI_STUCK_TARGET_SPEED_THRESHOLD);
 
     const stalledSeconds = genuinelyStalled
       ? state.stalledSeconds + step

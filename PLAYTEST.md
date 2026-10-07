@@ -222,3 +222,16 @@ review/graph, visible retry, scrolling and pointer cursor alignment. Reproduce
 actual entry-wall impacts on the user's circuit, wait for STRANDED, press C and
 complete the stop. No browser visual, real race or FPS verification is claimed by
 the automated fixtures. Recovery is explicit C, not an automatic teleport.
+
+
+## CPU pit wall stalls — #169
+
+CPU clarification supersedes the actor assumption in #167. Automated Rapier
+fixtures cover approach and committed transit stopped by a cross-lane wall:
+actual reverse displacement, no timer-driven service, then physical completion
+after clearing the obstruction. A persistent side wall remains in place while a
+CPU initially facing into it backs away, aligns with the pit route, completes
+service and rejoins. Retain ordinary road recovery, all-circuit physical pit
+checks and pinned-body no-service checks. A low-target transit request can
+trigger recovery; intentional service dwell cannot. Human follow-up: user's
+specific circuit, entry impact and traffic configuration, plus real race FPS.

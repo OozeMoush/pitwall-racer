@@ -648,3 +648,22 @@ Before capture, a requested pit entry touching a wall at under 2.2 m/s also
 permits normal road recovery even inside the usual off-track distance threshold.
 Geometric wall contact is separate from speed-gated impact/clean-lap evidence.
 Pit entry still requires request, correct side, heading and physical lane capture.
+
+
+### CPU pit-entry wall recovery — #169
+
+The reported wall-stalled car was CPU; #167's player recovery addressed a different
+actor. Both CPU pit approach and committed transit must retain the existing stuck
+state machine instead of bypassing/resetting it. Transit explicitly requests
+movement even on slow pit bends, so a sustained speed below 2.2 m/s can trigger
+recovery after 1.25 seconds. Backing lasts 0.85 seconds through the real rigid
+body, turning toward the road heading during approach or local pit heading in
+transit, before retrying forward travel. Service dwell resets recovery; docking
+and rejoin also clear the state. Pit timing/tyre changes remain spatial and use
+the existing service timer only after physically reaching the box.
+
+Rejected: advancing a stalled CPU by clock or teleporting it to the box/exit
+would bypass physical pit cost and traffic. Reusing the main-road heading inside
+the pit can aim at the wrong route. Existing physical reverse is sufficient for
+the tested persistent side-wall collision; an obstacle that entirely seals the
+route causes bounded retries rather than an invented successful stop.
