@@ -576,20 +576,7 @@ export class CoreRaceGame {
     this.lastTrackProgress = this.trackProgress;
     this.trackProgress = afterPhysicalProjection.progress;
     if (this.lap >= 1) {
-      const validityEvent = this.lapValidity.sampleWorld(
-        this.vehicle.x,
-        this.vehicle.y,
-        this.vehicle.heading,
-      );
-      if (validityEvent !== 'NONE') {
-        this.lineCandidate.markIneligible();
-        const result = registerTrackLimitWarning(this.trackLimitPenalty);
-        this.trackLimitPenalty = result.state;
-        this.racePenaltyNotice = result.penaltyAwarded
-          ? `TRACK LIMITS · +${result.penaltyAwarded}s PIT PENALTY · BOX TO SERVE`
-          : `TRACK LIMIT WARNING · ${this.trackLimitPenalty.warnings}/${WARNINGS_PER_PENALTY}`;
-        this.racePenaltyNoticeRemaining = result.penaltyAwarded ? 5.0 : 2.8;
-      }
+      this.updateTrackLimits(dt);
 
       this.lineCandidate.sample(
         afterTrack.progress,
@@ -610,6 +597,25 @@ export class CoreRaceGame {
 
     this.trafficPressure = this.estimateTrafficPressure();
     this.updateRaceIntervals();
+  }
+
+  private updateTrackLimits(dt: number): void {
+  const validityEvent = this.lapValidity.sampleWorld(
+    this.vehicle.x,
+    this.vehicle.y,
+    this.vehicle.heading,
+    dt,
+    this.physics.playerCarPushVelocity(),
+  );
+  if (validityEvent !== 'NONE') {
+    this.lineCandidate.markIneligible();
+    const result = registerTrackLimitWarning(this.trackLimitPenalty);
+    this.trackLimitPenalty = result.state;
+    this.racePenaltyNotice = result.penaltyAwarded
+      ? `TRACK LIMITS · +${result.penaltyAwarded}s PIT PENALTY · BOX TO SERVE`
+      : `TRACK LIMIT WARNING · ${this.trackLimitPenalty.warnings}/${WARNINGS_PER_PENALTY}`;
+    this.racePenaltyNoticeRemaining = result.penaltyAwarded ? 5.0 : 2.8;
+  }
   }
 
   private applyAiImpactDamage(dt: number): void {
@@ -855,7 +861,7 @@ export class CoreRaceGame {
     this.sectorTones = [];
     this.lapStartCompound = this.tire.compound;
     this.lapPitted = false;
-    this.lapValidity.reset();
+    this.lapValidity.reset(true);
     this.beginRaceLineCandidate();
 
     if (this.lap > this.totalLaps) {
@@ -1468,6 +1474,8 @@ export class CoreRaceGame {
     this.vehicle = createVehicle(p.x, p.y, p.heading);
     this.pitStallSeconds = 0;
     this.physics.setPlayerState(this.vehicle);
+    // Discard pending collision grace while retaining warnings/recovery invalidity.
+    this.lapValidity.clearContactGrace();
     this.steerInput = 0;
     this.trackDistance = 0;
   }

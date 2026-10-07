@@ -10,7 +10,7 @@ Last updated: **2026-10-08 JST**
 
 - default branch: `main`
 - earlier verified main: `6172c31c3e1184f117b66aaea59c6974673eb66c`, CI **#904 — success**
-- verified recovery baseline before driver history: **b67edfa**, PR **#170**, tested head CI **#925 — success**. Current driver-history PR/CI is tracked in **#155**; check live main Actions before relying on this snapshot.
+- verified recovery baseline before driver history: **b67edfa**, PR **#170**, tested head CI **#925 — success**. TT driver history merged in **#172 / 78c2b55**, final-head CI **#928 — success**; #155 closed by user confirmation at the TT scope (race history deferred). Check live main Actions before relying on this snapshot.
 - accepted/closed: **#150 / #151 / #160** (2026-10-07 user confirmation). Rival pace, post-race summary/retry and wheel zoom are integrated; #152 audio/visual follow-up remains open.
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
@@ -43,7 +43,7 @@ The current main branch includes:
 - Rapier 2D physical player and CPU field;
 - Soft / Medium / Hard tyres with wear and performance effects;
 - physical player and AI pit flow;
-- standalone Time Trial with browser-local condition-scoped lap/PB history, a menu driver-record view, last-20 clean rate and clean-lap spread (first #155 slice; race history remains pending);
+- standalone Time Trial with browser-local condition-scoped lap/PB history, a menu driver-record view, last-20 clean rate and clean-lap spread (user-accepted #155 TT scope; race history deferred);
 - one-shot qualifying or P8 qualifying skip;
 - Grand Prix with QUICK / SHORT / STANDARD / LONG duration presets (8 / 18 / 27 / 36-minute targets; QUICK has a six-lap minimum, normal wear/two-compound obligation and one planned CPU stop);
 - AUTO and PLAYER BEST CPU racing-line sources;
@@ -135,9 +135,9 @@ independent drafts #156 / #157 / #158 are closed as superseded.
 review are current main features. User explicitly authorized merging before
 human visual/FPS/fun checks on 2026-10-07 JST and will report any later problems;
 those checks are not represented as completed. QUICK-only draft #163 is superseded.
-**#155** now has its first TT history slice: dated records, PB trend, approximate same-condition groups and clean/consistency metrics. Race-session history and human UI/FPS verification remain open. **#166 / #167 / #169** feedback fixes are integrated: bounded review/pit-visit rows, player C recovery, and automatic physical CPU pit reverse/retry.
+**#155** now has its first TT history slice: dated records, PB trend, approximate same-condition groups and clean/consistency metrics. User confirmed the TT slice and closed #155 on 2026-10-08 JST; race-session history is deferred and actual FPS measurement is not claimed. **#166 / #167 / #169** feedback fixes are integrated: bounded review/pit-visit rows, player C recovery, and automatic physical CPU pit reverse/retry.
 Remaining gameplay backlog: **#152** feedback/presentation, **#153** cautious
-CPU passing prototype, **#155** persistent driver growth. Editor **#138** remains
+CPU passing prototype. **#173** contact-caused off-track exemption is active. Editor **#138** remains
 postponed. Read live Issue/PR comments before choosing the next work item.
 
 **GitHub Issues are the authoritative work queue.**

@@ -257,3 +257,15 @@ focus, readability and no obstruction of the normal session selector. Actual
 browser rendering/audio/FPS are not claimed by fixture tests. TT-only collection
 must remain absent from seven-CPU race ticks. Race-session history, context and
 race/TT separation remain subsequent #155 work; do not close the full Issue here.
+
+
+### Contact-caused off-track exemption (#173)
+
+Automated coverage checks same-side immediate/delayed push, wrong-side/expired
+exit, gentle rub, already-outside contact, return/repeated cuts, lap boundaries,
+restart/recovery grace clearing, ordinary invalidation, race warning integration,
+and an actual Rapier lateral collision carrying the player across the white line.
+Human: near an edge, let a CPU push the player out; LIMITS must not increment.
+Return and deliberately leave again without contact: it must increment. Verify
+impact damage and off-road slowdown remain, and PLAYER BEST is not updated by
+a contact lap. Pause during the grace window must not consume simulation time.
