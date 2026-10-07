@@ -1,3 +1,4 @@
+import { lapTyreLabel } from '../simulation/LapRecordModel';
 import type { RaceSummary, SummarySample } from '../simulation/RaceSummaryModel';
 
 const esc = (value: string): string => value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -35,7 +36,7 @@ export function renderRaceReview(summary: RaceSummary, selectedId: string): stri
   const laps=summary.laps.filter(lap=>lap.driverId==='player');
   const lapRows=laps.slice(-12).map(lap=>{
     const other=summary.laps.find(row=>row.driverId===selected && row.lap===lap.lap);
-    return `<tr><td>L${lap.lap}</td><td>${lap.seconds.toFixed(3)}s</td><td>${other?.seconds.toFixed(3) ?? '—'}${other?'s':''}</td><td>${lap.startCompound[0]}→${lap.endCompound[0]} ${lap.pitted?'PIT':''}</td><td>${other?`${other.startCompound[0]}→${other.endCompound[0]} ${other.pitted?'PIT':''}`:'—'}</td></tr>`;
+    return `<tr><td>L${lap.lap}</td><td>${lap.seconds.toFixed(3)}s</td><td>${other?.seconds.toFixed(3) ?? '—'}${other?'s':''}</td><td>${lapTyreLabel(lap.startCompound, lap.endCompound, lap.pitted)}</td><td>${other?lapTyreLabel(other.startCompound, other.endCompound, other.pitted):'—'}</td></tr>`;
   }).join('');
   const best=laps.length?Math.min(...laps.map(lap=>lap.seconds)):undefined;
   const lineChanges=summary.events.filter(event=>event.kind==='LINE_CHANGE').length;

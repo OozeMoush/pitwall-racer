@@ -21,6 +21,7 @@ describe('race review presentation',()=>{
     recorder.finish('PLAYER_FINISHED',40,[car('player'),a],()=>-2);
     const html=renderRaceReview(recorder.snapshot(),'a');
     expect(html).not.toContain('<img');expect(html).toContain('&lt;img');expect(html).toContain('33.000s');expect(html).toContain('M→H PIT');
+    expect(html).toContain('<td>M</td>');expect(html).not.toContain('M→M');
     expect(html).toContain('geometry rev');expect(html).toContain('PLAYER / stored');expect(html).toContain('<svg');
   });
 });
