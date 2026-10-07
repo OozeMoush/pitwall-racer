@@ -93,7 +93,7 @@ it('offers C recovery after a real pit-lane barrier stall without skipping trans
     vehicle, physics, pitStop: createPitStopState(), pitRequested: true, flow: { phase: 'RACING' }, lap: 1,
     steerInput: 0, tire: createTire('MEDIUM'), selectedCompound: 'HARD',
     usedCompounds: new Set(['MEDIUM']), trackProgress: pitEntryProgress(), trackDistance: 0,
-    lineCandidate: new PlayerRacingLineCandidateRecorder(), lapValidity: { invalidate: vi.fn() },
+    lineCandidate: new PlayerRacingLineCandidateRecorder(), lapValidity: { invalidate: vi.fn(), clearContactGrace: vi.fn() },
     trackLimitPenalty: createTrackLimitPenaltyState(), playerCar: { setCompound: vi.fn() },
     updateSectorTiming: () => {}, updateLapAndCheckpoints: () => {},
   });
@@ -114,6 +114,7 @@ it('offers C recovery after a real pit-lane barrier stall without skipping trans
     expect(game.playerCar.setCompound).not.toHaveBeenCalled();
     expect(game.canRecoverPlayer()).toBe(false);
     expect(game.lapValidity.invalidate).toHaveBeenCalledOnce();
+    expect(game.lapValidity.clearContactGrace).toHaveBeenCalledOnce();
     physics.world.removeRigidBody(wall);
     for (let tick = 0; tick < 50 * 120 && game.pitStop.phase !== 'IDLE'; tick++) game.stepPhysicalPit(1 / 120);
     expect(game.pitStop.phase).toBe('IDLE');
