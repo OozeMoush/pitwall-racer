@@ -1,3 +1,4 @@
+import { saveDriverHistoryLap, TimeTrialHistoryRecorder } from '../simulation/DriverHistoryStore';
 import { installCameraZoom } from '../ui/CameraZoom';
 import * as THREE from 'three';
 import { RaceAudio } from '../audio/RaceAudio';
@@ -132,6 +133,8 @@ export class QualifyingGame {
   private sectorStartTime = 0;
   private sectorTimes: number[] = [];
   private timeTrialRecord: TimeTrialRecord;
+  private readonly driverHistoryRecorder = new TimeTrialHistoryRecorder();
+  private driverHistoryStorageFailed = false;
   private readonly sessionTimeTrialLaps: TimeTrialSessionLap[] = [];
   private splitNotice = '';
   private splitNoticeTone: 'green' | 'red' = 'green';
@@ -338,6 +341,7 @@ export class QualifyingGame {
     const playerContact = this.physics.playerContactKind();
     if (this.phase === 'FLYING' && playerContact !== 'NONE') {
       this.lineCandidate.markIneligible();
+      this.driverHistoryRecorder?.flag(playerContact === 'BARRIER' ? 'WALL_CONTACT' : 'CAR_CONTACT');
       this.lineTraceInvalidReason = playerContact === 'BARRIER'
         ? 'WALL CONTACT'
         : 'CAR CONTACT';
@@ -370,6 +374,7 @@ export class QualifyingGame {
         this.sectorStartTime = 0;
         this.sectorTimes = [];
         this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+        if (this.mode === 'TIME_TRIAL') this.driverHistoryRecorder?.begin(this.setup.trackId, this.tire.compound, this.tire.wear, this.tire.temperature);
         this.lapValidity.reset();
         this.lineTraceInvalidReason = undefined;
         this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
@@ -394,6 +399,7 @@ export class QualifyingGame {
     );
     if (validityEvent !== 'NONE') {
       this.lineCandidate.markIneligible();
+      this.driverHistoryRecorder?.flag('TRACK_LIMITS');
       this.lineTraceInvalidReason = 'TRACK LIMITS';
       const snapshot = this.lapValidity.snapshot();
       this.lapNotice = snapshot.invalid
@@ -449,12 +455,22 @@ export class QualifyingGame {
               : undefined,
             valid: false,
           });
+          this.recordDriverHistoryLap(this.lapTime,
+            s1 !== undefined && s2 !== undefined && s3 !== undefined ? [s1, s2, s3] : undefined, false);
         }
         this.restartInvalidFlyingLap();
       } else {
         this.completeLap();
       }
     }
+  }
+
+  private recordDriverHistoryLap(seconds: number, sectors: [number, number, number] | undefined, valid: boolean): void {
+    if (this.mode !== 'TIME_TRIAL') return;
+    const lap = this.driverHistoryRecorder?.finish(seconds, sectors, valid, this.tire.wear, this.tire.temperature);
+    if (!lap) return;
+    const result = saveDriverHistoryLap(window.localStorage, lap);
+    this.driverHistoryStorageFailed = result.status !== 'SAVED' && result.status !== 'DUPLICATE';
   }
 
   private restartInvalidFlyingLap(): void {
@@ -464,6 +480,7 @@ export class QualifyingGame {
     this.sectorStartTime = 0;
     this.sectorTimes = [];
     this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+    if (this.mode === 'TIME_TRIAL') this.driverHistoryRecorder?.begin(this.setup.trackId, this.tire.compound, this.tire.wear, this.tire.temperature);
     this.lapValidity.reset();
     this.lineTraceInvalidReason = undefined;
     this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
@@ -472,6 +489,7 @@ export class QualifyingGame {
   }
 
   private completeLap(): void {
+    if (!Number.isFinite(this.lapTime) || this.lapTime <= 0) return;
     const completedLapTime = this.lapTime;
     const validity = this.lapValidity.snapshot();
     const candidate = validity.candidateEligible
@@ -533,11 +551,15 @@ export class QualifyingGame {
           timingStorageFailed = true;
         }
       }
+      this.recordDriverHistoryLap(completedLapTime,
+        s1 !== undefined && s2 !== undefined && s3 !== undefined ? [s1, s2, s3] : undefined, !validity.invalid);
       const savedThisLap = saveStatus === 'SAVED';
       const bestSeconds = storedCandidate?.lapSeconds;
       const pb = this.timeTrialRecord.bestLap;
       if (timingStorageFailed) {
         this.lapNotice = 'TIME TRIAL RECORD NOT SAVED · STORAGE FAILED';
+      } else if (this.driverHistoryStorageFailed) {
+        this.lapNotice = 'DRIVER HISTORY NOT SAVED · STORAGE FAILED';
       } else if (savedThisLap) {
         this.lapNotice = `PLAYER LINE UPDATED · ${completedLapTime.toFixed(3)}s`;
       } else if (saveStatus === 'STORAGE_FAILED') {
@@ -560,6 +582,7 @@ export class QualifyingGame {
       this.sectorStartTime = 0;
       this.sectorTimes = [];
       this.paceEvidence.begin(this.tire.compound, this.tire.wear);
+      if (this.mode === 'TIME_TRIAL') this.driverHistoryRecorder?.begin(this.setup.trackId, this.tire.compound, this.tire.wear, this.tire.temperature);
       this.lapValidity.reset();
       this.lineTraceInvalidReason = undefined;
       this.lineCandidate.begin(this.setup.trackId, this.tire.grip);
@@ -637,6 +660,7 @@ export class QualifyingGame {
       this.paceEvidence.markRecovered();
       this.lapValidity.invalidate();
       this.lineCandidate.markIneligible();
+      this.driverHistoryRecorder?.flag('RECOVERY');
       this.lineTraceInvalidReason = 'RECOVERY';
       this.lapNotice = 'LAP INVALID · RECOVERY';
       this.lapNoticeRemaining = 2.8;
@@ -751,7 +775,7 @@ export class QualifyingGame {
       ? `CONTINUOUS HOTLAP · SOFT/PUSH · LINE BEST ${lineBest?.toFixed(3) ?? '—'}s`
       : 'ONE SHOT · SOFT';
     const controls = isTimeTrial
-      ? 'WASD DRIVE · C RECOVER · ENTER RETURN MENU'
+      ? `WASD DRIVE · C RECOVER · ENTER RETURN MENU${this.driverHistoryStorageFailed ? ' · 履歴を保存できませんでした' : ''}`
       : 'WASD DRIVE · C RECOVER';
     const currentSectorTimes = [
       this.sectorTimes[0] ?? (this.nextSector === 1 && this.phase === 'FLYING'

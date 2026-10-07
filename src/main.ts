@@ -17,6 +17,7 @@ import './timing-highlight-fix.css';
 import './weekend.css';
 import './pause.css';
 import './race-review.css';
+import './driver-history.css';
 
 async function bootstrap(): Promise<void> {
   const game = document.querySelector<HTMLElement>('#game');
