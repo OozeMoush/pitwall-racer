@@ -16,10 +16,10 @@ function trend(updates: ReturnType<typeof historyGroupSummary>['updates']): stri
   const times = updates.map(u => u.lap.seconds), dates = updates.map(u => u.lap.recordedAt);
   const low = Math.min(...times)-0.1, high = Math.max(...times)+0.1;
   const first = Math.min(...dates), last = Math.max(...dates);
-  const coords = updates.map(u => ({ x: 70+(u.lap.recordedAt-first)/Math.max(1,last-first)*600,
+  const coords = updates.map(u => ({ x: 100+(u.lap.recordedAt-first)/Math.max(1,last-first)*560,
     y: 30+(high-u.lap.seconds)/Math.max(0.2,high-low)*140, update: u }));
   const path = coords.map((c,i) => `${i?'L':'M'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
-  return `<svg viewBox="0 0 760 225" role="img" aria-label="自己ベストの更新履歴。下ほど速い"><line x1="70" x2="670" y1="170" y2="170" stroke="#4c647c"/><text x="8" y="38">${high.toFixed(2)}秒</text><text x="8" y="170">${low.toFixed(2)}秒</text><path d="${path}" stroke="#8edcf0" stroke-width="2" fill="none"/>${coords.map(c=>`<circle cx="${c.x}" cy="${c.y}" r="4" fill="#8edcf0"><title>${esc(date(c.update.lap.recordedAt))} · ${c.update.lap.seconds.toFixed(3)}秒</title></circle>`).join('')}<text x="70" y="198">${esc(new Date(first).toLocaleDateString('ja-JP'))}</text><text x="670" y="198" text-anchor="end">${esc(new Date(last).toLocaleDateString('ja-JP'))}</text><text x="670" y="218" text-anchor="end">記録日時 → / 下ほど速い</text></svg>`;
+  return `<svg viewBox="0 0 760 225" role="img" aria-label="自己ベストの更新履歴。下ほど速い"><line x1="100" x2="660" y1="170" y2="170" stroke="#4c647c"/><text x="8" y="38">${high.toFixed(2)}秒</text><text x="8" y="170">${low.toFixed(2)}秒</text><path d="${path}" stroke="#8edcf0" stroke-width="2" fill="none"/>${coords.map(c=>`<circle cx="${c.x}" cy="${c.y}" r="4" fill="#8edcf0"><title>${esc(date(c.update.lap.recordedAt))} · ${c.update.lap.seconds.toFixed(3)}秒</title></circle>`).join('')}<text x="100" y="198">${esc(new Date(first).toLocaleDateString('ja-JP'))}</text><text x="660" y="198" text-anchor="end">${esc(new Date(last).toLocaleDateString('ja-JP'))}</text><text x="660" y="218" text-anchor="end">記録日時 → / 下ほど速い</text></svg>`;
 }
 export function renderDriverHistory(history: DriverHistory, status: HistoryStatus, trackId: TrackId, selectedKey?: string, legacyBest?: number): string {
   const revision = trackGeometryRevision(trackId);
