@@ -64,3 +64,9 @@ describe('AiStuckRecovery', () => {
     expect(state.stalledSeconds).toBe(0);
   });
 });
+
+it('supports explicit pit transit intent at a slow target, but not intentional service dwell', () => {
+  const initial = createAiStuckRecoveryState();
+  expect(stepAiStuckRecovery(initial, { speed: 0, targetSpeed: 8, movementRequested: true }, AI_STUCK_TRIGGER_SECONDS).phase).toBe('REVERSE');
+  expect(stepAiStuckRecovery(initial, { speed: 0, targetSpeed: 40, movementRequested: false }, AI_STUCK_TRIGGER_SECONDS).phase).toBe('NORMAL');
+});

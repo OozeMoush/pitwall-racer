@@ -210,7 +210,6 @@ export class RapierRacePhysics {
       }
 
       if (isPitActive(this.aiPitStops[index])) {
-        this.aiRecoveryStates[index] = createAiStuckRecoveryState();
         this.stepAiPit(index, driver, dt);
         return;
       }
@@ -223,6 +222,11 @@ export class RapierRacePhysics {
       if (entryGap > 0 && entryGap < AI_PIT_APPROACH_DISTANCE) {
         const approach = physicalPitControl(state, beginPitStop(pitBoxTForSlot(index + 1)),
           this.aiPitSteering[index] ?? 0, dt, 0, 1, 0, true);
+        const road = projectTrackNear(state.x, state.y, driver.progress);
+        if (this.reverseAiPitIfStalled(index, state, sampleTrack(road.progress).heading, approach.targetSpeed, dt)) {
+          driver.battleState = 'CLEAR';
+          return;
+        }
         if (state.speed > AI_PIT_LATERAL_APPROACH_SPEED) approach.steer = dynamicAiControl(driver, state, traffic).steer;
         this.aiPitSteering[index] = approach.steer;
         this.driveAi(index, { throttle: approach.throttle, brake: approach.brake,
@@ -461,6 +465,7 @@ export class RapierRacePhysics {
     const vehicle = this.bodyState(this.aiBodies[index]);
     let next = previous;
     if (previous.phase === 'SERVICE') {
+      this.aiRecoveryStates[index] = createAiStuckRecoveryState();
       next = stepPlayerPitStop(previous, dt, previous.t);
       const box = pitLanePose(previous.boxT);
       this.setAiState(index, { x: box.x, y: box.y, heading: box.heading, speed: 0, yawRate: 0 });
@@ -469,6 +474,7 @@ export class RapierRacePhysics {
       const observed = projectPitLane(vehicle.x, vehicle.y, previous.t);
       next = stepPlayerPitStop(previous, dt, observed.t);
       if (next.phase === 'SERVICE') {
+        this.aiRecoveryStates[index] = createAiStuckRecoveryState();
         // Match the player's one small final docking correction.
         const box = pitLanePose(next.boxT);
         this.setAiState(index, { x: box.x, y: box.y, heading: box.heading, speed: 0, yawRate: 0 });
@@ -476,10 +482,12 @@ export class RapierRacePhysics {
       } else if (next.phase !== 'DONE') {
         const control = physicalPitControl(vehicle, next, this.aiPitSteering[index] ?? 0, dt);
         this.aiPitSteering[index] = control.steer;
-        this.driveAi(index, { throttle: control.throttle, brake: control.brake,
-          steer: control.steer, tireGrip: driver.tire.grip, tireWear: driver.tire.wear,
-          surfaceGrip: 1, powerBoost: CORE_POWER_BASELINE, powerMultiplier: 1,
-          rollingResistance: 0 }, dt);
+        if (!this.reverseAiPitIfStalled(index, vehicle, observed.pose.heading, control.targetSpeed, dt)) {
+          this.driveAi(index, { throttle: control.throttle, brake: control.brake,
+            steer: control.steer, tireGrip: driver.tire.grip, tireWear: driver.tire.wear,
+            surfaceGrip: 1, powerBoost: CORE_POWER_BASELINE, powerMultiplier: 1,
+            rollingResistance: 0 }, dt);
+        }
       }
     }
     this.aiPitStops[index] = next;
@@ -501,6 +509,7 @@ export class RapierRacePhysics {
       // Keep the physical exit pose and velocity; do not teleport to a limiter-speed pose.
       this.aiPitStops[index] = createPitStopState();
       this.aiPitSteering[index] = 0;
+      this.aiRecoveryStates[index] = createAiStuckRecoveryState();
     }
   }
 
@@ -564,10 +573,26 @@ export class RapierRacePhysics {
     });
   }
 
+  private reverseAiPitIfStalled(index: number, vehicle: VehicleState,
+    referenceHeading: number, targetSpeed: number, dt: number): boolean {
+    const recovery = stepAiStuckRecovery(
+      this.aiRecoveryStates[index] ?? createAiStuckRecoveryState(),
+      { speed: vehicle.speed, targetSpeed, movementRequested: true }, dt,
+    );
+    this.aiRecoveryStates[index] = recovery;
+    if (recovery.phase !== 'REVERSE') return false;
+    // Back away through the real body, aligning with this route rather than
+    // the main-road tangent. No positional or service-progress correction.
+    this.applyAiReverse(index, 0, dt, referenceHeading);
+    this.aiPitSteering[index] = 0;
+    return true;
+  }
+
   private applyAiReverse(
     index: number,
     progress: number,
     dt: number,
+    referenceHeading = sampleTrack(progress, 0).heading,
   ): void {
     const body = this.aiBodies[index];
     if (!body) return;
@@ -586,7 +611,6 @@ export class RapierRacePhysics {
       y: velocity.y + (targetVy - velocity.y) * response,
     }, true);
 
-    const referenceHeading = sampleTrack(progress, 0).heading;
     const headingError = wrapAngle(referenceHeading - heading);
     const desiredYaw = clamp(headingError * 1.25, -0.55, 0.55);
     body.setAngvel(

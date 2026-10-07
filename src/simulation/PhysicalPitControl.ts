@@ -52,6 +52,6 @@ export function physicalPitControl(
   const speedLoad = Math.min(1, vehicle.speed / 60);
   const tyreLoad = Math.min(1.15, Math.abs(steer) * speedLoad * 0.45
     + brake * speedLoad * 0.55 + throttle * 0.08);
-  return { projection, steer, throttle, brake, tyreLoad };
+  return { projection, steer, throttle, brake, tyreLoad, targetSpeed };
 }
 function clamp(v: number, min: number, max: number) { return Math.max(min, Math.min(max, v)); }
