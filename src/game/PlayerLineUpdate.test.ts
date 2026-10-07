@@ -1,3 +1,4 @@
+import { loadDriverHistory, TimeTrialHistoryRecorder } from '../simulation/DriverHistoryStore';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoreRaceGame } from './CoreRaceGame';
 import { QualifyingGame } from './QualifyingGame';
@@ -30,12 +31,14 @@ function race(lineCandidate: PlayerRacingLineCandidateRecorder) {
   }) as any;
 }
 function solo(lineCandidate: PlayerRacingLineCandidateRecorder) {
+  const driverHistoryRecorder = new TimeTrialHistoryRecorder('test-solo');
+  driverHistoryRecorder.begin('pitwall-gp', 'SOFT', 0, 98);
   return Object.assign(Object.create(QualifyingGame.prototype), {
-    setup: { trackId: 'pitwall-gp' }, mode: 'TIME_TRIAL', lineCandidate,
+    setup: { trackId: 'pitwall-gp' }, mode: 'TIME_TRIAL', lineCandidate, driverHistoryRecorder,
     lapTime: 29, lapValidity: { snapshot: () => ({ candidateEligible: true }), reset() {} },
     completedLaps: 0, sectorTimes: [9, 10], sessionTimeTrialLaps: [],
     timeTrialRecord: {}, announceSectorSplit() {},
-    paceEvidence: { begin() {} }, tire: { compound: 'SOFT', wear: 0, grip: 1 },
+    paceEvidence: { begin() {} }, tire: { compound: 'SOFT', wear: 0, grip: 1, temperature: 98 },
   }) as any;
 }
 describe('player line session update boundaries', () => {
@@ -118,9 +121,39 @@ describe('player line session update boundaries', () => {
       launchAffected: false, recovered: false, pitted: false });
     game.completeLap();
     expect(game.result.playerTime).toBe(29);
+    expect(loadDriverHistory(storage).history.laps).toHaveLength(0);
     activateStoredRacingLine(storage, 'pitwall-gp');
     expect(runtimeRacingLine('pitwall-gp')?.lapSeconds).toBe(29);
     expect(activeReferenceTarget('pitwall-gp', 0.5, 1).laneOffset).toBeCloseTo(2, 1);
+  });
+  it('persists a completed TT attempt with conditions and ignores a duplicate completion callback', () => {
+    const game = solo(recorder(2));
+    game.completeLap(); game.completeLap();
+    const history = loadDriverHistory(storage).history;
+    expect(history.laps).toHaveLength(1);
+    expect(history.laps[0]).toMatchObject({sessionId:'test-solo',seconds:29,startWear:0,startTemperature:98,mode:'TIME_TRIAL'});
+    expect(history.bests).toHaveLength(1);
+    expect(game.completedLaps).toBe(1);
+  });
+  it('retains non-clean TT attempts with all reasons without a new history PB', () => {
+    const game = solo(recorder(2));
+    game.driverHistoryRecorder.flag('TRACK_LIMITS');
+    game.driverHistoryRecorder.flag('WALL_CONTACT');
+    game.lapValidity.snapshot = () => ({ candidateEligible:false,invalid:false,warnings:1 });
+    game.completeLap();
+    const history = loadDriverHistory(storage).history;
+    expect(history.laps).toHaveLength(1);
+    expect(history.laps[0].reasons).toEqual(['TRACK_LIMITS','WALL_CONTACT']);
+    expect(history.bests).toHaveLength(0);
+  });
+  it('stores an invalid recovered completion through the invalid-lap hook, not as a PB', () => {
+    const game = solo(recorder(2));
+    game.driverHistoryRecorder.flag('RECOVERY');
+    game.recordDriverHistoryLap(29,[9,10,10],false);
+    game.restartInvalidFlyingLap();
+    const history = loadDriverHistory(storage).history;
+    expect(history.laps[0]).toMatchObject({valid:false,reasons:['RECOVERY']});
+    expect(history.updates).toHaveLength(0);
   });
   it('reports a Time Trial storage failure instead of a successful line update', () => {
     storage.fail = true;

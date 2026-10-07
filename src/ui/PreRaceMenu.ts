@@ -1,3 +1,4 @@
+import { showDriverHistory } from './DriverHistory';
 import {
   DEFAULT_RACE_LENGTH,
   DEFAULT_RACE_SETUP,
@@ -48,6 +49,7 @@ export function showPreRaceMenu(
         <div><small>PITWALL RACER</small><h1>RACE WEEKEND</h1></div>
         <div class="pre-race-header-actions">
           <p>Choose a Grand Prix session or enter the independent empty-track Time Trial to update PLAYER BEST.</p>
+          <button class="open-editor-button" data-driver-history>ドライバー記録</button>
           <button class="open-editor-button" data-circuit-editor>CIRCUIT EDITOR</button>
         </div>
       </header>
@@ -179,6 +181,12 @@ export function showPreRaceMenu(
       });
     });
     refreshSelected();
+
+    root.querySelector<HTMLButtonElement>('[data-driver-history]')?.addEventListener('click', async () => {
+      await showDriverHistory(root, window.localStorage, selectedTrack);
+      resolve(await showPreRaceMenu(root, { ...initial, trackId: selectedTrack,
+        startCompound: selectedCompound, raceLength: selectedRaceLength, totalLaps: selectedLaps }));
+    }, { once: true });
 
     root.querySelector<HTMLButtonElement>('[data-circuit-editor]')?.addEventListener(
       'click',

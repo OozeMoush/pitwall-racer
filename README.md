@@ -22,7 +22,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
 - fixed 120 Hz physics/simulation step
 - AUTO and PLAYER BEST CPU racing-line sources
-- standalone Time Trial for improving PLAYER BEST
+- standalone Time Trial for improving PLAYER BEST; **ドライバー記録** in session selection opens browser-local TT history, condition-scoped PB updates, clean rate and lap-time spread
 - one-shot qualifying before the Grand Prix, with an option to skip and start P8
 
 ## Race setup

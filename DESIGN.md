@@ -667,3 +667,42 @@ would bypass physical pit cost and traffic. Reusing the main-road heading inside
 the pit can aim at the wrong route. Existing physical reverse is sufficient for
 the tested persistent side-wall collision; an obstacle that entirely seals the
 route causes bounded retries rather than an invented successful stop.
+
+
+### Driver history: first Time Trial slice — #155
+
+The first playable slice records completed TT attempts and clean condition-scoped
+PB updates; race-session history is subsequent work. The old TT best/top-20 and
+PLAYER BEST stores remain unchanged. They contain insufficient historical
+conditions, so they are shown as a separate legacy best, never converted into a
+fabricated dated growth series. New records capture actual completion timestamp,
+session/lap identity, geometry revision, physics-rules version, compound, and
+start/end wear and temperature. Bump TT_HISTORY_RULES when solo physics semantics
+change. Traffic-free SOFT/PUSH is the current TT mode.
+
+Matching uses exact track/revision/mode/rules/compound plus start-wear 10% and
+start-temperature 5°C bands. These are approximate conditions, not identical
+pointwise grip. Exact wear/temperature endpoints remain visible in history. Old
+geometry remains selectable separately. Reject comparing all compounds/revisions
+as one improvement curve; that can mistake tyres/layout changes for skill.
+
+Clean means a valid completed lap with every sector measured and no track-limit
+warning, meaningful physics-reported wall/car contact, or recovery. All accumulated
+reasons persist even when the live notice changes. This definition is independent
+of GP counted validity and racing-line trace quality. Invalid/non-clean attempts
+remain in the last-20 matching completed-lap denominator. Warm-up and unfinished
+attempts are excluded and disclosed; they are not invented finished laps.
+Population standard deviation uses the clean subset of that window (at least
+three), showing its mean and count. No outliers are silently removed. Smaller
+spread alone is not labelled improved driving; uniformly slow laps can be steady.
+A stability/clean rate dashboard remains useful even without a new PB.
+
+Storage is a separate version-1 key, bounded across all tracks to 500 attempts,
+64 active condition-best anchors and 200 PB updates. PB anchors outlive attempt
+pruning; omission counters and retained-scope labels are visible. Duplicate ids
+are rejected and a live lap can be consumed only once. Writes occur on completion;
+statistics/plotting occur only in the menu history view. Read/write errors are
+reported. Corrupt or unsupported future payloads are preserved and not overwritten.
+There is no prior driver-history schema to migrate; a future version must explicitly
+migrate this schema. Records are local to this browser, with JSON export and no
+account/cloud-sync claims. The view is bounded/scrollable like the result panel.
