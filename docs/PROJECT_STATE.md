@@ -10,7 +10,7 @@ Last updated: **2026-10-07 JST**
 
 - default branch: `main`
 - earlier verified main: `6172c31c3e1184f117b66aaea59c6974673eb66c`, CI **#904 — success**
-- current merged baseline: **f0f6763**, integration PR **#159**; its tested head passed CI **#916**. Check current main Actions for post-merge status.
+- current merged baseline: **ee8a422**, implementation PR **#164**; its tested head passed CI **#919**. Check current main Actions for post-merge status.
 - accepted/closed: **#150 / #151 / #160** (2026-10-07 user confirmation). Rival pace, post-race summary/retry and wheel zoom are integrated; #152 audio/visual follow-up remains open.
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
@@ -45,17 +45,12 @@ The current main branch includes:
 - physical player and AI pit flow;
 - standalone Time Trial;
 - one-shot qualifying or P8 qualifying skip;
-- Grand Prix with SHORT / STANDARD / LONG duration presets;
+- Grand Prix with QUICK / SHORT / STANDARD / LONG duration presets (8 / 18 / 27 / 36-minute targets; QUICK has a six-lap minimum, normal wear/two-compound obligation and one planned CPU stop);
 - AUTO and PLAYER BEST CPU racing-line sources;
 - five-light reaction start;
 - lap / sector / history / standings HUD with a compact latest-shared-lap Δ PACE column;
-- post-race observed review, bounded JSON summary and same/different-tyre retry;
+- post-race result/retry, tyre-specific fastest laps, one measured-gap/pit battle graph, collapsed details and bounded JSON export;
 - bounded wheel camera zoom in race/qualifying and pause volume controls;
-- Issue #150 implementation branch: classification rival pace / physical pit feedback;
-  visual readability and browser performance still require verification before merge;
-- #151 implementation: bounded version-1 race summary and post-race observation
-  review with rival selection, pit history, retry buttons and JSON export;
-  human readability/FPS validation is pending in the implementation PR;
 - tow and dirty air;
 - track limits and race penalties;
 - multiple selectable circuits;
@@ -136,9 +131,10 @@ Issue **#147** is closed after PR #148 and user-confirmed race performance impro
 Accepted gameplay #150 / #151 / #160 is merged through #159; the overlapping
 independent drafts #156 / #157 / #158 are closed as superseded.
 
-Active work: **#161** adds a QUICK duration; **#162** redesigns review
-and adds compound bests. These are proposed additions until their combined implementation
-PR merges; do not report them as current main features prematurely.
+**#161 / #162** are merged through **#164** and closed. QUICK and the redesigned
+review are current main features. User explicitly authorized merging before
+human visual/FPS/fun checks on 2026-10-07 JST and will report any later problems;
+those checks are not represented as completed. QUICK-only draft #163 is superseded.
 Remaining gameplay backlog: **#152** feedback/presentation, **#153** cautious
 CPU passing prototype, **#155** persistent driver growth. Editor **#138** remains
 postponed. Read live Issue/PR comments before choosing the next work item.
