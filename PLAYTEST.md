@@ -235,3 +235,25 @@ service and rejoins. Retain ordinary road recovery, all-circuit physical pit
 checks and pinned-body no-service checks. A low-target transit request can
 trigger recovery; intentional service dwell cannot. Human follow-up: user's
 specific circuit, entry impact and traffic configuration, plus real race FPS.
+
+
+## Driver history, Time Trial slice — #155
+
+Automated: chronological clean/slower/invalid attempts; actual condition-scoped
+PB changes with prior times; geometry/rules/tyre/wear/temperature separation;
+legacy TT/PLAYER BEST isolation; duplicate finish suppression; incomplete attempts;
+accumulated invalid reasons; bounded attempts/anchors/updates with omission counts;
+corrupt/future schema preservation; read/write failure without claiming an unsaved
+history; last-20 denominator including invalid laps; clean-only population spread,
+minimum three and mean/count disclosure; no silent slow-outlier removal; escaping
+stored identifiers and empty states. Session tests exercise actual completeLap
+and invalid-lap persistence hooks; qualifying does not write TT history.
+
+Human pending: enter TT, complete clean and warned/contact/recovery laps, return
+to menu → ドライバー記録, reload and inspect persisted records; select track and
+condition, inspect dated PB curve and latest rows, export JSON, return with setup
+selection preserved. Check 390px/desktop/fullscreen scrolling, select keyboard
+focus, readability and no obstruction of the normal session selector. Actual
+browser rendering/audio/FPS are not claimed by fixture tests. TT-only collection
+must remain absent from seven-CPU race ticks. Race-session history, context and
+race/TT separation remain subsequent #155 work; do not close the full Issue here.
