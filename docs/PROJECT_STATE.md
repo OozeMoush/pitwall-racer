@@ -51,6 +51,7 @@ The current main branch includes:
 - lap / sector / history / standings HUD with a compact latest-shared-lap Δ PACE column;
 - post-race result/retry, tyre-specific fastest laps, one measured-gap/pit battle graph, collapsed details and bounded JSON export;
 - bounded wheel camera zoom in race/qualifying and pause volume controls;
+- up to two quiet physical-neighbour stereo voices and debounced rank/pit/best/finish cues, with a small existing-row race label (#152; subjective audio/visual/FPS checks pending);
 - tow and dirty air;
 - track limits and race penalties;
 - multiple selectable circuits;
@@ -137,7 +138,7 @@ human visual/FPS/fun checks on 2026-10-07 JST and will report any later problems
 those checks are not represented as completed. QUICK-only draft #163 is superseded.
 **#155** now has its first TT history slice: dated records, PB trend, approximate same-condition groups and clean/consistency metrics. User confirmed the TT slice and closed #155 on 2026-10-08 JST; race-session history is deferred and actual FPS measurement is not claimed. **#166 / #167 / #169** feedback fixes are integrated: bounded review/pit-visit rows, player C recovery, and automatic physical CPU pit reverse/retry.
 Remaining gameplay backlog: **#152** feedback/presentation, **#153** cautious
-CPU passing prototype. **#173** contact-caused off-track exemption is active. Editor **#138** remains
+CPU passing prototype. **#173** is merged in **#174 / 253e518** (final-head CI #932, 421 local tests): actual same-side car pushes exempt the resulting continuous off-track excursion from warnings; physical slowdown/damage remain. Editor **#138** remains
 postponed. Read live Issue/PR comments before choosing the next work item.
 
 **GitHub Issues are the authoritative work queue.**

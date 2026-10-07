@@ -18,6 +18,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - line-locked CPU driving with longitudinal FOLLOW traffic control
 - driver-specific CPU pace, consistency and technical precision with smooth live form variation
 - dirty air and tow
+- quiet driver-relative stereo sound for the nearest two physical rivals, plus short position/pit-exit/best/finish cues; pause VOLUME / MUTE controls all sound
 - five-light randomized race start with measured throttle reaction time
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
 - fixed 120 Hz physics/simulation step

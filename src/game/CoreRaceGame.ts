@@ -1,3 +1,5 @@
+import { nearestRivalSounds } from '../audio/RivalAudioModel';
+import { RaceFeedbackTracker, raceCueLabel, type RaceCue } from '../audio/RaceFeedbackModel';
 import { installCameraZoom } from '../ui/CameraZoom';
 import { compareRivalPace, rivalNeighbours, RivalPitObserver, type RivalCar } from '../simulation/RivalStrategyModel';
 import { RaceSummaryRecorder, summaryFingerprint, type RaceSummary, type SummaryCar } from '../simulation/RaceSummaryModel';
@@ -177,6 +179,11 @@ export class CoreRaceGame {
   private readonly cameraTarget = new THREE.Vector3();
   private readonly physics: RapierRacePhysics;
   private readonly audio = new RaceAudio();
+  private readonly feedback = new RaceFeedbackTracker();
+  private audioCue?: { id: number; kind: RaceCue };
+  private audioCueSequence = 0;
+  private feedbackNotice = '';
+  private feedbackNoticeRemaining = 0;
   private readonly raceIntervals = new RaceIntervalTracker();
   private readonly rivalPits = new RivalPitObserver();
   private readonly lapValidity = new LapValidityTracker();
@@ -405,6 +412,8 @@ export class CoreRaceGame {
   private readonly frame = (now: number): void => {
     const dt = Math.min((now - this.lastFrame) / 1000, 0.05);
     this.lastFrame = now;
+    this.feedbackNoticeRemaining = Math.max(0, this.feedbackNoticeRemaining - dt);
+    if (this.feedbackNoticeRemaining === 0) this.feedbackNotice = '';
     this.racingLineNoticeRemaining = Math.max(0, this.racingLineNoticeRemaining - dt);
     if (this.racingLineNoticeRemaining === 0) this.racingLineNotice = '';
     this.racePenaltyNoticeRemaining = Math.max(0, this.racePenaltyNoticeRemaining - dt);
@@ -423,8 +432,10 @@ export class CoreRaceGame {
     this.syncVisuals(false);
     this.syncAiDebugVisuals(dt);
     this.updateCamera(dt);
-    this.updateAudio(dt);
-    this.renderHud();
+    const aiStates = this.physics.aiStates();
+    const standings = this.standings(aiStates);
+    this.updateAudio(dt, standings, aiStates);
+    this.renderHud(standings);
     this.renderer.render(this.scene, this.camera);
     requestAnimationFrame(this.frame);
   };
@@ -1407,9 +1418,19 @@ export class CoreRaceGame {
     this.camera.lookAt(this.cameraTarget);
   }
 
-  private updateAudio(dt: number): void {
+  private updateAudio(dt: number, standings = this.standings(), states = this.physics.aiStates()): void {
     const surface = surfaceEffect(this.trackDistance, this.trackProgress);
+    const position = standings.findIndex(entry => entry.id === 'player') + 1;
+    const cue = this.feedback.update({ phase: this.flow.phase, lap: this.lap, position,
+      pitPhase: this.pitStop.phase, best: this.timing.bestLapTime }, this.timing.raceTime);
+    if (cue) {
+      this.audioCue = { id: ++this.audioCueSequence, kind: cue };
+      this.feedbackNotice = raceCueLabel(cue); this.feedbackNoticeRemaining = 2.5;
+    }
+    const rivals = nearestRivalSounds(this.vehicle, this.ai.flatMap((driver, i) =>
+      driver.finished || !states[i] ? [] : [{ id: driver.id, ...states[i] }]));
     this.audio.update({
+      rivals, cue: this.audioCue,
       contactKind: this.physics.playerContactKind(),
       impactSpeed: this.physics.playerImpactSpeed(),
       inactive: this.flow.phase === 'FINISHED',
@@ -1541,6 +1562,11 @@ export class CoreRaceGame {
       this.refreshAiDebugReferenceLine();
     }
     this.audio.reset();
+    this.feedback.reset();
+    this.audioCue = undefined;
+    this.audioCueSequence = 0;
+    this.feedbackNotice = '';
+    this.feedbackNoticeRemaining = 0;
     this.playerCar.setCompound(startCompound);
     this.syncVisuals(true);
   }
@@ -1556,8 +1582,7 @@ export class CoreRaceGame {
     return createVehicle(start.x, start.y, start.heading);
   }
 
-  private standings(): LiveStandingEntry[] {
-    const aiStates = this.physics.aiStates();
+  private standings(aiStates = this.physics.aiStates()): LiveStandingEntry[] {
     return classifyLivePositions([
       { id: 'player', name: 'YOU', lap: this.lap, vehicle: this.vehicle },
       ...this.ai.map((driver, index) => ({ id: driver.id, name: driver.name, lap: driver.lap, vehicle: aiStates[index] ?? sampleTrack(driver.progress) })),
@@ -1918,12 +1943,12 @@ export class CoreRaceGame {
     return `<small class="tower-pace ${tone}" title="Player minus rival on latest shared completed lap ${pace.laps.join('/')} (${pace.laps.length})">${delta > 0 ? '+' : ''}${delta.toFixed(2)}</small>`;
   }
 
-  private renderHud(): void {
+  private renderHud(providedStandings?: LiveStandingEntry[]): void {
     // A stopped review must retain scroll, button focus and selection. Replacing
     // it at display refresh rate makes a long results table unusable.
     if (this.flow.phase === 'FINISHED' && this.reviewHtml && this.renderedReviewHtml === this.reviewHtml) return;
     this.renderedReviewHtml = this.reviewHtml;
-    const standings = this.standings();
+    const standings = providedStandings ?? this.standings();
     const playerIndex = standings.findIndex((driver) => driver.id === 'player');
     const position = playerIndex + 1;
     const playerStanding = standings[playerIndex];
@@ -2099,7 +2124,7 @@ export class CoreRaceGame {
           <div class="tyre-wear-card"><small>TYRE</small><b class="tyre-${this.tire.compound.toLowerCase()}">${this.tire.compound} <em class="tyre-wear-value ${tyreWearClass}">WEAR ${wearPct}%</em></b><span class="tyre-wear-meter ${tyreWearClass}" aria-label="tyre wear ${wearPct} percent"><i style="width:${wearPct}%"></i></span></div>
           <div><small>NEXT STOP</small><b class="tyre-${this.selectedCompound.toLowerCase()}">${this.selectedCompound}</b><span>${pitLabel}</span></div>
           <div class="tow-card ${towPct > 0 ? 'active' : ''}" title="Slipstream strength relative to the strongest usable tow"><small>SLIPSTREAM</small><b>${towPct > 0 ? `TOW ${towPct}%` : 'NO TOW'}</b><span class="tow-meter" aria-label="tow strength ${towPct} percent"><i style="width:${towPct}%"></i></span></div>
-          <div class="race-status-card"><small>RACE</small><b>${raceState}</b>${trackLimitMeterHtml}<span>Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}</span></div>
+          <div class="race-status-card"><small>RACE</small><b>${raceState}</b>${trackLimitMeterHtml}<span class="${this.feedbackNotice ? 'race-feedback-note' : ''}">${this.feedbackNotice || `Q P${gridPosition}${this.setup.qualifyingTime ? ` · ${formatLapTime(this.setup.qualifyingTime)}` : ''}`}</span></div>
         </div>
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER · F3 AI DEBUG · F4 NEXT AI</div>`;
