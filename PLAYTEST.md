@@ -279,3 +279,14 @@ actual motion, and a human pair session through straight/braking/corner/exit.
 Then independently extend to eight cars, other circuits, PLAYER/EDITOR lines,
 pits and lapped traffic. FPS and subjective racecraft are still human/browser
 gates. The current candidate fails the pair gate and has no playable entry.
+
+### Contact-caused off-track exemption (#173)
+
+Automated coverage checks same-side immediate/delayed push, wrong-side/expired
+exit, gentle rub, already-outside contact, return/repeated cuts, lap boundaries,
+restart/recovery grace clearing, ordinary invalidation, race warning integration,
+and an actual Rapier lateral collision carrying the player across the white line.
+Human: near an edge, let a CPU push the player out; LIMITS must not increment.
+Return and deliberately leave again without contact: it must increment. Verify
+impact damage and off-road slowdown remain, and PLAYER BEST is not updated by
+a contact lap. Pause during the grace window must not consume simulation time.

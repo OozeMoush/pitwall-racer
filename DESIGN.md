@@ -736,3 +736,23 @@ contacts decrease. Do not expose it as an in-game option yet. Preserve the
 counterexample and before/after measurement, then replace the isolated policy
 only with evidence of safe abort/return through the corner. See
 `docs/experiments/153-pair-passing.md` for conditions, results and reopening gates.
+
+### Contact-caused track-limit exits (#173)
+
+A physical car push must not add track-limit warnings or pit penalties merely
+because it sends the player beyond the white line. Rapier's actual car-only
+normal contact impulse divided by player mass supplies a velocity-change vector;
+wall impulses, nearby traffic and speed drops do not grant an exemption. Project
+that vector onto the local road normal. A lateral push of at least 0.3 m/s arms
+a 0.75-second simulation-time window for an exit on that same side. Subsequent
+pushes while still legally on the road can renew it. Once four wheels exit, the
+whole continuous excursion is ignored until a wheel returns, including across
+lap boundaries. Contact acquired already outside cannot erase a warning or arm
+the next excursion. Restart/recovery clear pending grace; pause freezes its timer.
+
+This is a bounded causal approximation, not fault attribution: the solver does
+not identify which driver initiated the crash. A universal post-contact immunity
+window was rejected because an opposite-side or much later cut would be free.
+Physical grass/grip and impact damage remain; contact still excludes the lap
+from clean PLAYER BEST traces. Recovery remains invalid. This change is for
+race traffic; solo TT/qualifying has no other physical cars and retains its rules.

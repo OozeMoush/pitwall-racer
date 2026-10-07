@@ -100,6 +100,7 @@ export class RapierRacePhysics {
   private readonly barrierColliderHeadings = new Map<number, number>();
   private playerContactKindValue: 'NONE' | 'CAR' | 'BARRIER' = 'NONE';
   private playerImpactSpeedValue = 0;
+  private playerCarPush = { x: 0, y: 0 };
   private aiContactKindValues: Array<'NONE' | 'CAR' | 'BARRIER'>;
   private aiImpactSpeedValues: number[];
   private readonly aiBodies: RAPIER.RigidBody[];
@@ -182,6 +183,11 @@ export class RapierRacePhysics {
 
   playerContactKind(): 'NONE' | 'CAR' | 'BARRIER' {
     return this.playerContactKindValue;
+  }
+
+  /** Actual car-only normal impulse / player mass from the latest solver step. */
+  playerCarPushVelocity(): { x: number; y: number } {
+    return this.playerCarPush;
   }
 
   playerImpactSpeed(): number {
@@ -406,6 +412,7 @@ export class RapierRacePhysics {
     this.playerLongitudinalAccelerationValue = 0;
     this.playerContactKindValue = 'NONE';
     this.playerImpactSpeedValue = 0;
+    this.playerCarPush = { x: 0, y: 0 };
   }
 
   setAiState(index: number, state: VehicleState, velocityHeading?: number): void {
@@ -724,12 +731,21 @@ export class RapierRacePhysics {
   ): void {
     this.playerContactKindValue = 'NONE';
     this.playerImpactSpeedValue = 0;
+    this.playerCarPush = { x: 0, y: 0 };
     const playerCollider = this.playerCollider;
     if (!playerCollider) return;
 
     this.world.contactPairsWith(playerCollider, (otherCollider) => {
       const aiIndex = this.aiColliderIndexByHandle.get(otherCollider.handle);
       if (aiIndex !== undefined) {
+        this.world.contactPair(playerCollider, otherCollider, (manifold, flipped) => {
+          const normal = manifold.normal();
+          let impulse = 0;
+          for (let i = 0; i < manifold.numContacts(); i++) impulse += manifold.contactImpulse(i);
+          const change = impulse / this.playerBody.mass() * (flipped ? 1 : -1);
+          this.playerCarPush.x += normal.x * change;
+          this.playerCarPush.y += normal.y * change;
+        });
         const otherVelocity = aiVelocitiesBeforeStep[aiIndex];
         if (!otherVelocity) return;
         const relativeSpeed = carRelativeImpactSpeed(

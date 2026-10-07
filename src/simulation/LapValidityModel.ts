@@ -34,12 +34,20 @@ export class LapValidityTracker {
   private warningCount = 0;
   private outside = false;
   private forcedInvalid = false;
+  private pushSide = 0;
+  private pushRemaining = 0;
+  private exemptOutside = false;
 
   constructor(private readonly warningLimit = DEFAULT_WARNING_LIMIT) {}
 
-  reset(): void {
+  reset(preserveExcursion = false): void {
     this.warningCount = 0;
-    this.outside = false;
+    if (!preserveExcursion) {
+      this.outside = false;
+      this.pushSide = 0;
+      this.pushRemaining = 0;
+      this.exemptOutside = false;
+    }
     this.forcedInvalid = false;
   }
 
@@ -52,12 +60,14 @@ export class LapValidityTracker {
     laneOffset: number,
     trackHeading: number,
     vehicleHeading: number,
+    dt = 0,
+    lateralPush = 0,
   ): LapValidityEvent {
     return this.sampleOutside(isEntireCarBeyondTrack(
       laneOffset,
       trackHeading,
       vehicleHeading,
-    ));
+    ), Math.sign(laneOffset), dt, lateralPush);
   }
 
   /**
@@ -68,12 +78,21 @@ export class LapValidityTracker {
     vehicleX: number,
     vehicleY: number,
     vehicleHeading: number,
+    dt = 0,
+    carPush = { x: 0, y: 0 },
   ): LapValidityEvent {
+    const projection = projectTrack(vehicleX, vehicleY);
+    const lateralPush = -Math.sin(projection.heading) * carPush.x
+      + Math.cos(projection.heading) * carPush.y;
     return this.sampleOutside(isEntireCarBeyondTrackAt(
-      vehicleX,
-      vehicleY,
-      vehicleHeading,
-    ));
+      vehicleX, vehicleY, vehicleHeading,
+    ), Math.sign(projection.laneOffset), dt, lateralPush);
+  }
+
+  clearContactGrace(): void {
+    this.pushSide = 0;
+    this.pushRemaining = 0;
+    this.exemptOutside = false;
   }
 
   invalidate(): void {
@@ -98,17 +117,30 @@ export class LapValidityTracker {
     return this.forcedInvalid || this.warningCount >= this.warningLimit;
   }
 
-  private sampleOutside(fullCarOutside: boolean): LapValidityEvent {
+  private sampleOutside(fullCarOutside: boolean, side: number, dt: number, lateralPush: number): LapValidityEvent {
+    this.pushRemaining = Math.max(0, this.pushRemaining - Math.max(0, dt));
+    // A car-only solver impulse must push toward the eventual exit. This is a
+    // bounded causal approximation, not a decision about which driver is at fault.
+    // No immunity can be acquired after the car has already left the road.
+    if (!this.outside && Number.isFinite(lateralPush) && Math.abs(lateralPush) >= 0.3) {
+      this.pushSide = Math.sign(lateralPush);
+      this.pushRemaining = 0.75;
+    }
     if (!fullCarOutside) {
+      if (this.outside) { this.pushRemaining = 0; this.pushSide = 0; }
       this.outside = false;
+      this.exemptOutside = false;
       return 'NONE';
     }
-
     if (this.outside) return 'NONE';
     this.outside = true;
+    this.exemptOutside = this.pushRemaining > 0 && side === this.pushSide;
+    this.pushRemaining = 0;
+    if (this.exemptOutside) return 'NONE';
     this.warningCount += 1;
     return this.invalid ? 'INVALIDATED' : 'WARNING';
   }
+
 }
 
 /**
