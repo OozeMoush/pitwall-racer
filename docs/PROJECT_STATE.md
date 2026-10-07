@@ -6,11 +6,12 @@
 
 ## Verified baseline
 
-Last updated: **2026-10-06 JST**
+Last updated: **2026-10-07 JST**
 
 - default branch: `main`
-- previous verified main: `6172c31c3e1184f117b66aaea59c6974673eb66c`, CI **#904 — success**
-- current code change: **Issue #147 CPU race performance / cached geometry**; use its implementation PR and current Actions for the merged SHA / CI status
+- earlier verified main: `6172c31c3e1184f117b66aaea59c6974673eb66c`, CI **#904 — success**
+- current merged baseline: **f0f6763**, integration PR **#159**; its tested head passed CI **#916**. Check current main Actions for post-merge status.
+- accepted/closed: **#150 / #151 / #160** (2026-10-07 user confirmation). Rival pace, post-race summary/retry and wheel zoom are integrated; #152 audio/visual follow-up remains open.
 - repository visibility: **public**
 - development server: **Vite port 5175, strictPort**
 - branch policy: protected `main`, PR required, squash-only, fast/playtest/long checks required, linear history, no force-push/delete
@@ -47,7 +48,9 @@ The current main branch includes:
 - Grand Prix with SHORT / STANDARD / LONG duration presets;
 - AUTO and PLAYER BEST CPU racing-line sources;
 - five-light reaction start;
-- lap / sector / history / standings HUD;
+- lap / sector / history / standings HUD with a compact latest-shared-lap Δ PACE column;
+- post-race observed review, bounded JSON summary and same/different-tyre retry;
+- bounded wheel camera zoom in race/qualifying and pause volume controls;
 - Issue #150 implementation branch: classification rival pace / physical pit feedback;
   visual readability and browser performance still require verification before merge;
 - #151 implementation: bounded version-1 race summary and post-race observation
@@ -130,11 +133,15 @@ It is archival evidence, not active mainline architecture.
 
 Issue **#137** is closed at the user-approved strategy/layout checkpoint.
 Issue **#147** is closed after PR #148 and user-confirmed race performance improvement.
-Active gameplay: **Issue #143**,
-player pit capture implemented and awaiting human confirmation; **Issue #144**,
-PLAYER BEST updates reaching the CPU.
-Circuit editor improvements: **Issue #138**, separate work.
-Project-operations migration: **Issue #134**, external configuration / follow-up verification.
+Accepted gameplay #150 / #151 / #160 is merged through #159; the overlapping
+independent drafts #156 / #157 / #158 are closed as superseded.
+
+Active work: **#161** adds a QUICK duration; **#162** redesigns review
+and adds compound bests. These are proposed additions until their combined implementation
+PR merges; do not report them as current main features prematurely.
+Remaining gameplay backlog: **#152** feedback/presentation, **#153** cautious
+CPU passing prototype, **#155** persistent driver growth. Editor **#138** remains
+postponed. Read live Issue/PR comments before choosing the next work item.
 
 **GitHub Issues are the authoritative work queue.**
 

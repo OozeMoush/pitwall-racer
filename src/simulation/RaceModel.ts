@@ -65,6 +65,7 @@ const EMPTY_TRAFFIC: TrafficContext = {
 export function createAiField(
   gridOrder?: readonly string[],
   totalLaps = 50,
+  format: 'STANDARD' | 'QUICK' = 'STANDARD',
 ): DriverState[] {
   // Strategy families are anchored to the duration-scale benchmark rather
   // than the retired fixed-lap race. Most cars run competitive M/H one-stops;
@@ -91,9 +92,12 @@ export function createAiField(
     const id = `ai-${index}`;
     const qualifiedPosition = gridPositionFor(id, gridOrder);
     const grid = qualifiedPosition === undefined ? aiGridSlot(index) : gridSlotForPosition(qualifiedPosition);
-    const pitPlan: AiPitPlanStop[] = stopDefinitions.map(([fraction, compound]) => ({
+    // QUICK retains the two-compound obligation with one physical stop per CPU.
+    // Avoid collapsed two-stop stints on the minimum six-lap circuit format.
+    const stops = format === 'QUICK' ? stopDefinitions.slice(0, 1) : stopDefinitions;
+    const pitPlan: AiPitPlanStop[] = stops.map(([fraction, compound]) => ({
       plannedLap: Math.max(
-        4,
+        format === 'QUICK' ? 2 : 4,
         Math.min(safeRaceLaps - 3, Math.round(safeRaceLaps * fraction)),
       ),
       compound,
@@ -263,7 +267,7 @@ function choosePitStrategy(
   // collapse the next stint into an immediate second pit visit on an 18-lap
   // race, which is not useful racecraft.
   const reactionWindow = driver.pitPlan.length > 1 ? 0 : 2;
-  const earliest = Math.max(4, driver.plannedPitLap - reactionWindow);
+  const earliest = Math.max(Math.min(4, driver.plannedPitLap), driver.plannedPitLap - reactionWindow);
   const latest = Math.min(totalLaps - 3, driver.plannedPitLap + reactionWindow);
 
   // Being blocked alone is not enough: a healthy Medium -> Hard change can

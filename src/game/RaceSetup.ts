@@ -1,7 +1,7 @@
 import type { Compound } from '../simulation/TireModel';
 import { getTrackDefinition, type TrackId } from '../simulation/TrackModel';
 
-export type RaceLengthPreset = 'SHORT' | 'STANDARD' | 'LONG';
+export type RaceLengthPreset = 'QUICK' | 'SHORT' | 'STANDARD' | 'LONG';
 
 export interface RaceSetup {
   trackId: TrackId;
@@ -25,6 +25,7 @@ export interface RaceLengthOption {
 }
 
 export const RACE_LENGTH_OPTIONS: readonly RaceLengthOption[] = [
+  { id: 'QUICK', label: 'QUICK', targetMinutes: 8 },
   { id: 'SHORT', label: 'SHORT', targetMinutes: 18 },
   { id: 'STANDARD', label: 'STANDARD', targetMinutes: 27 },
   { id: 'LONG', label: 'LONG', targetMinutes: 36 },
@@ -37,7 +38,7 @@ export function raceLapsForPreset(
   preset: RaceLengthPreset,
 ): number {
   const option = RACE_LENGTH_OPTIONS.find((entry) => entry.id === preset)
-    ?? RACE_LENGTH_OPTIONS[1];
+    ?? RACE_LENGTH_OPTIONS.find((entry) => entry.id === DEFAULT_RACE_LENGTH)!;
   const lapSeconds = Math.max(
     15,
     getTrackDefinition(trackId).referenceLapSeconds ?? 90,
