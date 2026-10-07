@@ -188,3 +188,23 @@ Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.
 - Scroll up/down over the driving canvas in qualifying and race: verify bounded zoom and retained player follow. Resize and restart; verify UI/result panels still scroll normally.
 
 Human feedback correction: Δ PACE uses the latest jointly completed lap, including start, pit, out and invalid laps; only missing/nonfinite/nonpositive times are unavailable. The tower explicitly allocates seven desktop columns (P, TYRES, DRIVER, GAP, LAST, Δ PACE, BEST); narrow screens hide LAST and allocate six columns, retaining pace and BEST horizontally.
+
+## Review hierarchy — #162
+
+Verify signed measured gaps, default/fallback rival, null/lapped trace breaks,
+exact-time pit placement and both drivers' markers. Compound bests must include
+early retained stints beyond the visible last-12 table, exclude mixed/pit laps,
+show unused tyres as dashes and disclose truncation. Do not assert clean driving.
+Check desktop and 390px width, touch tap, pointer hover and keyboard range,
+closed details on first finish, detail scrolling, rival selection, focus,
+static refresh stability, JSON download and same/different-tyre retry. Real
+race/FPS and subjective readability remain human gates beyond fixture rendering.
+
+## QUICK format — #161
+
+Automated: all-circuit derived lap counts / legal CPU single-stop windows and
+adaptive physical completion on Compact Pitwall and Standard Baku. Full suite
+must retain normal-format pit/tyre regressions. Human: select QUICK, qualify or
+skip, finish legally using two compounds, retry with same/different tyre; check
+approximate duration (qualifying excluded), seven-CPU FPS and whether one physical
+stop leaves enough meaningful racing. No accelerated wear is expected.

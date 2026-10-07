@@ -8,9 +8,9 @@ describe('race review presentation',()=>{
     const recorder=new RaceSummaryRecorder(context);recorder.observe(0,[car('player'),car('a')],()=>undefined);
     recorder.finish('PLAYER_FINISHED',30,[{...car('player'),finished:true,disqualified:true},car('a')],()=>undefined);
     const html=renderRaceReview(recorder.snapshot(),'a');
-    expect(html).toContain('DSQ');expect(html).toContain('UNFINISHED AT CUTOFF');expect(html).not.toContain('<td>DNF</td>');
+    expect(html).toContain('DSQ');expect(html).toContain('あなたの完走時点で走行中');expect(html).not.toContain('<td>DNF</td>');
     expect(html).toContain('比較可能な記録が不足');expect(html).toContain('戦略だけで得した秒数ではありません');
-    expect(html).toContain('双方のREJOIN後');expect(html).toContain('data-review-retry="same"');expect(html).toContain('data-review-download');
+    expect(html).toContain('双方のコース復帰後');expect(html).toContain('data-review-retry="same"');expect(html).toContain('data-review-download');
   });
   it('escapes imported names and separates matching lap history from observed gap',()=>{
     const recorder=new RaceSummaryRecorder(context);

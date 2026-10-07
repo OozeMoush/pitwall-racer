@@ -1,7 +1,7 @@
 import { installCameraZoom } from '../ui/CameraZoom';
 import { compareRivalPace, rivalNeighbours, RivalPitObserver, type RivalCar } from '../simulation/RivalStrategyModel';
 import { RaceSummaryRecorder, summaryFingerprint, type RaceSummary, type SummaryCar } from '../simulation/RaceSummaryModel';
-import { renderRaceReview } from '../ui/RaceReview';
+import { bindRaceReviewInteraction, defaultReviewRival, renderRaceReview } from '../ui/RaceReview';
 import { trackGeometryRevision } from '../simulation/TrackModel';
 import { physicalPitControl } from '../simulation/PhysicalPitControl';
 import * as THREE from 'three';
@@ -258,7 +258,7 @@ export class CoreRaceGame {
     this.setup = setup;
     this.totalLaps = Math.max(6, Math.round(setup.totalLaps));
     this.startCompound = setup.startCompound;
-    this.ai = createAiField(setup.gridOrder, this.totalLaps);
+    this.ai = createAiField(setup.gridOrder, this.totalLaps, setup.raceLength === 'QUICK' ? 'QUICK' : 'STANDARD');
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
@@ -1085,7 +1085,7 @@ export class CoreRaceGame {
     this.raceSummary = undefined;
     this.reviewHtml = '';
     this.renderedReviewHtml = '';
-    this.reviewDriverId = this.ai[0]?.id ?? 'player';
+    this.reviewDriverId = '';
   }
 
   private recordSummary(): void {
@@ -1109,6 +1109,7 @@ export class CoreRaceGame {
     if (this.flow.phase === 'FINISHED' && !this.raceSummary) {
       this.summaryRecorder.finish('PLAYER_FINISHED',this.timing.raceTime,cars,gap);
       this.raceSummary = this.summaryRecorder.snapshot();
+      this.reviewDriverId = defaultReviewRival(this.raceSummary);
       this.reviewHtml = renderRaceReview(this.raceSummary,this.reviewDriverId);
     }
   }
@@ -1453,7 +1454,7 @@ export class CoreRaceGame {
   }
 
   private resetRace(startCompound: Compound = this.startCompound): void {
-    this.ai = createAiField(this.setup.gridOrder, this.totalLaps);
+    this.ai = createAiField(this.setup.gridOrder, this.totalLaps, this.setup.raceLength === 'QUICK' ? 'QUICK' : 'STANDARD');
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     this.vehicle = this.startVehicle();
     const selection = selectStartingTyre(startCompound);
@@ -2050,6 +2051,10 @@ export class CoreRaceGame {
     }).join('');
 
     const pauseTimingData = this.renderPauseTimingData();
+    const previousReview = this.reviewHtml ? this.hud.querySelector<HTMLElement>('.race-review') : null;
+    const reviewScroll = previousReview?.scrollTop ?? 0;
+    const openDetails = previousReview ? [...previousReview.querySelectorAll('details')].map(node => node.open) : [];
+    const focusedRival = previousReview?.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.reviewDriver : undefined;
     this.hud.innerHTML = `${bannerHtml}${launchHtml}${this.reviewHtml || finishHtml}${warningHtml}${penaltyHtml}${impactDamageHtml}${racingLineHtml}${recoveryHtml}${debugHtml}${pauseTimingData}
       <div class="hud-top">
         <div class="race-id"><b>PITWALL RACER</b><span>P${position} · LAP ${displayLap}/${this.totalLaps} · ${getActiveTrack().name}</span></div>
@@ -2070,6 +2075,13 @@ export class CoreRaceGame {
         </div>
       </div>
       <div class="controls">WASD DRIVE · Q SOFT · E MEDIUM · R HARD · F BOX · C RECOVER · F3 AI DEBUG · F4 NEXT AI</div>`;
+    if (this.raceSummary && this.reviewHtml) {
+      bindRaceReviewInteraction(this.hud, this.raceSummary, this.reviewDriverId);
+      const review = this.hud.querySelector<HTMLElement>('.race-review');
+      review?.querySelectorAll('details').forEach((node,index) => { node.open = openDetails[index] ?? false; });
+      if (focusedRival) [...(review?.querySelectorAll<HTMLElement>('[data-review-driver]') ?? [])].find(node => node.dataset.reviewDriver === focusedRival)?.focus({preventScroll:true});
+      if (review) review.scrollTop = reviewScroll;
+    }
   }
 }
 

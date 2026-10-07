@@ -11,6 +11,7 @@ export const LONG_TEST_FILES = [
 ] as const;
 
 export const PLAYTEST_TEST_FILES = [
+  'src/simulation/QuickRacePlaytest.test.ts',
   'src/simulation/RacePerformance.test.ts',
   'src/game/GrandPrixPlaytest.test.ts',
   'src/game/PitEconomicsPlaytest.test.ts',
