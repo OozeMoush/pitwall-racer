@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RaceSummaryRecorder, type SummaryCar, type SummaryLap } from '../simulation/RaceSummaryModel';
-import { battleGraph, defaultReviewRival, gapLabel, graphX, graphY, GRAPH, resolveReviewRival, tyreBests } from './RaceReviewModel';
+import { battleGraph, defaultReviewRival, gapLabel, graphX, graphY, GRAPH, resolveReviewRival, pitVisits, tyreBests } from './RaceReviewModel';
 import { renderRaceReview } from './RaceReview';
 const car=(id:string,progress:number,lap=1):SummaryCar=>({id,name:id,lap,progress,compound:'MEDIUM',wear:0,pitPhase:'NONE',finished:false});
 function summary(){
@@ -43,8 +43,40 @@ describe('review calculation rules',()=>{
     s.events=[{time:5,driverId:'ahead',lap:1,kind:'PIT_IN'}];expect(battleGraph(s,'ahead').markers).toEqual([]);
   });
   it('maps both drivers exact pit timestamps to player progress and leaves unobserved events unplaced',()=>{
-    const s=summary();s.events=[{time:5,driverId:'player',lap:1,kind:'PIT_IN',compound:'MEDIUM'},{time:15,driverId:'ahead',lap:1,kind:'REJOIN',compound:'HARD'},{time:-1,driverId:'player',lap:1,kind:'PIT_IN'},{time:40,driverId:'player',lap:1,kind:'REJOIN'}];
+    const s=summary();s.events=[{time:5,driverId:'player',lap:1,kind:'PIT_IN',compound:'MEDIUM'},{time:15,driverId:'ahead',lap:1,kind:'PIT_IN',compound:'HARD'},{time:-1,driverId:'player',lap:1,kind:'PIT_IN'},{time:40,driverId:'player',lap:1,kind:'REJOIN'}];
     const g=battleGraph(s,'ahead');expect(g.markers).toHaveLength(2);expect(g.markers[0].lap).toBeCloseTo(.3);expect(g.markers[0].player).toBe(true);expect(g.markers[1].lap).toBeCloseTo(.65);expect(g.markers[1].player).toBe(false);
     expect(g.markers[1].event.time).toBe(15);
   });
+});
+
+it('summarises one whole visit and keeps service/exit phases out of normal review', () => {
+  const s = summary();
+  s.events = [
+    { time: 2, driverId: 'player', lap: 1, kind: 'PIT_IN' },
+    { time: 6, driverId: 'player', lap: 1, kind: 'SERVICE' },
+    { time: 9, driverId: 'player', lap: 1, kind: 'PIT_OUT' },
+    { time: 15, driverId: 'player', lap: 2, kind: 'REJOIN' },
+  ];
+  expect(pitVisits(s)).toEqual([{ driverId: 'player', entryLap: 1, elapsed: 13 }]);
+  expect(battleGraph(s, 'ahead').markers).toHaveLength(1);
+  const html = renderRaceReview(s);
+  expect(html).toContain('13.0秒');
+  expect(html).not.toContain('タイヤ交換開始');
+  expect(html).not.toContain('交換完了・出口へ');
+  expect(s.events).toHaveLength(4); // Raw JSON evidence remains unchanged.
+});
+it('does not invent durations for truncated, incomplete or overlapping visits', () => {
+  const s = summary();
+  s.events = [
+    { time: 1, driverId: 'ahead', lap: 1, kind: 'SERVICE' },
+    { time: 2, driverId: 'ahead', lap: 1, kind: 'REJOIN' },
+    { time: 3, driverId: 'player', lap: 1, kind: 'PIT_IN' },
+    { time: 4, driverId: 'player', lap: 1, kind: 'PIT_IN' },
+    { time: 5, driverId: 'player', lap: 1, kind: 'REJOIN' },
+    { time: 6, driverId: 'player', lap: 1, kind: 'PIT_IN' },
+  ];
+  expect(pitVisits(s).map(v => v.elapsed)).toEqual([null, null, null, null]);
+  expect(pitVisits(s)[0].entryLap).toBeNull();
+  s.events.push({ time: 9, driverId: 'player', lap: 2, kind: 'REJOIN' });
+  expect(pitVisits(s).at(-1)?.elapsed).toBe(3);
 });

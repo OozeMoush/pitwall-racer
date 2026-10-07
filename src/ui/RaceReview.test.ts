@@ -9,8 +9,8 @@ describe('race review presentation',()=>{
     recorder.finish('PLAYER_FINISHED',30,[{...car('player'),finished:true,disqualified:true},car('a')],()=>undefined);
     const html=renderRaceReview(recorder.snapshot(),'a');
     expect(html).toContain('DSQ');expect(html).toContain('あなたの完走時点で走行中');expect(html).not.toContain('<td>DNF</td>');
-    expect(html).toContain('比較可能な記録が不足');expect(html).toContain('戦略だけで得した秒数ではありません');
-    expect(html).toContain('双方のコース復帰後');expect(html).toContain('data-review-retry="same"');expect(html).toContain('data-review-download');
+    expect(html).toContain('比較可能な記録が不足');expect(html).toContain('ピットを通らなかった場合との差（純粋なロス）ではありません');
+    expect(html).toContain('進入→復帰の所要時間');expect(html).toContain('data-review-retry="same"');expect(html).toContain('data-review-download');
   });
   it('escapes imported names and separates matching lap history from observed gap',()=>{
     const recorder=new RaceSummaryRecorder(context);

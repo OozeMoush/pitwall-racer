@@ -54,7 +54,7 @@ export function battleGraph(summary: RaceSummary, requested: string): BattleGrap
     return a.lap + (b.lap - a.lap) * (time - a.time) / (b.time - a.time);
   };
   const markers = summary.events.flatMap(event => {
-    if ((event.driverId !== 'player' && event.driverId !== selected) || (event.kind !== 'PIT_IN' && event.kind !== 'REJOIN')) return [];
+    if ((event.driverId !== 'player' && event.driverId !== selected) || event.kind !== 'PIT_IN') return [];
     const lap = progressAt(event.time);
     return lap === undefined ? [] : [{ lap, event, player: event.driverId === 'player' }];
   });
@@ -66,4 +66,33 @@ export function graphX(lap: number, totalLaps: number): number { return GRAPH.le
 export function graphY(gap: number, range: number): number { return GRAPH.top + (gap + range) / (range * 2) * (GRAPH.bottom - GRAPH.top); }
 export function gapLabel(gap: number | null): string {
   return gap === null ? '計測不足・周回差のため比較なし' : gap === 0 ? '同タイム' : `あなたが${gap < 0 ? '後ろ' : '前'} · ${Math.abs(gap).toFixed(2)}秒差`;
+}
+
+/** A visit ends at physical rejoin, not at tyre-service completion.
+ * Missing/overlapping entry evidence must never produce an invented duration. */
+export interface PitVisit { driverId: string; entryLap: number | null; elapsed: number | null }
+export function pitVisits(summary: RaceSummary): PitVisit[] {
+  const visits: PitVisit[] = [];
+  const pending = new Map<string, { index: number; time: number | null }>();
+  for (const event of summary.events) {
+    if (event.kind === 'LINE_CHANGE') continue;
+    const open = pending.get(event.driverId);
+    if (event.kind === 'PIT_IN') {
+      const index = visits.push({ driverId: event.driverId, entryLap: event.lap, elapsed: null }) - 1;
+      pending.set(event.driverId, { index, time: open || !Number.isFinite(event.time) ? null : event.time });
+    } else if (event.kind === 'REJOIN') {
+      if (open) {
+        if (open.time !== null && Number.isFinite(event.time) && event.time >= open.time) {
+          visits[open.index].elapsed = event.time - open.time;
+        }
+        pending.delete(event.driverId);
+      } else {
+        visits.push({ driverId: event.driverId, entryLap: null, elapsed: null });
+      }
+    } else if (!open) {
+      const index = visits.push({ driverId: event.driverId, entryLap: null, elapsed: null }) - 1;
+      pending.set(event.driverId, { index, time: null });
+    }
+  }
+  return visits;
 }

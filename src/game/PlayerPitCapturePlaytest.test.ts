@@ -79,3 +79,66 @@ it('cannot complete player service while the physical body is pinned before the 
     expect(game.playerCar.setCompound).not.toHaveBeenCalled();
   } finally { physics.world.free(); }
 });
+
+it('offers C recovery after a real pit-lane barrier stall without skipping transit or service', () => {
+  const pose = pitLanePose(0.025);
+  const vehicle = createVehicle(pose.x, pose.y, pose.heading);
+  const physics = new RapierRacePhysics(vehicle, []);
+  // Deterministic physical obstruction across the entry lane. No mocked contact.
+  const wall = physics.world.createRigidBody(RAPIER.RigidBodyDesc.fixed()
+    .setTranslation(pose.x + Math.cos(pose.heading) * 5, pose.y + Math.sin(pose.heading) * 5)
+    .setRotation(pose.heading));
+  physics.world.createCollider(RAPIER.ColliderDesc.cuboid(0.5, 20), wall);
+  const game = Object.assign(Object.create(CoreRaceGame.prototype), {
+    vehicle, physics, pitStop: createPitStopState(), pitRequested: true, flow: { phase: 'RACING' }, lap: 1,
+    steerInput: 0, tire: createTire('MEDIUM'), selectedCompound: 'HARD',
+    usedCompounds: new Set(['MEDIUM']), trackProgress: pitEntryProgress(), trackDistance: 0,
+    lineCandidate: new PlayerRacingLineCandidateRecorder(), lapValidity: { invalidate: vi.fn() },
+    trackLimitPenalty: createTrackLimitPenaltyState(), playerCar: { setCompound: vi.fn() },
+    updateSectorTiming: () => {}, updateLapAndCheckpoints: () => {},
+  });
+  const road = projectTrack(vehicle.x, vehicle.y);
+  game.tryEnterPlayerPit(road.progress - 0.1 / TRACK_LENGTH, road.progress, road.distance, road.laneOffset);
+  try {
+    expect(game.canRecoverPlayer()).toBe(false);
+    for (let tick = 0; tick < 8 * 120; tick++) game.stepPhysicalPit(1 / 120);
+    expect(game.vehicle.speed).toBeLessThan(2.2);
+    expect(game.canRecoverPlayer()).toBe(true);
+    expect(game.pitStop.phase).toBe('TRANSIT_IN');
+    const t = game.pitStop.t;
+    const tyre = game.tire;
+    game.handleRecoveryOrRestart();
+    expect(game.pitStop.t).toBe(t);
+    expect(game.pitStop.phase).toBe('TRANSIT_IN');
+    expect(game.tire).toBe(tyre);
+    expect(game.playerCar.setCompound).not.toHaveBeenCalled();
+    expect(game.canRecoverPlayer()).toBe(false);
+    expect(game.lapValidity.invalidate).toHaveBeenCalledOnce();
+    physics.world.removeRigidBody(wall);
+    for (let tick = 0; tick < 50 * 120 && game.pitStop.phase !== 'IDLE'; tick++) game.stepPhysicalPit(1 / 120);
+    expect(game.pitStop.phase).toBe('IDLE');
+    expect(game.playerCar.setCompound).toHaveBeenCalledOnce();
+  } finally { physics.world.free(); }
+});
+it('allows a requested-entry wall recovery near the road but never captures a pit by pressing C', () => {
+  const pose = pitLanePose(0);
+  const vehicle = createVehicle(pose.x, pose.y, pose.heading);
+  const physics = new RapierRacePhysics(vehicle, []);
+  const wall = physics.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(pose.x, pose.y));
+  physics.world.createCollider(RAPIER.ColliderDesc.cuboid(4, 4), wall);
+  const game = Object.assign(Object.create(CoreRaceGame.prototype), {
+    vehicle, physics, pitStop: createPitStopState(), pitRequested: true,
+    flow: { phase: 'RACING' }, lap: 0, trackDistance: 10, trackProgress: pitEntryProgress(),
+  });
+  try {
+    physics.step(1 / 120);
+    game.vehicle = physics.playerState();
+    expect(physics.playerTouchesBarrier()).toBe(true);
+    expect(game.canRecoverPlayer()).toBe(true);
+    game.handleRecoveryOrRestart();
+    expect(game.pitStop.phase).toBe('IDLE');
+    expect(game.pitRequested).toBe(true);
+    game.vehicle = { ...game.vehicle, speed: 10 };
+    expect(game.canRecoverPlayer()).toBe(false);
+  } finally { physics.world.free(); }
+});
