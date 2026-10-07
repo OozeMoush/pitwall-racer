@@ -756,3 +756,17 @@ window was rejected because an opposite-side or much later cut would be free.
 Physical grass/grip and impact damage remain; contact still excludes the lap
 from clean PLAYER BEST traces. Recovery remains invalid. This change is for
 race traffic; solo TT/qualifying has no other physical cars and retains its rules.
+
+### Second isolated passing candidate — #153
+
+Retain the first candidate as a counterexample. Its successor follows an offset
+relative to the active reference, previews shifted-path curvature and braking,
+and requires present/projected longitudinal clearance plus a physically settled
+return before handing back to FOLLOW. Four matched 20-second Pitwall pair cases
+now pass or safely abandon and return without contact, road departure or stall.
+This is a limited automated result, not mainline rollout approval. Road-envelope
+sampling is not a continuous swept-volume guarantee; future narrowing and
+unpredictable overlapping rivals still need physical validation. Unit target
+slew does not bound actual lateral speed. Neither candidate has a production
+caller. Exact controls, results, added cost and remaining gates are in
+`docs/experiments/153-pair-passing.md`.

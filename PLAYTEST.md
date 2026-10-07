@@ -290,3 +290,15 @@ Human: near an edge, let a CPU push the player out; LIMITS must not increment.
 Return and deliberately leave again without contact: it must increment. Verify
 impact damage and off-road slowdown remain, and PLAYER BEST is not updated by
 a contact lap. Pause during the grace window must not consume simulation time.
+
+The second candidate uses
+`npx vitest run src/simulation/experiments --disableConsoleIntercept`.
+Keep the original 12-second failure regressions. Its separate four-case physical
+suite compares baseline/original/successor for the same 20 seconds, repeats the
+successor exactly, and requires zero contact/departure/stall, expected pass or
+abort, and one physically settled return before 18 seconds. RETURN must hold
+alignment for 0.35 seconds; leave at least two seconds afterward for re-contact.
+Report physical lane rate independently of target slew and warm CPU cost rather
+than hiding these behind pass counts. Command-level no-space and projected
+catch-up tests are not physical narrow-road evidence. No full-field or human
+racecraft approval follows from these four cases.
