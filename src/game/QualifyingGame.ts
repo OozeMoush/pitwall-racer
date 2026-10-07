@@ -1,3 +1,4 @@
+import type { RaceCue } from '../audio/RaceFeedbackModel';
 import { saveDriverHistoryLap, TimeTrialHistoryRecorder } from '../simulation/DriverHistoryStore';
 import { installCameraZoom } from '../ui/CameraZoom';
 import * as THREE from 'three';
@@ -105,6 +106,8 @@ export class QualifyingGame {
   private removeCameraZoom?: () => void;
   private readonly cameraTarget = new THREE.Vector3();
   private readonly audio = new RaceAudio();
+  private audioCue?: { id: number; kind: RaceCue };
+  private audioCueSequence = 0;
   private readonly physics: RapierRacePhysics;
   private readonly paceEvidence = new PaceEvidenceAccumulator();
   private readonly lapValidity = new LapValidityTracker();
@@ -519,6 +522,7 @@ export class QualifyingGame {
 
     if (this.mode === 'TIME_TRIAL') {
       let timingStorageFailed = false;
+      const previousPB = this.timeTrialRecord.bestLap;
       this.completedLaps += 1;
       const s1 = this.sectorTimes[0];
       const s2 = this.sectorTimes[1];
@@ -556,6 +560,10 @@ export class QualifyingGame {
       const savedThisLap = saveStatus === 'SAVED';
       const bestSeconds = storedCandidate?.lapSeconds;
       const pb = this.timeTrialRecord.bestLap;
+      if (!timingStorageFailed && validity.candidateEligible && pb !== undefined
+        && pb === completedLapTime && (previousPB === undefined || pb < previousPB)) {
+        this.audioCue = { id: ++this.audioCueSequence, kind: 'BEST' };
+      }
       if (timingStorageFailed) {
         this.lapNotice = 'TIME TRIAL RECORD NOT SAVED · STORAGE FAILED';
       } else if (this.driverHistoryStorageFailed) {
@@ -696,6 +704,7 @@ export class QualifyingGame {
     const projection = projectTrack(this.vehicle.x, this.vehicle.y);
     const surface = surfaceEffect(projection.distance, projection.progress);
     this.audio.update({
+      cue: this.audioCue,
       contactKind: this.physics.playerContactKind(),
       impactSpeed: this.physics.playerImpactSpeed(),
       inactive: this.phase === 'RESULTS',
