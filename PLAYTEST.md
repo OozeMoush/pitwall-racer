@@ -257,3 +257,25 @@ focus, readability and no obstruction of the normal session selector. Actual
 browser rendering/audio/FPS are not claimed by fixture tests. TT-only collection
 must remain absent from seven-CPU race ticks. Race-session history, context and
 race/TT separation remain subsequent #155 work; do not close the full Issue here.
+
+## Isolated pair passing research — #153
+
+`npx vitest run src/simulation/experiments/PairPassing*.test.ts --disableConsoleIntercept`
+runs the policy regressions and colliding physical before/after experiment.
+The physical test belongs to `test:playtest`. It deliberately verifies repeatable
+rejection evidence, not safe gameplay promotion. Passing CI means this research
+fixture remains reproducible; it does not mean the candidate can ship.
+
+Use player + CPU bodies because CPU/CPU impulses are disabled. Report geometric
+contact episodes/duration (including gentle rubbing), rotated vehicle road
+envelope, low-speed stalls, clearance passes, ABORT/RETURN/FOLLOW transitions,
+braking/turning coverage and warm controller CPU cost. Repeat physics metrics
+exactly; wall time is nondeterministic. Never substitute impact-sound events for
+contact evidence or count RETURN entry as completed return.
+
+Before promotion: zero contacts, no road-envelope departures or stalls in the
+agreed pair envelope, completed safe returns after success and abort, bounded
+actual motion, and a human pair session through straight/braking/corner/exit.
+Then independently extend to eight cars, other circuits, PLAYER/EDITOR lines,
+pits and lapped traffic. FPS and subjective racecraft are still human/browser
+gates. The current candidate fails the pair gate and has no playable entry.

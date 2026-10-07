@@ -706,3 +706,33 @@ reported. Corrupt or unsupported future payloads are preserved and not overwritt
 There is no prior driver-history schema to migrate; a future version must explicitly
 migrate this schema. Records are local to this browser, with JSON export and no
 account/cloud-sync claims. The view is bounded/scrollable like the result panel.
+
+## Isolated CPU passing experiment — #153
+
+Normal race CPUs remain line-locked with longitudinal FOLLOW. The first passing
+candidate lives only in `src/simulation/experiments/` and has no production
+caller. It does not alter REFERENCE GHOST, PLAYER/EDITOR replay, physics,
+collision groups, difficulty or the eight-car race. No player-position pace
+adjustment is introduced.
+
+The candidate selects one of two lateral lanes once, uses FOLLOW → COMMIT →
+ALONGSIDE → RETURN, and ABORT → RETURN when space/time runs out. It rate-limits
+the target to 2.5 m/s, reserves 7 m between lane centres, waits for 18 m longitudinal
+clearance to merge, and yields speed during an abort. These are research
+parameters, not validated safety guarantees. Steering a point toward a bounded
+lane is insufficient to guarantee the physical vehicle's swept envelope.
+
+Chosen first experiment: a fixed-cost two-lane policy with explicit state and a
+real colliding player-body/CPU-body pair on Pitwall GP. CPU/CPU bodies do not
+collide in the current game, so an all-CPU fixture would hide an important class
+of failures. Reject immediate eight-car rollout; reject per-tick full-width
+search without measured benefit; reject teleportation/extra grip to hide path
+errors. A trajectory corridor with speed-aware swept-body prediction is the
+next candidate if this simple policy fails.
+
+The first candidate is **rejected for gameplay rollout**: physical fixtures show
+incomplete reference-line returns and road-envelope departures even while
+contacts decrease. Do not expose it as an in-game option yet. Preserve the
+counterexample and before/after measurement, then replace the isolated policy
+only with evidence of safe abort/return through the corner. See
+`docs/experiments/153-pair-passing.md` for conditions, results and reopening gates.
