@@ -258,7 +258,7 @@ export class CoreRaceGame {
     this.setup = setup;
     this.totalLaps = Math.max(6, Math.round(setup.totalLaps));
     this.startCompound = setup.startCompound;
-    this.ai = createAiField(setup.gridOrder, this.totalLaps);
+    this.ai = createAiField(setup.gridOrder, this.totalLaps, setup.raceLength === 'QUICK' ? 'QUICK' : 'STANDARD');
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     const playerGrid = this.playerGridSlot();
     this.trackProgress = playerGrid.progress;
@@ -1453,7 +1453,7 @@ export class CoreRaceGame {
   }
 
   private resetRace(startCompound: Compound = this.startCompound): void {
-    this.ai = createAiField(this.setup.gridOrder, this.totalLaps);
+    this.ai = createAiField(this.setup.gridOrder, this.totalLaps, this.setup.raceLength === 'QUICK' ? 'QUICK' : 'STANDARD');
     this.aiImpactDamage = this.ai.map(() => new ImpactDamageTracker());
     this.vehicle = this.startVehicle();
     const selection = selectStartingTyre(startCompound);

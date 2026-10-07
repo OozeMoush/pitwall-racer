@@ -91,6 +91,7 @@ export function showPreRaceMenu(
           <div class="lap-choice-row">
             ${RACE_LENGTH_OPTIONS.map((option) => `<button class="lap-choice ${option.id === selectedRaceLength ? 'selected' : ''}" data-race-length="${option.id}"><strong>${option.label}</strong><span>${option.targetMinutes} MIN</span></button>`).join('')}
           </div>
+          <p class="race-length-note" data-race-length-note></p>
         </div>
       </section>
 
@@ -110,6 +111,8 @@ export function showPreRaceMenu(
       root.querySelectorAll<HTMLElement>('[data-track]').forEach((node) => node.classList.toggle('selected', node.dataset.track === selectedTrack));
       root.querySelectorAll<HTMLElement>('[data-compound]').forEach((node) => node.classList.toggle('selected', node.dataset.compound === selectedCompound));
       root.querySelectorAll<HTMLElement>('[data-race-length]').forEach((node) => node.classList.toggle('selected', node.dataset.raceLength === selectedRaceLength));
+      const lengthNote = root.querySelector<HTMLElement>('[data-race-length-note]');
+      if (lengthNote) lengthNote.textContent = `${selectedLaps}周 · 所要時間は目安（予選を除く）。全形式で2種類のタイヤ使用が必須・摩耗倍率は共通。${selectedRaceLength === 'QUICK' ? ' QUICKは約8分、長いコースは最低6周。CPUは1回交換。' : ''}`;
       root.querySelectorAll<HTMLElement>('[data-cpu-line]').forEach((node) => {
         node.classList.toggle('selected', node.dataset.cpuLine === selectedCpuLine);
       });

@@ -576,3 +576,21 @@ Human playtest refinement (#150): comparative pace belongs in the existing class
 Camera zoom (#160): bounded wheel zoom changes orthographic scale only, preserving camera orientation and player follow. Canvas-only handling leaves panel scrolling and browser pinch zoom available.
 
 Human feedback correction: Δ PACE uses the latest jointly completed lap, including start, pit, out and invalid laps; only missing/nonfinite/nonpositive times are unavailable. The tower explicitly allocates seven desktop columns (P, TYRES, DRIVER, GAP, LAST, Δ PACE, BEST); narrow screens hide LAST and allocate six columns, retaining pace and BEST horizontally.
+
+### QUICK race — Issue #161
+
+QUICK targets eight minutes of racing, excluding qualifying, without changing
+SHORT / STANDARD / LONG (18 / 27 / 36 minutes). Lap rounding and the existing
+six-lap minimum make elapsed time approximate; Baku's planning reference gives
+six laps / nine minutes. Human pace, traffic and physical pit transit vary.
+Five minutes puts too much weight on a mandatory stop; ten offers less separation
+from SHORT. Eight is the initial compromise, subject to actual play feedback.
+
+Every format retains two different compounds, normal physical pit costs and
+shared time-based tyre wear. QUICK is not a compressed full strategy simulation:
+fresh-tyre pace and traffic matter more than late wear. CPU QUICK plans keep the
+first distinct-compound stop family, omitting the second stop, and clamp the
+fractional window to lap 2 through totalLaps - 3. The existing adaptive decision
+can delay a healthy stop; early QUICK windows remain eligible. Normal-format
+plans are unchanged. Player stops remain manually requested. Setup explains
+these rules before either qualifying or skip; retry preserves the format.

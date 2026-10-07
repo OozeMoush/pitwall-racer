@@ -37,7 +37,7 @@ The pre-race menu currently offers circuits with explicit physical scale profile
 - Serra Circuit
 - Baku Street
 
-Choose a starting tyre and a **SHORT / STANDARD / LONG** race duration. Lap count is derived per circuit from its representative pace; STANDARD targets roughly **27 minutes**. The six fictional circuits use Compact profiles: machine reference laps are roughly 20–34 seconds, with Pitwall GP around 34 seconds and Serra around 23 seconds. Baku retains its deliberately authored long straight and Standard profile. The fictional circuits no longer add kilometres of straight running to reach a 90-second target.
+Choose a starting tyre and a **QUICK / SHORT / STANDARD / LONG** race duration. Lap count is derived per circuit from its representative pace; QUICK targets roughly **8 minutes** (at least six laps; Baku roughly nine), followed by 18 / 27 / 36-minute targets. All formats require two different compounds with shared tyre wear; QUICK CPUs plan one physical stop. STANDARD targets roughly **27 minutes**. The six fictional circuits use Compact profiles: machine reference laps are roughly 20–34 seconds, with Pitwall GP around 34 seconds and Serra around 23 seconds. Baku retains its deliberately authored long straight and Standard profile. The fictional circuits no longer add kilometres of straight running to reach a 90-second target.
 
 The circuits deliberately have different characters: balanced, high-speed, technical, rhythm, street-style and short-lap layouts. Track presentation uses a common visual language for road edges, runoff, kerbs, barriers, pit buildings and trackside references.
 
