@@ -339,3 +339,17 @@ The race label replaces one existing info row, never enlarges the HUD. Review
 scroll/focus must remain intact. Check seven-CPU battle/pit FPS and Web Audio
 resources in the actual browser; deterministic/model graphs are not audible or
 visual validation and are not FPS evidence.
+
+
+Stopped-pair extension (#153): repeat 22/28 m stationary starts on the open
+straight. Require zero contact/departure, one pass and settled return <18 s.
+The stopped front car intentionally contributes to the original any-car stall
+metric; use CPU distance/final speed and completed return to judge recovery.
+On the 8 m half-width fixture, wait six seconds without launching, keep >18 m
+physical separation, then require >100 m CPU travel after front-car departure.
+Also brake the front car from 65 m/s at 40 m separation, release it after six
+seconds, and measure 30 seconds: zero contacts/departures and completed return.
+This longer emergency recovery is a separate gate, not the original <18 s gate.
+Human: stop in front on the straight, leave either side available, then clear the
+road; also stop near a corner. Check bounded creeping, no rubbing, no abrupt
+steering reversal and restart. Very close blocks can still require waiting.

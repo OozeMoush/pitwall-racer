@@ -179,3 +179,30 @@ output. `npm run build:passing-lab` builds just that optional bundle. Actual
 browser interaction/readability and human racecraft remain unverified here;
 browser installation failed, so only compilation/HTTP delivery and physical
 headless tests are claimed. This lab is the next human validation surface.
+
+
+## Stopped-car feedback and recovery extension
+
+Human feedback on the keyboard lab: the CPU stops when blocked under heavy
+braking. The original trigger requires speed advantage and cannot launch from
+rest. Add a delayed stopped-obstacle bypass with available forward/lateral room,
+short low-speed steering preview and bounded physical creep. Do not authorize a
+bypass in a corner, narrow road or already-too-close pair. The existing controller
+handles restart when the front car moves; regression coverage now makes it explicit.
+
+Measured cases on Pitwall GP (same colliding player + CPU, 120 Hz):
+
+| Condition | Horizon | Contacts / road departures | Outcome |
+| --- | --- | --- | --- |
+| Both stopped, 22 m gap, open road | 20 s | 0 / 0 | Pass; settled return at 13.717 s |
+| Both stopped, 28 m gap, open road | 20 s | 0 / 0 | Pass; settled return at 11.042 s |
+| Both stopped, 22 m gap, narrow road | 6 s wait + 9 s driving | 0 / 0 | No pass launch; CPU travels >100 m after front car leaves |
+| Front brakes from 65 m/s, 40 m gap; leaves at 6 s | 30 s | 0 / 0 | Physical restart; settled return at 25.608 s |
+
+The emergency case does not meet the original 18-second return gate and is kept
+as a separate recovery condition. A permanently stopped close obstacle can still
+cause waiting; reverse escape and arbitrary late human blocks are not validated.
+The any-car stall metric deliberately includes the stopped scripted rival, so
+zero stall is not an appropriate assertion for these fixtures. Original moving
+pair gates still require zero stall. Subjective retest is pending on the updated
+PR branch; normal race/TT still do not call the experiment.

@@ -51,3 +51,21 @@ describe('reference-relative pair policy', () => {
     expect(step(policy, { gap: -100 }).phase).toBe('FOLLOW');
   });
 });
+
+it('waits briefly before bypassing a stopped car and retains space/corner gates', () => {
+  const policy = new CorridorPassing();
+  for (let tick = 0; tick < 60; tick++) {
+    expect(step(policy, { gap: 22, speed: 0, opponentSpeed: 0 }).phase).toBe('FOLLOW');
+  }
+  let plan = step(policy, { gap: 22, speed: 0, opponentSpeed: 0 });
+  for (let tick = 0; tick < 30; tick++) plan = step(policy, { gap: 22, speed: 0, opponentSpeed: 0 });
+  expect(plan.phase).toBe('COMMIT');
+  expect(plan.speed).toBeGreaterThan(0);
+  expect(plan.speed).toBeLessThanOrEqual(3);
+  for (const patch of [{ safeLane: 6 }, { straight: false }, { gap: 9 }, { gap: 18 }]) {
+    const waiting = new CorridorPassing();
+    for (let tick = 0; tick < 240; tick++) {
+      expect(step(waiting, { gap: 22, speed: 0, opponentSpeed: 0, ...patch }).phase).toBe('FOLLOW');
+    }
+  }
+});

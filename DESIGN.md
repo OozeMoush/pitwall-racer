@@ -819,3 +819,23 @@ regardless of field size, and at most eight live transient oscillators. No new
 asset/license dependencies. Tests verify state, graph limits and lifecycle;
 actual balance, stereo perception, screen comfort and browser FPS still require
 human evaluation. Course scenery/body cosmetics are subsequent candidates.
+
+
+### Stopped opponent in the isolated passing experiment — #153
+
+A stationary pair cannot satisfy a pace-advantage trigger. On a straight, after
+0.6 seconds observing a near-stationary obstacle, allow a committed bypass only
+with 20–65 m longitudinal room and the existing full preview lateral space.
+Use a short low-speed lookahead and bearing steering: a moving-reference tangent
+pulls a creeping car straight before it clears the obstacle. While crossing,
+cap closing speed at 3 m/s and reduce the longitudinal buffer only as physical
+lateral separation grows. Release that cap only after measured lateral clearance
+and heading alignment; retain the ordinary moving-rival buffer otherwise.
+Allow 20 seconds for this low-speed maneuver, then use the existing abort.
+
+Waiting is correct when no corridor fits or the pair is already too close to
+start safely. Departure of the obstacle must allow physical restart. Do not
+force an instant sideways shift, pivot on asphalt, teleport or change the shared
+chassis to solve a traffic-planning failure. Reverse escape is deferred: it needs
+rear traffic sensing, which this front-opponent-only prototype does not have.
+This remains a two-body experiment, not a general stopped-field solution.

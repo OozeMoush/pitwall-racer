@@ -18,7 +18,7 @@ export interface PairSeed {
   egoSpeed?: number;
   rivalSpeed?: number;
 }
-export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | 'defends' | 'equal' | 'late', seconds = 12, seed: PairSeed = {}) {
+export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | 'defends' | 'equal' | 'late' | 'stopped' | 'restart', seconds = 12, seed: PairSeed = {}) {
   const ego = { ...createAiField()[1], lap: 1, progress: seed.progress ?? 0.04, laneOffset: 0, pitPlan: [] };
   const rival = { ...createAiField()[1], id: 'controlled-rival', lap: 1,
     progress: ego.progress + (seed.gap ?? 40) / TRACK_LENGTH, laneOffset: 0, pitPlan: [] };
@@ -30,7 +30,7 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
   const policy = new PairPassing();
   const corridor = new CorridorPassing();
   const metrics = { samples: 0, contactEpisodes: 0, contactSeconds: 0, offroadSeconds: 0,
-    stallSeconds: 0, passes: 0, returns: 0, aborts: 0, controllerMs: 0, distance: 0,
+    stallSeconds: 0, finalEgoSpeed: 0, restartDistance: 0, passes: 0, returns: 0, aborts: 0, controllerMs: 0, distance: 0,
     maxLaneRate: 0, maxPhysicalLaneRate: 0, minSeparation: Infinity, returnAt: [] as number[], brakingSeconds: 0, turningSeconds: 0, phases: [] as string[], contacts: [] as { time: number; phase: string; gap: number; lane: number; opponentLane: number }[] };
   let contactBefore = false;
   let passed = false;
@@ -103,7 +103,8 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
         const target = sampleTrack(rival.progress + Math.max(25, other.speed * 0.5) / TRACK_LENGTH, -6);
         rivalSteer = clamp(wrap(Math.atan2(target.y - other.y, target.x - other.x) - other.heading) * 2.5 - other.yawRate * 0.4, -0.98, 0.98);
       }
-      const rivalSpeed = Math.min(rivalControl.targetSpeed, scenario === 'equal' ? 100 : 65);
+      const stopped = scenario === 'stopped' || (scenario === 'restart' && tick * DT < 6);
+      const rivalSpeed = stopped ? 0 : Math.min(rivalControl.targetSpeed, scenario === 'equal' ? 100 : 65);
       const drive = (targetSpeed: number, actual: number, steering: number, distance: number) => {
         const surface = surfaceEffect(distance);
         return { throttle: actual < targetSpeed ? 1 : 0, brake: clamp((actual - targetSpeed) / 8, 0, 1),
@@ -118,6 +119,7 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
       const rivalInput = drive(rivalSpeed, other.speed, rivalSteer, rivalRoad.distance);
       rivalInput.brake = Math.max(rivalInput.brake, rivalControl.brake);
       rivalInput.throttle = rivalInput.brake > 0.06 ? 0 : rivalControl.throttle;
+      if (stopped) { rivalInput.throttle = 0; rivalInput.brake = 1; }
       physics.drivePlayer(rivalInput, DT);
       physics.step(DT);
       let contact = false;
@@ -149,6 +151,8 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
         || outside(other.heading, rival.progress, rivalRoad.distance)) metrics.offroadSeconds += DT;
       if (car.speed < 2 || other.speed < 2) metrics.stallSeconds += DT;
       metrics.distance += car.speed * DT;
+      metrics.finalEgoSpeed = car.speed;
+      if (tick * DT >= 6) metrics.restartDistance += car.speed * DT;
       metrics.samples++;
     }
     metrics.controllerMs = maxController / controllerSamples;

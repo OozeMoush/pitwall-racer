@@ -12,6 +12,8 @@ export class CorridorPassing {
   private age = 0;
   private cooldown = 0;
   private settled = 0;
+  private blocked = 0;
+  private clearingStop = false;
 
   step(input: PassingInput, car: VehicleState, progress: number, grip: number) {
     const reference = input.referenceLane;
@@ -20,17 +22,25 @@ export class CorridorPassing {
     this.age += dt;
     this.cooldown = Math.max(0, this.cooldown - dt);
     const gap = input.gap;
+    const slowObstacle = input.opponentSpeed < 3 && input.speed < 12 && gap > 20 && gap < 65;
+    this.blocked = this.phase === 'FOLLOW' && slowObstacle ? this.blocked + dt : 0;
+    const normalAttack = gap > 25 && gap < 65 && input.speed > input.opponentSpeed + 2;
+    const stoppedAttack = this.blocked >= 0.6;
     if (this.phase === 'FOLLOW' && this.cooldown === 0 && input.straight
-      && gap > 25 && gap < 65 && input.speed > input.opponentSpeed + 2) {
+      && (normalAttack || stoppedAttack)) {
       const sides = [-1, 1].filter(side => Math.abs(input.opponentLane + side * 7) < input.safeLane - 1);
       sides.sort((a, b) => Math.abs(input.opponentLane + a * 7 - input.lane)
         - Math.abs(input.opponentLane + b * 7 - input.lane));
-      if (sides.length) { this.side = sides[0]; this.phase = 'COMMIT'; this.age = 0; }
+      if (sides.length) {
+        this.side = sides[0]; this.phase = 'COMMIT'; this.age = 0;
+        this.clearingStop = stoppedAttack;
+      }
     }
+    if ((this.phase === 'COMMIT' || this.phase === 'ALONGSIDE') && slowObstacle) this.clearingStop = true;
     if (this.phase === 'COMMIT' && Math.abs(gap) < 18) this.phase = 'ALONGSIDE';
     if (this.phase === 'COMMIT' || this.phase === 'ALONGSIDE') {
       if (gap < -18) this.phase = 'RETURN';
-      else if (this.age > 10 || (!input.straight && gap > 18)
+      else if (this.age > (this.clearingStop ? 20 : 10) || (!input.straight && gap > 18)
         || Math.abs(input.opponentLane + this.side * 7) > input.safeLane - 1) this.phase = 'ABORT';
     }
     if (this.phase === 'ABORT' && gap > 25) this.phase = 'RETURN';
@@ -48,11 +58,20 @@ export class CorridorPassing {
       && Math.abs(wrap(car.heading - sampleTrack(progress).heading)) < 0.2;
     this.settled = aligned ? this.settled + dt : 0;
     if (this.settled >= 0.35) {
-      this.phase = 'FOLLOW'; this.cooldown = 3;
+      this.phase = 'FOLLOW'; this.cooldown = 3; this.clearingStop = false;
     }
     let speedCap = this.phase === 'ABORT' ? Math.max(0, input.opponentSpeed - 8) : Infinity;
-    if (gap > 0 && Math.abs(input.lane - input.opponentLane) < 6.5) {
-      speedCap = Math.min(speedCap, Math.max(0, input.opponentSpeed + (gap - 22) * 0.5));
+    const lowSpeedAligned = this.clearingStop && input.opponentSpeed < 3
+      && Math.abs(wrap(car.heading - sampleTrack(progress).heading)) < 0.25;
+    if (gap > 0 && Math.abs(input.lane - input.opponentLane) < (lowSpeedAligned ? 6 : 6.5)) {
+      // A stopped pair needs forward motion to steer. Creep only while the
+      // committed bypass still has longitudinal room; retain the normal buffer
+      // for FOLLOW, ABORT and ordinary high-speed attacks.
+      const creeping = this.clearingStop && input.opponentSpeed < 3
+        && (this.phase === 'COMMIT' || this.phase === 'ALONGSIDE');
+      const buffer = creeping ? Math.max(5, 10 - Math.abs(input.lane - input.opponentLane) * 0.75) : 22;
+      const followingCap = Math.max(0, input.opponentSpeed + (gap - buffer) * 0.5);
+      speedCap = Math.min(speedCap, creeping ? Math.min(3, followingCap) : followingCap);
     }
     const plan = { phase: this.phase, speedCap };
     const offset = this.offset;
@@ -63,12 +82,15 @@ export class CorridorPassing {
       const lane = clamp(line.laneOffset + offset, -limit, limit);
       return { ...sampleTrack(p, lane), speed: line.targetSpeed };
     };
-    const lookahead = clamp(18 + car.speed * 0.25, 25, 42);
+    const lookahead = this.clearingStop && car.speed < 12
+      ? clamp(5 + car.speed * 0.5, 5, 11) : clamp(18 + car.speed * 0.25, 25, 42);
     const target = point(lookahead);
     const tangent = point(lookahead + 8);
     const heading = Math.atan2(tangent.y - target.y, tangent.x - target.x);
     const bearing = Math.atan2(target.y - car.y, target.x - car.x);
-    const steer = clamp(wrap(heading - car.heading) * 2.15
+    const steer = this.clearingStop && car.speed < 12
+      ? clamp(wrap(bearing - car.heading) * 2.5 - car.yawRate * 0.38, -0.98, 0.98)
+      : clamp(wrap(heading - car.heading) * 2.15
       + wrap(bearing - car.heading) * 0.82
       + clamp((reference + offset - input.lane) / 9, -1, 1) * 0.52
       - car.yawRate * 0.38, -0.98, 0.98);
