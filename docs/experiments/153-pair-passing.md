@@ -1,7 +1,8 @@
 # Issue #153 — first pair passing experiment
 
-Status: first candidate rejected; second candidate passes four limited physical
-pair fixtures. Both remain isolated research, with no gameplay rollout.
+Status: first candidate rejected; second candidate passes nine pair manoeuvre fixtures and
+one physically narrowed-road follow fixture. An isolated human lab is available;
+normal gameplay rollout is still gated.
 Baseline: main `78c2b55` (PR #172). No production code imports this experiment.
 
 ## Conditions and interpretation
@@ -78,7 +79,8 @@ rollout is authorized by these results. Issue #153 remains open.
 `CorridorPassing` is a separate successor; the rejected `PairPassing` and its
 12-second counterexamples remain intact. `PairPassingHarness` runs all three
 controllers under the same conditions. The successor is still test-only, with
-no production import or game menu entry.
+no normal race/TT caller or game menu entry. The later lab section describes its
+separate experimental browser entry.
 
 Changes: slew the **offset relative to the reference** at 2.5 m/s; sample the
 shifted reference path for steering; constrain sampled lane centres to the road
@@ -134,5 +136,46 @@ narrowing corridor can still invalidate the fixed seven-metre reservation.
 No-space/corner rejection, reference motion, catching-rival return hold and
 settling requirements have command-level unit tests; physical narrow-road,
 more starting speeds/gaps, aggressive changes during overlap and continuous
-swept-body prediction remain open. Add those before enabling a human pair lab.
+swept-body prediction remain open. Add those before claiming broad safety. The expanded fixtures below justify an isolated
+human lab for the next gate, not normal race rollout.
 The game and REFERENCE GHOST remain unchanged; #153 stays open.
+
+
+## Expanded initial conditions and human lab
+
+Five additional late-moving-rival cases repeat exactly and require zero contact,
+road departure and stall, one pass and one settled return before 18 seconds:
+gaps 28/60 m at 75/65 m/s; gap 40 m at 90/50 m/s; progress 0.05/0.12 at the
+original speeds/gap. Return times are 7.525, 14.292, 7.525, 7.525 and 7.250 s.
+A copy of Pitwall's geometry registered in the temporary editor test slot with
+8 m road half-width verifies **no launch**, no contact/departure/stall and
+minimum physical centre separation >18 m (observed ~21.95 m) for 20 seconds.
+This is a physical narrowed geometry/AUTO fixture, not validation of arbitrary
+EDITOR reference lines. Narrowing *during* an existing overlap remains open.
+
+The successor now retains its conservative gap/curvature speed cap even in
+FOLLOW; FOLLOW steering still comes from DynamicAiController. Otherwise the
+original longitudinal controller can resume rubbing behind a no-pass rival.
+The original four manoeuvre outcomes and return times remain unchanged after
+this change; their post-return speeds/distances differ. Current physical lane
+rate peaks in those cases are ~9.6–18.0 m/s; earlier figures above describe the
+prior four-case checkpoint. No lateral-motion comfort claim is made.
+
+### Try the isolated lab
+
+Check out the PR branch `feat/153-pair-overtaking-experiment`, run `npm install`
+and `npm run dev`, then open `http://localhost:5175/passing-lab.html`.
+The normal `/` game remains unchanged. This is a simple 2D view of the actual
+Rapier pair, not the full Three.js race. Blue is the player, yellow the CPU;
+W/S are throttle/brake, A/D steer, P pauses and R resets. Click Start, let the
+CPU draw alongside, defend a lane, vary braking, and observe its abort/rejoin.
+Report squeezing, sudden crossings, repeated contact, stalls and input feel.
+Reset begins paused; blur/hidden-tab pauses and clears held keys. There is no
+pit/tyre wear/damage/race result/history recording in this instrument.
+
+`npm run build` compiles the normal game and the separate lab bundle into
+`dist/` and `dist-passing-lab/`; the latter is not published with normal game
+output. `npm run build:passing-lab` builds just that optional bundle. Actual
+browser interaction/readability and human racecraft remain unverified here;
+browser installation failed, so only compilation/HTTP delivery and physical
+headless tests are claimed. This lab is the next human validation surface.

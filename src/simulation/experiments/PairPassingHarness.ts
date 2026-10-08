@@ -4,7 +4,7 @@ import { createAiField, type RaceTrafficCar } from '../RaceModel';
 import { activeReferenceTarget } from '../RacingLineRuntime';
 import { surfaceEffect } from '../SurfaceModel';
 import { trackAiSafeLaneLimit, trackRoadHalfWidth } from '../TrackLimitsModel';
-import { sampleTrack, projectTrackNear, TRACK_LENGTH } from '../TrackModel';
+import { getActiveTrack, sampleTrack, projectTrackNear, TRACK_LENGTH } from '../TrackModel';
 import { signedHeadingDelta } from '../TrackProfile';
 import { createVehicle } from '../VehicleModel';
 import { PairPassing, type PassingInput } from './PairPassing';
@@ -12,15 +12,21 @@ import { CorridorPassing } from './CorridorPassing';
 
 
 const DT = 1 / 120;
-export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | 'defends' | 'equal' | 'late', seconds = 12) {
-  const ego = { ...createAiField()[1], lap: 1, progress: 0.04, laneOffset: 0, pitPlan: [] };
+export interface PairSeed {
+  progress?: number;
+  gap?: number;
+  egoSpeed?: number;
+  rivalSpeed?: number;
+}
+export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | 'defends' | 'equal' | 'late', seconds = 12, seed: PairSeed = {}) {
+  const ego = { ...createAiField()[1], lap: 1, progress: seed.progress ?? 0.04, laneOffset: 0, pitPlan: [] };
   const rival = { ...createAiField()[1], id: 'controlled-rival', lap: 1,
-    progress: ego.progress + 40 / TRACK_LENGTH, laneOffset: 0, pitPlan: [] };
+    progress: ego.progress + (seed.gap ?? 40) / TRACK_LENGTH, laneOffset: 0, pitPlan: [] };
   const pose = sampleTrack(ego.progress);
   const opponentPose = sampleTrack(rival.progress);
   const physics = new RapierRacePhysics(createVehicle(opponentPose.x, opponentPose.y, opponentPose.heading), [ego]);
-  physics.setPlayerState({ ...createVehicle(opponentPose.x, opponentPose.y, opponentPose.heading), speed: 65 });
-  physics.setAiState(0, { ...createVehicle(pose.x, pose.y, pose.heading), speed: 75 });
+  physics.setPlayerState({ ...createVehicle(opponentPose.x, opponentPose.y, opponentPose.heading), speed: seed.rivalSpeed ?? 65 });
+  physics.setAiState(0, { ...createVehicle(pose.x, pose.y, pose.heading), speed: seed.egoSpeed ?? 75 });
   const policy = new PairPassing();
   const corridor = new CorridorPassing();
   const metrics = { samples: 0, contactEpisodes: 0, contactSeconds: 0, offroadSeconds: 0,
@@ -56,7 +62,7 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
       let speed = base.targetSpeed;
       let override = false;
       if (experiment) {
-        const reference = activeReferenceTarget('pitwall-gp', ego.progress, ego.tire.grip);
+        const reference = activeReferenceTarget(getActiveTrack().id, ego.progress, ego.tire.grip);
         const gap = ((rival.lap - ego.lap) + rival.progress - ego.progress) * TRACK_LENGTH;
         const input: PassingInput = { dt: DT, gap, speed: car.speed, opponentSpeed: other.speed,
           lane: road.laneOffset, opponentLane: rivalRoad.laneOffset, referenceLane: reference.laneOffset,
@@ -64,14 +70,14 @@ export function runPair(experiment: boolean | 'corridor', scenario: 'slower' | '
           straight: Math.abs(signedHeadingDelta(ego.progress, ego.progress + 120 / TRACK_LENGTH)) < 0.12 };
         const next = experiment === 'corridor' ? corridor.step(input, car, ego.progress, ego.tire.grip) : undefined;
         const plan = next ?? policy.step(input);
-        if (plan.phase !== 'FOLLOW') {
+        if (plan.phase !== 'FOLLOW' || (next && next.speed < base.targetSpeed)) {
           override = true;
           const lookahead = Math.max(25, car.speed * 0.5);
           const target = sampleTrack(ego.progress + lookahead / TRACK_LENGTH, plan.lane);
           const heading = wrap(Math.atan2(target.y - car.y, target.x - car.x) - car.heading);
           steer = clamp(heading * 2.5 - car.yawRate * 0.4, -0.98, 0.98);
           speed = Math.min(reference.targetSpeed, plan.speedCap);
-          if (next) { steer = next.steer; speed = next.speed; }
+          if (next) { steer = next.phase === 'FOLLOW' ? base.steer : next.steer; speed = next.speed; }
         }
         if (plan.phase !== lastPhase) {
           metrics.phases.push(plan.phase);

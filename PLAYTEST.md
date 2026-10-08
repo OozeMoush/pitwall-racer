@@ -179,7 +179,7 @@ Measure seven-CPU browser FPS; no frame-rate claim follows from unit tests.
 - P / ESC pauses both driving and sound. Adjust VOLUME / MUTE in the pause screen; zero mutes. Resume and restart retain the selected session volume without replaying old start/contact sounds.
 - Finish and qualifying results hush continuous driving audio. Moving from qualifying to the race must not leave the old engine audible.
 - With seven CPUs, repeat contacts, pause/resume and qualifying retries; check audible comfort, frame time and Web Audio resources. Sound balance and these browser checks require human confirmation; unit tests/build do not replace them.
-- This slice uses only existing procedural oscillators/noise. Directional rival audio, position/pit/PB cues and richer finish presentation remain separate #152 work.
+- This slice uses only existing procedural oscillators/noise. Directional rival audio and short event cues are described below; richer course/body visuals remain later #152 candidates.
 
 ### Integrated human feedback: #150 / #160
 
@@ -302,3 +302,40 @@ Report physical lane rate independently of target slew and warm CPU cost rather
 than hiding these behind pass counts. Command-level no-space and projected
 catch-up tests are not physical narrow-road evidence. No full-field or human
 racecraft approval follows from these four cases.
+
+Expanded pair gate: repeat five late-rival seeds (28/60 m gaps, 90/50 m/s speed,
+0.05/0.12 starting progress) and require pass + settled return <18 s with zero
+contact/departure/stall. An 8 m half-width Pitwall geometry copy must never
+launch, must keep >18 m physical separation and have zero contact/departure/stall.
+The controller's FOLLOW speed cap is active in these fixtures; steering still
+uses the existing baseline. The temporary editor geometry is not explicit-line
+validation. Keep the original failure fixtures and matched comparisons.
+
+Human entry: `npm run dev` → `/passing-lab.html` (PR branch). Start/pause/reset,
+WASD, P/R, held-input clearing on blur/hidden tab, physical barriers, varying
+braking and defending each side; check late crossings and repeated rubbing.
+The lab uses only two physical cars, a simple 2D view and no saved race history.
+Compilation/HTTP delivery is not browser interaction or subjective validation.
+`npm run build` also builds the separate optional lab output; do not deploy that
+output as the normal game or treat it as full-field approval.
+
+### Racing feedback: rival direction and event cues (#152)
+
+Automated: nearest-two/range/driver-relative stereo and distance attenuation;
+rank debounce, initial-grid suppression, real service/exit, actual best/finish,
+cooldown without backlog, two persistent rival voices over repeated updates,
+transient cleanup/cap, pause/mute/suspended-context non-replay, finish driving-bus
+silence, TT actual saved PB and unchanged bounded-review rendering.
+
+Human (headphones or stereo speakers): bring a CPU alongside on each side, in
+front and behind; direction follows the driver's heading and distance fades
+smoothly. Far cars remain quiet, including in a seven-CPU race. Confirm the
+player engine and tyre/impact cues are still clearer than rival hum. Brief rank
+jitter must not chirp; a stable change may chirp even due to pit order, with no
+claim of an on-track overtake. Finish is a short completion cue, including DQ,
+then driving hushes. Test service through physical pit exit, clean TT PB, slower
+lap, pause/resume, volume zero/restore and restart. No old cue should replay.
+The race label replaces one existing info row, never enlarges the HUD. Review
+scroll/focus must remain intact. Check seven-CPU battle/pit FPS and Web Audio
+resources in the actual browser; deterministic/model graphs are not audible or
+visual validation and are not FPS evidence.

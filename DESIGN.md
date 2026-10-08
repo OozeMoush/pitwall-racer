@@ -770,3 +770,52 @@ unpredictable overlapping rivals still need physical validation. Unit target
 slew does not bound actual lateral speed. Neither candidate has a production
 caller. Exact controls, results, added cost and remaining gates are in
 `docs/experiments/153-pair-passing.md`.
+
+### Isolated human pair lab and expanded envelope — #153
+
+Nine manoeuvre fixtures (four behaviours plus five starting-condition variants)
+and one physically narrowed Pitwall/AUTO follow fixture now pass zero contact,
+road departure and stall. The experimental speed cap remains active in FOLLOW
+to keep no-pass following clear; normal race controllers remain unchanged.
+Expose a separate `passing-lab.html` for keyboard-driven two-body evaluation,
+without enabling CPU passing in race/TT or broadening the field. Its simple 2D
+view intentionally shares Rapier rather than normal race presentation. Keep the
+lab bundle separate from normal `dist/`. Human feel, narrowing during overlap,
+arbitrary actions, full-field and explicit-line/pit/lapped rollout remain open.
+
+### Racing feedback: physical neighbours and brief event cues (#152)
+
+The existing player engine, slide, surface and real-contact sound remain the
+foundation. Nearby opponents add up to two persistent, quiet triangle voices;
+physical distance fades their gain quadratically to zero at 45 m. Pan follows
+left/right relative to the driver's heading (not race rank or screen coordinates),
+and a rear car has a lower filter cutoff than a forward car. Frequency follows
+actual opponent speed. Lapped cars can be audible; remote position rivals cannot.
+All seven loud voices were rejected to protect clarity and bound audio resources.
+No speed-drop/traffic-pressure heuristic creates fake contact sounds.
+
+Observed race position must remain changed for 0.75 simulation seconds before a
+short up/down cue. Initial grid/start changes do not announce passes. This is a
+position change, including pit-related rank changes, not a claim of an on-track
+overtake. Service followed by physical pit exit, an actual session best update,
+and the first finish transition have distinct short procedural notes. Non-finish
+cues are spaced at least two simulation seconds; suppressed cues are consumed,
+not queued for misleading later playback. Finish has priority and means race
+complete, not necessarily victory or legal classification. In TT, BEST sounds
+only when a clean lap actually saves a new legacy TT PB; storage failure/slower
+laps do not announce a PB. Its existing lap notice supplies the visual context.
+
+A short race label occupies the existing qualifying-info row for 2.5 seconds,
+without growing the HUD card, covering the road, shaking the camera or flashing.
+Important warnings and LIMITS remain visible. HUD and cue position share the same
+physical standings snapshot, avoiding extra course projections for presentation.
+
+Master volume/mute controls all sound. Continuous driving uses a separate bus,
+so finish can silence player/rival engines while allowing its one-shot cue.
+Pause stops transient notes; paused, muted, suspended-context and pre-unlock
+cues are consumed without replay. Restart clears event/ID/debounce state; dispose
+removes listeners and closes the AudioContext. There are always two rival voices,
+regardless of field size, and at most eight live transient oscillators. No new
+asset/license dependencies. Tests verify state, graph limits and lifecycle;
+actual balance, stereo perception, screen comfort and browser FPS still require
+human evaluation. Course scenery/body cosmetics are subsequent candidates.

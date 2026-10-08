@@ -36,7 +36,7 @@ function solo(lineCandidate: PlayerRacingLineCandidateRecorder) {
   return Object.assign(Object.create(QualifyingGame.prototype), {
     setup: { trackId: 'pitwall-gp' }, mode: 'TIME_TRIAL', lineCandidate, driverHistoryRecorder,
     lapTime: 29, lapValidity: { snapshot: () => ({ candidateEligible: true }), reset() {} },
-    completedLaps: 0, sectorTimes: [9, 10], sessionTimeTrialLaps: [],
+    audioCueSequence: 0, completedLaps: 0, sectorTimes: [9, 10], sessionTimeTrialLaps: [],
     timeTrialRecord: {}, announceSectorSplit() {},
     paceEvidence: { begin() {} }, tire: { compound: 'SOFT', wear: 0, grip: 1, temperature: 98 },
   }) as any;
@@ -106,11 +106,18 @@ describe('player line session update boundaries', () => {
     const game = solo(recorder(2));
     game.completeLap();
     expect(game.lapNotice).toContain('PLAYER LINE UPDATED');
+    expect(game.audioCue).toEqual({ id: 1, kind: 'BEST' });
     expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')?.lapSeconds).toBe(29);
     // main.ts calls this at menu/session entry and after qualifying.
     activateStoredRacingLine(storage, 'pitwall-gp');
     expect(runtimeRacingLine('pitwall-gp')?.lapSeconds).toBe(29);
     expect(activeReferenceTarget('pitwall-gp', 0.5, 1).laneOffset).toBeCloseTo(2, 1);
+  });
+  it('does not announce a PB on a slower clean TT lap', () => {
+    const game = solo(recorder(2)); game.timeTrialRecord = { bestLap: 28 };
+    // Seed the persisted record with an actual first clean lap rather than inventing one.
+    const earlier = solo(recorder(2)); earlier.lapTime = 28; earlier.completeLap();
+    game.completeLap(); expect(game.audioCue).toBeUndefined();
   });
   it('saves a qualifying lap and uses it when the same weekend starts the race', () => {
     const game = solo(recorder(2));
@@ -160,6 +167,7 @@ describe('player line session update boundaries', () => {
     const game = solo(recorder(2));
     game.completeLap();
     expect(game.lapNotice).toContain('STORAGE FAILED');
+    expect(game.audioCue).toBeUndefined();
     expect(loadPlayerRacingLineCandidate(storage, 'pitwall-gp')?.lapSeconds).toBe(30);
   });
 });

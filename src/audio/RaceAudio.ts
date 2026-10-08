@@ -1,3 +1,5 @@
+import { rivalAudioParameters, RIVAL_AUDIO_VOICES, type RivalSound } from './RivalAudioModel';
+import type { RaceCue } from './RaceFeedbackModel';
 export interface RaceAudioInput {
   speed: number;
   throttle: number;
@@ -12,6 +14,8 @@ export interface RaceAudioInput {
   contactKind?: 'NONE' | 'CAR' | 'BARRIER';
   impactSpeed?: number;
   inactive?: boolean;
+  rivals?: readonly RivalSound[];
+  cue?: { id: number; kind: RaceCue };
 }
 
 export interface RaceAudioParameters {
@@ -69,6 +73,9 @@ export function setRaceAudioVolume(value: number): void {
 export class RaceAudio {
   private context?: AudioContext;
   private master?: GainNode;
+  private driving?: GainNode;
+  private readonly rivalVoices: Array<{ oscillator: OscillatorNode; gain: GainNode; pan: StereoPannerNode; filter: BiquadFilterNode }> = [];
+  private lastCueId?: number;
   private engineGain?: GainNode;
   private engineFilter?: BiquadFilterNode;
   private engineA?: OscillatorNode;
@@ -85,7 +92,10 @@ export class RaceAudio {
     this.clearTransients();
     this.applyVolume();
   };
-  private readonly onVolume = () => this.applyVolume();
+  private readonly onVolume = () => {
+    if (audioVolume === 0) this.clearTransients();
+    this.applyVolume();
+  };
 
   constructor() {
     window.addEventListener('race-audio-pause', this.onPause);
@@ -94,8 +104,9 @@ export class RaceAudio {
 
   private applyVolume(): void {
     if (!this.context || !this.master) return;
-    const gain = this.paused || this.inactive ? 0 : 0.42 * audioVolume;
+    const gain = this.paused ? 0 : 0.42 * audioVolume;
     this.master.gain.setTargetAtTime(gain, this.context.currentTime, 0.015);
+    this.driving?.gain.setTargetAtTime(this.paused || this.inactive ? 0 : 1, this.context.currentTime, 0.015);
   }
 
   private clearTransients(): void {
@@ -116,16 +127,34 @@ export class RaceAudio {
   }
 
   update(input: RaceAudioInput, dt: number): void {
+    const newCue = input.cue && input.cue.id !== this.lastCueId ? input.cue.kind : undefined;
+    if (input.cue) this.lastCueId = input.cue.id;
     const context = this.context;
     if (!context || context.state === 'closed') return;
     this.inactive = input.inactive ?? false;
     this.applyVolume();
+    if (context.state !== 'running') {
+      this.lastBanner = input.banner;
+      this.contacts.update(input.contactKind, input.impactSpeed);
+      return;
+    }
+    if (!this.paused && audioVolume > 0 && newCue && (!this.inactive || newCue === 'FINISH')) {
+      if (newCue === 'FINISH') this.clearTransients();
+      this.chime(newCue);
+    }
     if (this.paused || this.inactive) {
       this.lastBanner = input.banner;
       this.contacts.update(input.contactKind, input.impactSpeed);
       return;
     }
     const now = context.currentTime;
+    this.rivalVoices.forEach((voice, i) => {
+      const rival = rivalAudioParameters(input.rivals?.[i]);
+      voice.gain.gain.setTargetAtTime(rival.gain, now, 0.09);
+      voice.pan.pan.setTargetAtTime(rival.pan, now, 0.09);
+      voice.oscillator.frequency.setTargetAtTime(rival.frequency, now, 0.08);
+      voice.filter.frequency.setTargetAtTime(rival.cutoff, now, 0.09);
+    });
     const params = raceAudioParameters(input);
 
     this.engineA?.frequency.setTargetAtTime(params.engineFrequency, now, 0.025);
@@ -147,6 +176,7 @@ export class RaceAudio {
 
   reset(): void {
     this.lastBanner = undefined;
+    this.lastCueId = undefined;
     this.contacts.reset();
     this.clearTransients();
     this.inactive = false;
@@ -158,6 +188,9 @@ export class RaceAudio {
     const master = context.createGain();
     master.gain.value = this.paused ? 0 : 0.42 * audioVolume;
     master.connect(context.destination);
+    const driving = context.createGain();
+    driving.gain.value = this.inactive ? 0 : 1;
+    driving.connect(master);
 
     const engineFilter = context.createBiquadFilter();
     engineFilter.type = 'lowpass';
@@ -165,7 +198,7 @@ export class RaceAudio {
     engineFilter.Q.value = 0.8;
     const engineGain = context.createGain();
     engineGain.gain.value = 0;
-    engineFilter.connect(engineGain).connect(master);
+    engineFilter.connect(engineGain).connect(driving);
 
     const engineA = context.createOscillator();
     engineA.type = 'sawtooth';
@@ -188,16 +221,26 @@ export class RaceAudio {
     tireFilter.Q.value = 0.75;
     const tireGain = context.createGain();
     tireGain.gain.value = 0;
-    noise.connect(tireFilter).connect(tireGain).connect(master);
+    noise.connect(tireFilter).connect(tireGain).connect(driving);
 
     const surfaceFilter = context.createBiquadFilter();
     surfaceFilter.type = 'lowpass';
     surfaceFilter.frequency.value = 680;
     const surfaceGain = context.createGain();
     surfaceGain.gain.value = 0;
-    noise.connect(surfaceFilter).connect(surfaceGain).connect(master);
+    noise.connect(surfaceFilter).connect(surfaceGain).connect(driving);
     noise.start();
 
+    for (let i = 0; i < RIVAL_AUDIO_VOICES; i++) {
+      const oscillator = context.createOscillator(); oscillator.type = 'triangle';
+      const filter = context.createBiquadFilter(); filter.type = 'lowpass';
+      const gain = context.createGain(); gain.gain.value = 0;
+      const pan = context.createStereoPanner();
+      oscillator.connect(filter).connect(gain).connect(pan).connect(driving);
+      oscillator.start();
+      this.rivalVoices.push({ oscillator, filter, gain, pan });
+    }
+    this.driving = driving;
     this.context = context;
     this.master = master;
     this.engineGain = engineGain;
@@ -218,27 +261,34 @@ export class RaceAudio {
     return source;
   }
 
-  private beep(frequency: number, duration: number, gain: number): void {
+  private chime(cue: RaceCue): void {
+    const notes = { POSITION_UP: [660, 880], POSITION_DOWN: [440, 330],
+      PIT_DONE: [620, 780], BEST: [880, 1100], FINISH: [660, 880, 990] }[cue];
+    notes.forEach((note, i) => this.beep(note, 0.10, 0.045, i * 0.11, 'triangle'));
+  }
+
+  private beep(frequency: number, duration: number, gain: number, delay = 0, waveform: OscillatorType = 'square'): void {
     const context = this.context;
     const master = this.master;
-    if (!context || !master) return;
+    if (!context || !master || this.transients.size >= 8) return;
     const osc = context.createOscillator();
     const level = context.createGain();
-    osc.type = 'square';
+    osc.type = waveform;
     osc.frequency.value = frequency;
-    level.gain.setValueAtTime(gain, context.currentTime);
-    level.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+    const start = context.currentTime + delay;
+    level.gain.setValueAtTime(gain, start);
+    level.gain.exponentialRampToValueAtTime(0.0001, start + duration);
     osc.connect(level).connect(master);
     this.transients.add(osc);
     osc.onended = () => { osc.disconnect(); level.disconnect(); this.transients.delete(osc); };
-    osc.start();
-    osc.stop(context.currentTime + duration);
+    osc.start(start);
+    osc.stop(start + duration);
   }
 
   private thump(amount: number): void {
     const context = this.context;
     const master = this.master;
-    if (!context || !master) return;
+    if (!context || !master || this.transients.size >= 8) return;
     const osc = context.createOscillator();
     const gain = context.createGain();
     osc.type = 'sine';

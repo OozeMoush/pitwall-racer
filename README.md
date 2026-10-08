@@ -18,6 +18,7 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - line-locked CPU driving with longitudinal FOLLOW traffic control
 - driver-specific CPU pace, consistency and technical precision with smooth live form variation
 - dirty air and tow
+- quiet driver-relative stereo sound for the nearest two physical rivals, plus short position/pit-exit/best/finish cues; pause VOLUME / MUTE controls all sound
 - five-light randomized race start with measured throttle reaction time
 - current / last / best lap timing, S1/S2/S3, lap history and live circuit map
 - fixed 120 Hz physics/simulation step
@@ -141,3 +142,12 @@ The older energy model remains in the repository as a deferred system and still 
 If a race is not fun before another major system is added, that system is not the fix. Driving, CPU pressure, tyre feel and pit timing must stand on their own first. See [DESIGN.md](./DESIGN.md).
 
 Mouse wheel over the driving canvas zooms in/out in race and qualifying (0.5×–2.5×). UI panels retain normal scrolling.
+
+## Isolated CPU passing lab (#153)
+
+On the experimental PR branch, run `npm run dev` and open
+`http://localhost:5175/passing-lab.html` for a keyboard-controlled, two-car
+physical trial. Blue is you, yellow is the CPU; WASD drives, P pauses and R
+resets. Normal race/TT remains line-locked. See
+[experiment conditions and remaining gates](./docs/experiments/153-pair-passing.md).
+`npm run build` also validates the lab in a separate `dist-passing-lab/` output.

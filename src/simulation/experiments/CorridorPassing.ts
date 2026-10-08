@@ -1,5 +1,5 @@
 import { activeReferenceTarget } from '../RacingLineRuntime';
-import { sampleTrack, TRACK_LENGTH } from '../TrackModel';
+import { getActiveTrack, sampleTrack, TRACK_LENGTH } from '../TrackModel';
 import { trackAiSafeLaneLimit } from '../TrackLimitsModel';
 import type { VehicleState } from '../VehicleModel';
 import type { PassingInput, PassingPhase } from './PairPassing';
@@ -58,7 +58,7 @@ export class CorridorPassing {
     const offset = this.offset;
     const point = (metres: number) => {
       const p = progress + metres / TRACK_LENGTH;
-      const line = activeReferenceTarget('pitwall-gp', p, grip);
+      const line = activeReferenceTarget(getActiveTrack().id, p, grip);
       const limit = trackAiSafeLaneLimit(p) - 1;
       const lane = clamp(line.laneOffset + offset, -limit, limit);
       return { ...sampleTrack(p, lane), speed: line.targetSpeed };

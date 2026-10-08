@@ -13,6 +13,7 @@ export const LONG_TEST_FILES = [
 export const PLAYTEST_TEST_FILES = [
   'src/simulation/experiments/PairPassingPhysics.test.ts',
   'src/simulation/experiments/CorridorPassingPhysics.test.ts',
+  'src/simulation/experiments/CorridorRobustnessPhysics.test.ts',
   'src/simulation/QuickRacePlaytest.test.ts',
   'src/simulation/RacePerformance.test.ts',
   'src/game/GrandPrixPlaytest.test.ts',
