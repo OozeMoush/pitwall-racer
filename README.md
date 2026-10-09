@@ -26,6 +26,17 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - standalone Time Trial for improving PLAYER BEST; **ドライバー記録** in session selection opens browser-local TT history, condition-scoped PB updates, clean rate and lap-time spread
 - one-shot qualifying before the Grand Prix, with an option to skip and start P8
 
+## Issue #153 normal-race trial (PR #177)
+
+On `feat/153-defensive-racecraft`, open the normal game at
+`http://localhost:5175/`. Choose **Pitwall GP / AUTO**, leave **CPU攻防を試す**
+checked, and start a QUICK Grand Prix (SKIP QUALIFYING starts P8).
+Uncheck it to compare the established CPU control. This review candidate runs
+with the normal seven CPU cars, tyres, strategy and physical pit stops.
+Other circuits and PLAYER/EDITOR lines are outside the trial; the separate
+`passing-lab.html` remains available for focused diagnostics. Human acceptance
+is still pending; see `docs/experiments/153-defensive-racecraft.md`.
+
 ## Race setup
 
 The pre-race menu currently offers circuits with explicit physical scale profiles. Circuit scale is independent from race duration: Compact tracks can keep short, dense laps while Standard tracks can use race-scale spacing.
@@ -142,3 +153,13 @@ The older energy model remains in the repository as a deferred system and still 
 If a race is not fun before another major system is added, that system is not the fix. Driving, CPU pressure, tyre feel and pit timing must stand on their own first. See [DESIGN.md](./DESIGN.md).
 
 Mouse wheel over the driving canvas zooms in/out in race and qualifying (0.5×–2.5×). UI panels retain normal scrolling.
+
+## Isolated CPU passing lab (#153)
+
+On the experimental PR branch, run `npm run dev` and open
+`http://localhost:5175/passing-lab.html` for a keyboard-controlled, two-car
+physical trial. The current candidate recognizes early defence; choose old/new
+and straight/error/overlap starts for comparison. Blue is you, yellow is the CPU; WASD drives, P pauses and R
+resets. Normal race/TT remains line-locked. See
+[experiment conditions and remaining gates](./docs/experiments/153-defensive-racecraft.md).
+`npm run build` also validates the lab in a separate `dist-passing-lab/` output.

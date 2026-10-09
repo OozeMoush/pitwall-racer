@@ -1,3 +1,4 @@
+import { RacePassingController } from './experiments/RacePassingController';
 import { physicalPitControl } from './PhysicalPitControl';
 import RAPIER from '@dimforge/rapier2d-compat';
 import { aerodynamicEffect, towDragMultiplier, towPowerBoost } from './AeroModel';
@@ -120,8 +121,9 @@ export class RapierRacePhysics {
   private latestAi: DriverState[] = [];
   private latestAiControls: Array<DynamicAiControl | undefined> = [];
   private playerLap = 0;
+  private readonly passingControllers: RacePassingController[] = [];
 
-  constructor(playerStart: VehicleState, ai: readonly DriverState[]) {
+  constructor(playerStart: VehicleState, ai: readonly DriverState[], private readonly experimentalPassing = false) {
     this.world = new RAPIER.World({ x: 0, y: 0 });
     this.world.timestep = 1 / 120;
     this.world.integrationParameters.maxCcdSubsteps = 4;
@@ -202,20 +204,25 @@ export class RapierRacePhysics {
     return this.aiImpactSpeedValues[index] ?? 0;
   }
 
-  syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0): void {
+  syncAiKinematics(ai: DriverState[], dt = 1 / 120, playerLap = 0, playerOnTrack = true): void {
     this.latestAi = ai;
     this.playerLap = playerLap;
     const states = this.aiStates();
-    const traffic = this.actualTraffic(ai, states);
+    const traffic = this.actualTraffic(ai, states).filter(other =>
+      !this.experimentalPassing || (other.isPlayer ? playerOnTrack
+        : !isPitActive(this.aiPitStops[ai.findIndex(driver => driver.id === other.id)])));
+    const passingFor = (index: number) => this.passingControllers[index] ??= new RacePassingController();
 
     ai.forEach((driver, index) => {
       const state = states[index];
       if (!state || driver.finished) {
+        this.passingControllers[index]?.reset();
         if (driver.finished) this.stopBody(this.aiBodies[index]);
         return;
       }
 
       if (isPitActive(this.aiPitStops[index])) {
+        this.passingControllers[index]?.reset();
         this.stepAiPit(index, driver, dt);
         return;
       }
@@ -226,6 +233,7 @@ export class RapierRacePhysics {
         ? ((pitEntryProgress() - projectTrackNear(state.x, state.y, driver.progress).progress + 1) % 1) * TRACK_LENGTH
         : Number.POSITIVE_INFINITY;
       if (entryGap > 0 && entryGap < AI_PIT_APPROACH_DISTANCE) {
+        this.passingControllers[index]?.reset();
         const approach = physicalPitControl(state, beginPitStop(pitBoxTForSlot(index + 1)),
           this.aiPitSteering[index] ?? 0, dt, 0, 1, 0, true);
         const road = projectTrackNear(state.x, state.y, driver.progress);
@@ -241,7 +249,9 @@ export class RapierRacePhysics {
           rollingResistance: 0 }, dt);
         return;
       }
-      const control = dynamicAiControl(driver, state, traffic);
+      const baseControl = dynamicAiControl(driver, state, traffic);
+      let control = this.experimentalPassing
+        ? passingFor(index).control(driver, state, traffic, baseControl, dt) : baseControl;
       const projection = projectTrackNear(state.x, state.y, driver.progress);
       const recovery = stepAiStuckRecovery(
         this.aiRecoveryStates[index] ?? createAiStuckRecoveryState(),
@@ -254,6 +264,7 @@ export class RapierRacePhysics {
       this.aiRecoveryStates[index] = recovery;
 
       if (recovery.phase === 'REVERSE') {
+        this.passingControllers[index]?.reset();
         driver.battleState = 'CLEAR';
         this.latestAiControls[index] = {
           ...control,
@@ -265,6 +276,9 @@ export class RapierRacePhysics {
         return;
       }
 
+      if (recovery.phase === 'RECOVER') {
+        this.passingControllers[index]?.reset(); control = baseControl;
+      }
       const effectiveControl = recovery.phase === 'RECOVER'
         ? {
             ...control,
@@ -308,6 +322,8 @@ export class RapierRacePhysics {
       }, dt);
     });
   }
+
+  passingStates() { return this.passingControllers.map(controller => controller.snapshot()); }
 
   driveAi(index: number, input: PhysicalCarInput, dt: number): void {
     const body = this.aiBodies[index];
@@ -443,6 +459,7 @@ export class RapierRacePhysics {
     this.setPlayerState(playerStart);
     this.playerLap = 0;
     this.latestAiControls = [];
+    this.passingControllers.forEach(controller => controller.reset());
     this.aiRecoveryStates = ai.map(() => createAiStuckRecoveryState());
     this.aiSlideStates = ai.map((_, index) => createTyreSlideState(index + 1.13));
     this.aiSlideSeverityValues = ai.map(() => 0);

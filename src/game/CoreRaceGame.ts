@@ -296,7 +296,7 @@ export class CoreRaceGame {
       this.scene.add(car.root);
       return car;
     });
-    this.physics = new RapierRacePhysics(this.vehicle, this.ai);
+    this.physics = new RapierRacePhysics(this.vehicle, this.ai, setup.experimentalPassing === true);
     this.resetSummary();
     this.resetAiTiming();
     this.setupAiDebugVisuals();
@@ -491,7 +491,7 @@ export class CoreRaceGame {
     if (aiLaunchReleased) {
       this.ai = stepAiField(this.ai, dt, this.totalLaps, playerTraffic, false);
       this.ai = resolveAiOccupancy(this.ai, dt);
-      this.physics.syncAiKinematics(this.ai, dt, this.lap);
+      this.physics.syncAiKinematics(this.ai, dt, this.lap, !isPitActive(this.pitStop));
       this.stepAiDebugGhost(dt);
     }
 
@@ -1105,7 +1105,7 @@ export class CoreRaceGame {
       gridOrder: this.setup.gridOrder ? [...this.setup.gridOrder] : ['ai-0','ai-1','ai-2','ai-3','ai-4','ai-5','ai-6','player'],
       raceLength: this.setup.raceLength, qualifyingTime: this.setup.qualifyingTime,
       line: { source: this.summaryLineAsset?.source ?? 'AUTO', fingerprint: summaryFingerprint(this.summaryLineAsset ?? {source:'AUTO'}) },
-      rulesVersion: 'core-dry-3b952669',
+      rulesVersion: 'core-dry-3b952669', experimentalPassing: this.setup.experimentalPassing === true,
     });
     this.raceSummary = undefined;
     this.reviewHtml = '';

@@ -707,6 +707,35 @@ There is no prior driver-history schema to migrate; a future version must explic
 migrate this schema. Records are local to this browser, with JSON export and no
 account/cloud-sync claims. The view is bounded/scrollable like the result panel.
 
+## Isolated CPU passing experiment — #153
+
+Normal race CPUs remain line-locked with longitudinal FOLLOW. The first passing
+candidate lives only in `src/simulation/experiments/` and has no production
+caller. It does not alter REFERENCE GHOST, PLAYER/EDITOR replay, physics,
+collision groups, difficulty or the eight-car race. No player-position pace
+adjustment is introduced.
+
+The candidate selects one of two lateral lanes once, uses FOLLOW → COMMIT →
+ALONGSIDE → RETURN, and ABORT → RETURN when space/time runs out. It rate-limits
+the target to 2.5 m/s, reserves 7 m between lane centres, waits for 18 m longitudinal
+clearance to merge, and yields speed during an abort. These are research
+parameters, not validated safety guarantees. Steering a point toward a bounded
+lane is insufficient to guarantee the physical vehicle's swept envelope.
+
+Chosen first experiment: a fixed-cost two-lane policy with explicit state and a
+real colliding player-body/CPU-body pair on Pitwall GP. CPU/CPU bodies do not
+collide in the current game, so an all-CPU fixture would hide an important class
+of failures. Reject immediate eight-car rollout; reject per-tick full-width
+search without measured benefit; reject teleportation/extra grip to hide path
+errors. A trajectory corridor with speed-aware swept-body prediction is the
+next candidate if this simple policy fails.
+
+The first candidate is **rejected for gameplay rollout**: physical fixtures show
+incomplete reference-line returns and road-envelope departures even while
+contacts decrease. Do not expose it as an in-game option yet. Preserve the
+counterexample and before/after measurement, then replace the isolated policy
+only with evidence of safe abort/return through the corner. See
+`docs/experiments/153-pair-passing.md` for conditions, results and reopening gates.
 
 ### Contact-caused track-limit exits (#173)
 
@@ -728,6 +757,31 @@ Physical grass/grip and impact damage remain; contact still excludes the lap
 from clean PLAYER BEST traces. Recovery remains invalid. This change is for
 race traffic; solo TT/qualifying has no other physical cars and retains its rules.
 
+### Second isolated passing candidate — #153
+
+Retain the first candidate as a counterexample. Its successor follows an offset
+relative to the active reference, previews shifted-path curvature and braking,
+and requires present/projected longitudinal clearance plus a physically settled
+return before handing back to FOLLOW. Four matched 20-second Pitwall pair cases
+now pass or safely abandon and return without contact, road departure or stall.
+This is a limited automated result, not mainline rollout approval. Road-envelope
+sampling is not a continuous swept-volume guarantee; future narrowing and
+unpredictable overlapping rivals still need physical validation. Unit target
+slew does not bound actual lateral speed. Neither candidate has a production
+caller. Exact controls, results, added cost and remaining gates are in
+`docs/experiments/153-pair-passing.md`.
+
+### Isolated human pair lab and expanded envelope — #153
+
+Nine manoeuvre fixtures (four behaviours plus five starting-condition variants)
+and one physically narrowed Pitwall/AUTO follow fixture now pass zero contact,
+road departure and stall. The experimental speed cap remains active in FOLLOW
+to keep no-pass following clear; normal race controllers remain unchanged.
+Expose a separate `passing-lab.html` for keyboard-driven two-body evaluation,
+without enabling CPU passing in race/TT or broadening the field. Its simple 2D
+view intentionally shares Rapier rather than normal race presentation. Keep the
+lab bundle separate from normal `dist/`. Human feel, narrowing during overlap,
+arbitrary actions, full-field and explicit-line/pit/lapped rollout remain open.
 
 ### Racing feedback: physical neighbours and brief event cues (#152)
 
@@ -765,3 +819,64 @@ regardless of field size, and at most eight live transient oscillators. No new
 asset/license dependencies. Tests verify state, graph limits and lifecycle;
 actual balance, stereo perception, screen comfort and browser FPS still require
 human evaluation. Course scenery/body cosmetics are subsequent candidates.
+
+
+### Stopped opponent in the isolated passing experiment — #153
+
+A stationary pair cannot satisfy a pace-advantage trigger. On a straight, after
+0.6 seconds observing a near-stationary obstacle, allow a committed bypass only
+with 20–65 m longitudinal room and the existing full preview lateral space.
+Use a short low-speed lookahead and bearing steering: a moving-reference tangent
+pulls a creeping car straight before it clears the obstacle. While crossing,
+cap closing speed at 3 m/s and reduce the longitudinal buffer only as physical
+lateral separation grows. Release that cap only after measured lateral clearance
+and heading alignment; retain the ordinary moving-rival buffer otherwise.
+Allow 20 seconds for this low-speed maneuver, then use the existing abort.
+
+Waiting is correct when no corridor fits or the pair is already too close to
+start safely. Departure of the obstacle must allow physical restart. Do not
+force an instant sideways shift, pivot on asphalt, teleport or change the shared
+chassis to solve a traffic-planning failure. Reverse escape is deferred: it needs
+rear traffic sensing, which this front-opponent-only prototype does not have.
+This remains a two-body experiment, not a general stopped-field solution.
+
+### Defensive racecraft agreement — #153 (2026-10-10 JST)
+
+The next two-car candidate must let the human defend: an early move into a
+committed corridor causes braking and abandonment before overlap. Reconsider
+an open side only after safe return and a cooldown; never immediately switch
+sides to defeat a block. Freeze the selected reference-relative corridor rather
+than chasing the opponent's lateral position. Once physically alongside,
+reserve the occupied side through the bend and require predicted longitudinal
+clearance before merging. A clearly slower opponent may be passed using open
+space, including an outside corridor that can sustain the next corner.
+
+Reject power-driven penetration of a closed path, always-yield controllers,
+immediate left/right reversals, and collision immunity. Use the same chassis
+and power for both cars; do not cancel real speed differences with position
+rubber-banding. CPU-initiated contact is a failure; an abrupt human squeeze after
+established overlap is a separate challenge, not a universal zero-contact
+promise. Preserve both prior policies and their failures as matched controls.
+
+Define physical scenarios before tuning: early block while still ahead;
+slowing mistake with an open outside; established corner overlap; blocked
+corner approach with safe abandon/return. Record real manifold contacts,
+rotated road-envelope departures, phase/gap/lane traces, actual braking and
+return timing. A scripted late squeeze must disclose its timing relative to
+actual overlap. Tests are necessary evidence, not approval of feel. Only the
+isolated lab selects this candidate; race/TT/ghost stay unchanged. Wider field,
+other lines and circuits, pits/lapped traffic require later validation.
+
+### Normal-race evaluation of #153 (2026-10-10 JST)
+
+The user's “通常レースでやってみないとわかんない” requires the next
+review candidate to run in the ordinary eight-car Grand Prix. A pair lab cannot
+establish whether defence feels credible amid tyre wear, pace differences,
+traffic and pit decisions. Provide an explicit normal-menu trial switch and an
+old-control comparison on the PR branch, initially Pitwall GP AUTO only.
+Retain established grid launch at low speed and physical pit/recovery ownership.
+Reserve space for third cars and lapped physical neighbours; do not change the
+committed opponent mid-manoeuvre. Yielding must not brake a car already ahead,
+which creates mutual-braking deadlocks in a field. Existing normal GP CPU pace
+and hardware remain the balance; no position compensation is introduced.
+Normal-race human review remains necessary before merging or closing #153.

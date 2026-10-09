@@ -1,0 +1,130 @@
+{
+  "scope": "Normal GP sync at 120 Hz; scripted pair and 70 s grid, not human/browser acceptance",
+  "revision": "PR #177 normal-GP trial; see final commit and CI in PR",
+  "pairHardware": "Existing GP chassis/CPU performance and normal surface/aero pipeline; Medium scripted player capped65m/s",
+  "field": "Seven standard CPU drivers, wear/strategy/occupancy, auto-driven player; no complete pit window in 70 s",
+  "wallTime": "Shared container; not browser FPS; standalone observed field old0.143/new0.188 ms per sync, concurrency affects timing",
+  "rows": [
+    {
+      "kind": "GP_PASSING_PAIR",
+      "block": false,
+      "before": {
+        "contactSeconds": 13.191666666666558,
+        "offroadSeconds": 0,
+        "phases": [],
+        "decisions": [],
+        "maxLane": 2.2465856396717356,
+        "finalGap": 8.834517214030724,
+        "controllerMs": 0.03577924035087487
+      },
+      "result": {
+        "contactSeconds": 0,
+        "offroadSeconds": 0,
+        "phases": [
+          "COMMIT",
+          "ALONGSIDE",
+          "RETURN",
+          "FOLLOW"
+        ],
+        "decisions": [
+          "open corridor",
+          "space reserved",
+          "reconsider after cooldown"
+        ],
+        "maxLane": 7.272880674495915,
+        "finalGap": -278.00505274734417,
+        "controllerMs": 0.02954263421052059
+      }
+    },
+    {
+      "kind": "GP_PASSING_PAIR",
+      "block": true,
+      "before": {
+        "contactSeconds": 0,
+        "offroadSeconds": 0,
+        "phases": [],
+        "decisions": [],
+        "maxLane": 8.884299487947306,
+        "finalGap": -443.5280746568633,
+        "controllerMs": 0.018659013157891
+      },
+      "result": {
+        "contactSeconds": 0,
+        "offroadSeconds": 0,
+        "phases": [
+          "COMMIT",
+          "ABORT",
+          "RETURN",
+          "FOLLOW",
+          "COMMIT",
+          "ABORT",
+          "RETURN",
+          "FOLLOW",
+          "COMMIT",
+          "ABORT",
+          "RETURN"
+        ],
+        "decisions": [
+          "open corridor",
+          "early defence",
+          "reconsider after cooldown",
+          "following",
+          "corner or timeout"
+        ],
+        "maxLane": 7.504185133132775,
+        "finalGap": 53.9951812541797,
+        "controllerMs": 0.041112135087715024
+      }
+    },
+    {
+      "kind": "GP_PASSING_FIELD",
+      "enabled": false,
+      "maxOffset": 22.54895088490043,
+      "actions": 0,
+      "controllerMs": 0.24457635047619675,
+      "laps": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "pitStops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "kind": "GP_PASSING_FIELD",
+      "enabled": true,
+      "maxOffset": 21.529492220416163,
+      "actions": 4387,
+      "controllerMs": 0.2013877760714253,
+      "laps": [
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "pitStops": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

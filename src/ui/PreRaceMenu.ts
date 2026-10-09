@@ -37,6 +37,7 @@ export function showPreRaceMenu(
     window.localStorage,
     selectedTrack,
   );
+  let selectedPassing = initial.experimentalPassing ?? true;
   let selectedCompound: Compound = initial.startCompound;
   let selectedRaceLength: RaceLengthPreset = initial.raceLength ?? DEFAULT_RACE_LENGTH;
   let selectedLaps = initial.raceLength
@@ -79,6 +80,11 @@ export function showPreRaceMenu(
         </div>
       </section>
 
+      <section class="setup-section">
+        <label><input type="checkbox" data-passing-trial> CPU攻防を試す</label>
+        <p class="race-length-note" data-passing-status></p>
+      </section>
+
       <section class="setup-split">
         <div class="setup-section">
           <div class="setup-title"><b>03 · RACE START TYRE</b><span>Qualifying uses Soft; the race uses your choice.</span></div>
@@ -110,6 +116,13 @@ export function showPreRaceMenu(
 
   return new Promise((resolve) => {
     const refreshSelected = (): void => {
+      const passing = root.querySelector<HTMLInputElement>('[data-passing-trial]');
+      const eligible = selectedTrack === 'pitwall-gp' && selectedCpuLine === 'AUTO';
+      if (passing) { passing.checked = selectedPassing && eligible; passing.disabled = !eligible; }
+      const passingStatus = root.querySelector<HTMLElement>('[data-passing-status]');
+      if (passingStatus) passingStatus.textContent = eligible
+        ? '通常の8台レースで新しい攻防を試します。外すと従来の挙動に戻ります。'
+        : '新しい攻防は Pitwall GP・AUTO で選べます。';
       root.querySelectorAll<HTMLElement>('[data-track]').forEach((node) => node.classList.toggle('selected', node.dataset.track === selectedTrack));
       root.querySelectorAll<HTMLElement>('[data-compound]').forEach((node) => node.classList.toggle('selected', node.dataset.compound === selectedCompound));
       root.querySelectorAll<HTMLElement>('[data-race-length]').forEach((node) => node.classList.toggle('selected', node.dataset.raceLength === selectedRaceLength));
@@ -180,12 +193,15 @@ export function showPreRaceMenu(
         refreshSelected();
       });
     });
+    root.querySelector<HTMLInputElement>('[data-passing-trial]')?.addEventListener('change', event => {
+      selectedPassing = (event.target as HTMLInputElement).checked; refreshSelected();
+    });
     refreshSelected();
 
     root.querySelector<HTMLButtonElement>('[data-driver-history]')?.addEventListener('click', async () => {
       await showDriverHistory(root, window.localStorage, selectedTrack);
       resolve(await showPreRaceMenu(root, { ...initial, trackId: selectedTrack,
-        startCompound: selectedCompound, raceLength: selectedRaceLength, totalLaps: selectedLaps }));
+        startCompound: selectedCompound, raceLength: selectedRaceLength, totalLaps: selectedLaps, experimentalPassing: selectedPassing }));
     }, { once: true });
 
     root.querySelector<HTMLButtonElement>('[data-circuit-editor]')?.addEventListener(
@@ -196,7 +212,7 @@ export function showPreRaceMenu(
         const nextTrack = result === 'saved' ? EDITOR_TRACK_ID : selectedTrack;
         const nextDefaults: RaceSetup = {
           ...initial,
-          trackId: nextTrack,
+          trackId: nextTrack, experimentalPassing: selectedPassing,
           startCompound: selectedCompound,
           raceLength: selectedRaceLength,
           totalLaps: raceLapsForPreset(nextTrack, selectedRaceLength),
@@ -220,6 +236,7 @@ export function showPreRaceMenu(
         raceLength: selectedRaceLength,
         skipQualifying,
         timeTrial,
+        experimentalPassing: !timeTrial && selectedPassing && selectedTrack === 'pitwall-gp' && selectedCpuLine === 'AUTO',
       });
     };
 

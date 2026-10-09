@@ -176,3 +176,12 @@ These are ongoing design/engineering risks rather than necessarily open bugs:
 - implementation history: merged PRs
 
 If this file conflicts with code/tests or a newer merged Issue/PR, the newer repository evidence wins and this snapshot must be updated.
+
+## Active review branch — Issue #153
+
+PR #177 (`feat/153-defensive-racecraft`) now exposes the defensive racecraft
+candidate in the normal eight-car GP menu, initially Pitwall GP AUTO. The user
+requires normal-race evaluation; the pair lab remains supplemental. Unchecking
+“CPU攻防を試す” selects the established race control. This is unmerged review
+work, not the verified main baseline. Wider traffic/circuit safety and human
+acceptance remain open; do not close the Issue from CI alone.
