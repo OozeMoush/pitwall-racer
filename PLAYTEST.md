@@ -258,6 +258,27 @@ browser rendering/audio/FPS are not claimed by fixture tests. TT-only collection
 must remain absent from seven-CPU race ticks. Race-session history, context and
 race/TT separation remain subsequent #155 work; do not close the full Issue here.
 
+## Isolated pair passing research — #153
+
+`npx vitest run src/simulation/experiments/PairPassing*.test.ts --disableConsoleIntercept`
+runs the policy regressions and colliding physical before/after experiment.
+The physical test belongs to `test:playtest`. It deliberately verifies repeatable
+rejection evidence, not safe gameplay promotion. Passing CI means this research
+fixture remains reproducible; it does not mean the candidate can ship.
+
+Use player + CPU bodies because CPU/CPU impulses are disabled. Report geometric
+contact episodes/duration (including gentle rubbing), rotated vehicle road
+envelope, low-speed stalls, clearance passes, ABORT/RETURN/FOLLOW transitions,
+braking/turning coverage and warm controller CPU cost. Repeat physics metrics
+exactly; wall time is nondeterministic. Never substitute impact-sound events for
+contact evidence or count RETURN entry as completed return.
+
+Before promotion: zero contacts, no road-envelope departures or stalls in the
+agreed pair envelope, completed safe returns after success and abort, bounded
+actual motion, and a human pair session through straight/braking/corner/exit.
+Then independently extend to eight cars, other circuits, PLAYER/EDITOR lines,
+pits and lapped traffic. FPS and subjective racecraft are still human/browser
+gates. The current candidate fails the pair gate and has no playable entry.
 
 ### Contact-caused off-track exemption (#173)
 
@@ -270,6 +291,33 @@ Return and deliberately leave again without contact: it must increment. Verify
 impact damage and off-road slowdown remain, and PLAYER BEST is not updated by
 a contact lap. Pause during the grace window must not consume simulation time.
 
+The second candidate uses
+`npx vitest run src/simulation/experiments --disableConsoleIntercept`.
+Keep the original 12-second failure regressions. Its separate four-case physical
+suite compares baseline/original/successor for the same 20 seconds, repeats the
+successor exactly, and requires zero contact/departure/stall, expected pass or
+abort, and one physically settled return before 18 seconds. RETURN must hold
+alignment for 0.35 seconds; leave at least two seconds afterward for re-contact.
+Report physical lane rate independently of target slew and warm CPU cost rather
+than hiding these behind pass counts. Command-level no-space and projected
+catch-up tests are not physical narrow-road evidence. No full-field or human
+racecraft approval follows from these four cases.
+
+Expanded pair gate: repeat five late-rival seeds (28/60 m gaps, 90/50 m/s speed,
+0.05/0.12 starting progress) and require pass + settled return <18 s with zero
+contact/departure/stall. An 8 m half-width Pitwall geometry copy must never
+launch, must keep >18 m physical separation and have zero contact/departure/stall.
+The controller's FOLLOW speed cap is active in these fixtures; steering still
+uses the existing baseline. The temporary editor geometry is not explicit-line
+validation. Keep the original failure fixtures and matched comparisons.
+
+Human entry: `npm run dev` → `/passing-lab.html` (PR branch). Start/pause/reset,
+WASD, P/R, held-input clearing on blur/hidden tab, physical barriers, varying
+braking and defending each side; check late crossings and repeated rubbing.
+The lab uses only two physical cars, a simple 2D view and no saved race history.
+Compilation/HTTP delivery is not browser interaction or subjective validation.
+`npm run build` also builds the separate optional lab output; do not deploy that
+output as the normal game or treat it as full-field approval.
 
 ### Racing feedback: rival direction and event cues (#152)
 
@@ -291,3 +339,52 @@ The race label replaces one existing info row, never enlarges the HUD. Review
 scroll/focus must remain intact. Check seven-CPU battle/pit FPS and Web Audio
 resources in the actual browser; deterministic/model graphs are not audible or
 visual validation and are not FPS evidence.
+
+
+Stopped-pair extension (#153): repeat 22/28 m stationary starts on the open
+straight. Require zero contact/departure, one pass and settled return <18 s.
+The stopped front car intentionally contributes to the original any-car stall
+metric; use CPU distance/final speed and completed return to judge recovery.
+On the 8 m half-width fixture, wait six seconds without launching, keep >18 m
+physical separation, then require >100 m CPU travel after front-car departure.
+Also brake the front car from 65 m/s at 40 m separation, release it after six
+seconds, and measure 30 seconds: zero contacts/departures and completed return.
+This longer emergency recovery is a separate gate, not the original <18 s gate.
+Human: stop in front on the straight, leave either side available, then clear the
+road; also stop near a corner. Check bounded creeping, no rubbing, no abrupt
+steering reversal and restart. Very close blocks can still require waiting.
+
+## Defensive racecraft pair candidate — #153
+
+The latest Issue experience agreement supersedes interpreting old #175 passing
+counts as acceptance. `DefensePassing` is isolated; retain both prior candidates
+and failure fixtures. Run `DefensePassing*.test.ts` (physics in playtest tier).
+Mirror early defence with the same scripted movement for old/new controls:
+require pre-overlap abandonment, physical braking below rival speed within
+0.5 s of the sampled detection, >5 m additional gap at settled return, no instant
+opposite launch, and zero contact/envelope departure/stall. The gap may close
+again after safe return; the human should be able to defend, not permanently
+freeze the CPU. Early defence observes 5 seconds to isolate that first exchange.
+
+At progress 0.20, a 45 m/s rival / 75 m/s CPU with 40 m gap must pass on the
+outside through >0.8 s of corner overlap (centre gap <9.3 m, yaw >0.15 rad/s), then settle before 18 s in a 20 s window.
+At progress 0.28, seeded existing overlap (±7 m CPU lane, both 55 m/s) must
+preserve >5.5 m sampled lateral room, turn alongside for >1 s and settle before
+10 s in 12 s observations. A marginal-pace attack must abandon and settle <18 s.
+Progress 0.24/0.26/0.28 fresh attacks lack preparation distance and must stay in
+FOLLOW with zero contact/departure/stall. These specified samples are not proof
+of safe trajectory feasibility on arbitrary corners or changing road widths.
+
+Late squeeze: trigger the human script only after actual longitudinal overlap
+(<8.3 m) in ALONGSIDE. Compare identical unsqueezed controls. Keep the resulting
+physical-contact counterexample, verify onset after the squeeze and separately
+measure return; do not relabel the squeeze as a CPU-caused clean-scenario failure
+or infer universal fault attribution. No collision immunity is introduced.
+
+Human lab: compare “守備への反応あり” and “旧候補（比較）”; changing policy or
+start scenario resets and pauses both cars. Try the three starts, early defence
+on each side, slowing error/open outside, existing overlap through a bend and a
+late squeeze. The yellow dot identifies the sampled target. Check whether
+braking and renewed attacks feel understandable, not only whether cars pass.
+Compilation/HTTP checks do not certify rendering, keyboard feel or FPS. Human
+acceptance, 8-car/circuit/explicit-line/pit/lapped gates remain open.

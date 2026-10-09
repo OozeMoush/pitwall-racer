@@ -142,3 +142,13 @@ The older energy model remains in the repository as a deferred system and still 
 If a race is not fun before another major system is added, that system is not the fix. Driving, CPU pressure, tyre feel and pit timing must stand on their own first. See [DESIGN.md](./DESIGN.md).
 
 Mouse wheel over the driving canvas zooms in/out in race and qualifying (0.5×–2.5×). UI panels retain normal scrolling.
+
+## Isolated CPU passing lab (#153)
+
+On the experimental PR branch, run `npm run dev` and open
+`http://localhost:5175/passing-lab.html` for a keyboard-controlled, two-car
+physical trial. The current candidate recognizes early defence; choose old/new
+and straight/error/overlap starts for comparison. Blue is you, yellow is the CPU; WASD drives, P pauses and R
+resets. Normal race/TT remains line-locked. See
+[experiment conditions and remaining gates](./docs/experiments/153-defensive-racecraft.md).
+`npm run build` also validates the lab in a separate `dist-passing-lab/` output.

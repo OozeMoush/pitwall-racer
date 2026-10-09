@@ -12,3 +12,5 @@ coverage/
 artifacts/
 codex-pass-*.diff
 *.tsbuildinfo
+
+dist-passing-lab/
