@@ -1,6 +1,7 @@
 # Issue #153 — defensive racecraft candidate
 
-Status: isolated human-review candidate; normal race/TT/ghost unchanged.
+Status: opt-in normal-GP human-review candidate on PR #177; not merged to main.
+The user requires evaluation in a normal race, rather than acceptance from the pair lab.
 Built from fresh main `bbfafdb`, incorporating the #175 experiment as comparison
 material without merging it to main. The Issue's 2026-10-09 agreement is the
 experience specification; old automated success did not approve the experience.
@@ -85,12 +86,46 @@ Checkout `feat/153-defensive-racecraft`, `npm install`, `npm run dev`, open
 Select old/new and one of: straight defence; slowing error before a corner;
 existing corner overlap. Changing selection resets and pauses the pair.
 WASD drive, P pauses, R resets; blue human/yellow CPU, yellow dot target.
-There is no automatic script driving the human in the lab: reproduce the
+The lab remains a supplemental diagnostic. There is no automatic script driving the human in the lab: reproduce the
 situations using your own inputs. The 45 m/s error start is an initial pose,
-not a speed restriction on the human. No normal race enablement occurs.
+not a speed restriction on the human.
 
-Next: human evaluation against the Issue's experience criteria. Adjust the
-judgment and control if defence remains unintuitive. Only after that, expand
-preparation-distance/trajectory cases, narrowing during overlap, 8 cars, other
-circuits and explicit lines, pit/lapped traffic. Issue remains open; do not
-merge the experiment as gameplay rollout or close it from passing CI alone.
+## Normal GP trial (2026-10-10 JST)
+
+Open `http://localhost:5175/` on the PR branch. Choose Pitwall GP, AUTO,
+QUICK and **CPU攻防を試す**, then SKIP QUALIFYING · P8 or START WEEKEND.
+The checkbox defaults on for this review branch; uncheck for the established
+normal-race controller. Other circuits and PLAYER/EDITOR lines disable it;
+Time Trial never enables it. Retry retains the session choice. Summary JSON
+records `context.experimentalPassing` so comparisons can identify the policy.
+
+`RacePassingController` adapts the candidate to all seven physical CPU cars.
+Neighbours are measured by circular physical progress, including lapped cars.
+A committed opponent stays locked until return; third cars reserve passing and
+merge corridors. A departed or pitting opponent becomes a far-clear virtual
+reference until return, rather than causing an abrupt opponent switch.
+
+Grid launch below 25 m/s uses the established control: entering the pair's
+existing-overlap state at grid-creep speed caused a field-wide braking deadlock.
+Yielding now slows a trailing attacker, not a car already clear ahead. The first
+full-field run exposed that deadlock; it is retained as the reason for the
+low-speed handoff and progress regression. Pit approach/transit, recovery,
+finished cars and reset clear passing state. Player pit bodies and active CPU
+pit bodies are excluded from on-track attack selection. Chassis, CPU driver
+performance/power, tyres/wear, aero, contacts and physical pit truth stay in the
+existing race runtime; the pair lab's equal-power setup is not a new GP balance.
+
+Automated normal-runtime evidence is in `RacePassingPhysics.test.ts` and the
+`153-normal-gp-metrics.json`. Two scripted 20 s exchanges repeat exactly (excluding
+wall time), have zero contact and rotated-body road departure, and show an open
+pass versus abandonment of an early block. The seven-CPU grid check uses real
+wear/traffic/occupancy/control at 120 Hz for 70 s, requires all CPUs to complete
+at least two laps and keep moving. This is a liveness regression, **not** proof
+of contact-free field racing: both old and new fields exhibit departures under
+existing race hardware. A separate physical pit entry/service/rejoin test runs
+with the trial enabled. Tests do not establish browser FPS or human feel.
+
+Next: human evaluation in the normal GP. Check early blocking, slowing mistakes,
+corner overlap and renewed attacks amid the actual field, including pit windows.
+Other circuits/explicit lines and full-race traffic safety remain open. Keep the
+Issue and PR open; passing CI does not authorize a gameplay rollout or closure.

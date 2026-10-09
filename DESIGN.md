@@ -866,3 +866,17 @@ return timing. A scripted late squeeze must disclose its timing relative to
 actual overlap. Tests are necessary evidence, not approval of feel. Only the
 isolated lab selects this candidate; race/TT/ghost stay unchanged. Wider field,
 other lines and circuits, pits/lapped traffic require later validation.
+
+### Normal-race evaluation of #153 (2026-10-10 JST)
+
+The user's “通常レースでやってみないとわかんない” requires the next
+review candidate to run in the ordinary eight-car Grand Prix. A pair lab cannot
+establish whether defence feels credible amid tyre wear, pace differences,
+traffic and pit decisions. Provide an explicit normal-menu trial switch and an
+old-control comparison on the PR branch, initially Pitwall GP AUTO only.
+Retain established grid launch at low speed and physical pit/recovery ownership.
+Reserve space for third cars and lapped physical neighbours; do not change the
+committed opponent mid-manoeuvre. Yielding must not brake a car already ahead,
+which creates mutual-braking deadlocks in a field. Existing normal GP CPU pace
+and hardware remain the balance; no position compensation is introduced.
+Normal-race human review remains necessary before merging or closing #153.

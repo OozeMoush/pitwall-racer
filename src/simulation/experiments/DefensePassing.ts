@@ -4,7 +4,7 @@ import { trackAiSafeLaneLimit } from '../TrackLimitsModel';
 import type { VehicleState } from '../VehicleModel';
 import type { PassingInput, PassingPhase } from './PairPassing';
 
-/** Defensive racecraft candidate. Isolated two-car lab only; prior policies stay intact. */
+/** Defensive racecraft candidate shared by the lab and opt-in GP adapter. */
 export class DefensePassing {
   private phase: PassingPhase = 'FOLLOW';
   private offset: number | undefined;
@@ -46,6 +46,7 @@ export class DefensePassing {
     if (this.phase === 'FOLLOW' && this.cooldown === 0 && input.straight && launchSpace
       && (normalAttack || stoppedAttack)) {
       const sides = [-1, 1].filter(side => {
+        if (input.blockedSides?.includes(side)) return false;
         const offset = input.opponentLane + side * 7 - reference;
         return [0, 30, 60, 90, 120].every(m => {
           const p = progress + m / TRACK_LENGTH;
@@ -73,6 +74,9 @@ export class DefensePassing {
     const predictedOpponent = input.opponentLane + opponentRate * 0.6;
     const closesCorridor = Math.abs(input.opponentLane - corridorLane) < 5.8
       || (opponentRate * this.side > 0.4 && Math.abs(predictedOpponent - corridorLane) < 6.3);
+    if ((this.phase === 'COMMIT' || this.phase === 'ALONGSIDE') && input.abortRequested) {
+      this.phase = 'ABORT'; this.retreating = true; this.reason = 'traffic corridor closed';
+    }
     if (this.phase === 'COMMIT' && gap > 12 && closesCorridor) {
       this.phase = 'ABORT'; this.retreating = true; this.reason = 'early defence';
     }
@@ -88,10 +92,10 @@ export class DefensePassing {
         this.phase = 'ABORT'; this.retreating = true; this.reason = 'corner or timeout';
       }
     }
-    if (this.phase === 'ABORT' && gap > 30 && input.speed <= input.opponentSpeed) this.phase = 'RETURN';
+    if (this.phase === 'ABORT' && (gap < -22 || (gap > 30 && input.speed <= input.opponentSpeed))) this.phase = 'RETURN';
     const relativeSpeed = input.opponentSpeed - input.speed;
     const futureGap = gap + relativeSpeed * 3;
-    const mergeClear = Math.abs(gap) > 22 && Math.abs(futureGap) > 22 && gap * futureGap > 0;
+    const mergeClear = !input.mergeBlocked && Math.abs(gap) > 22 && Math.abs(futureGap) > 22 && gap * futureGap > 0;
     // A rival catching a returning car reserves the side it physically occupies,
     // not the side chosen before a partially completed crossing.
     if (this.phase === 'RETURN' && !mergeClear) {
@@ -115,7 +119,7 @@ export class DefensePassing {
     if (this.settled >= 0.35) {
       this.phase = 'FOLLOW'; this.cooldown = 3; this.clearingStop = false; this.retreating = false; this.reason = 'reconsider after cooldown';
     }
-    let speedCap = this.retreating && this.phase !== 'FOLLOW' ? Math.max(0, input.opponentSpeed - 8) : Infinity;
+    let speedCap = this.retreating && this.phase !== 'FOLLOW' && gap > 0 ? Math.max(0, input.opponentSpeed - 8) : Infinity;
     const lowSpeedAligned = this.clearingStop && input.opponentSpeed < 3
       && Math.abs(wrap(car.heading - sampleTrack(progress).heading)) < 0.25;
     if (gap > 0 && Math.abs(input.lane - input.opponentLane) < (lowSpeedAligned ? 6 : 6.5)) {

@@ -26,6 +26,17 @@ The presentation uses a fixed-orientation elevated top-down camera in the GeneRa
 - standalone Time Trial for improving PLAYER BEST; **ドライバー記録** in session selection opens browser-local TT history, condition-scoped PB updates, clean rate and lap-time spread
 - one-shot qualifying before the Grand Prix, with an option to skip and start P8
 
+## Issue #153 normal-race trial (PR #177)
+
+On `feat/153-defensive-racecraft`, open the normal game at
+`http://localhost:5175/`. Choose **Pitwall GP / AUTO**, leave **CPU攻防を試す**
+checked, and start a QUICK Grand Prix (SKIP QUALIFYING starts P8).
+Uncheck it to compare the established CPU control. This review candidate runs
+with the normal seven CPU cars, tyres, strategy and physical pit stops.
+Other circuits and PLAYER/EDITOR lines are outside the trial; the separate
+`passing-lab.html` remains available for focused diagnostics. Human acceptance
+is still pending; see `docs/experiments/153-defensive-racecraft.md`.
+
 ## Race setup
 
 The pre-race menu currently offers circuits with explicit physical scale profiles. Circuit scale is independent from race duration: Compact tracks can keep short, dense laps while Standard tracks can use race-scale spacing.

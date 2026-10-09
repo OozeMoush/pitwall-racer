@@ -3,6 +3,7 @@ import type { Compound } from './TireModel';
 
 export type SummaryPitPhase = 'NONE' | 'TRANSIT_IN' | 'SERVICE' | 'TRANSIT_OUT';
 export interface SummaryContext {
+  experimentalPassing?: boolean;
   trackId: string;
   trackRevision: string;
   totalLaps: number;

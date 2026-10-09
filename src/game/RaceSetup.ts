@@ -4,6 +4,8 @@ import { getTrackDefinition, type TrackId } from '../simulation/TrackModel';
 export type RaceLengthPreset = 'QUICK' | 'SHORT' | 'STANDARD' | 'LONG';
 
 export interface RaceSetup {
+  /** Trial GP passing; only Pitwall GP AUTO currently enables it. */
+  experimentalPassing?: boolean;
   trackId: TrackId;
   startCompound: Compound;
   totalLaps: number;

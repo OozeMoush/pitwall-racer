@@ -10,6 +10,10 @@ export interface PassingInput {
   referenceLane: number;
   safeLane: number; // minimum road envelope over the next 120 metres
   straight: boolean;
+  /** Optional normal-race adapter reservations; old pair policies ignore these. */
+  blockedSides?: readonly number[];
+  abortRequested?: boolean;
+  mergeBlocked?: boolean;
 }
 
 const SEPARATION = 7;

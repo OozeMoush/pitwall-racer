@@ -357,7 +357,7 @@ steering reversal and restart. Very close blocks can still require waiting.
 ## Defensive racecraft pair candidate — #153
 
 The latest Issue experience agreement supersedes interpreting old #175 passing
-counts as acceptance. `DefensePassing` is isolated; retain both prior candidates
+counts as acceptance. `DefensePassing` remains separately testable; retain both prior candidates
 and failure fixtures. Run `DefensePassing*.test.ts` (physics in playtest tier).
 Mirror early defence with the same scripted movement for old/new controls:
 require pre-overlap abandonment, physical braking below rival speed within
@@ -387,4 +387,29 @@ on each side, slowing error/open outside, existing overlap through a bend and a
 late squeeze. The yellow dot identifies the sampled target. Check whether
 braking and renewed attacks feel understandable, not only whether cars pass.
 Compilation/HTTP checks do not certify rendering, keyboard feel or FPS. Human
-acceptance, 8-car/circuit/explicit-line/pit/lapped gates remain open.
+acceptance and wider circuit/explicit-line/full-race gates remain open.
+
+## Normal Grand Prix trial — #153 / #177
+
+Use the ordinary race menu on the PR branch: Pitwall GP / AUTO / QUICK,
+“CPU攻防を試す” on; skip qualifying to start P8. Repeat with the switch off.
+Test early defence, slowing error/open outside, existing corner overlap and
+renewed attacks in the real seven-CPU field. Include a normal pit window and
+restart. The checkbox must disable outside Pitwall AUTO; TT must not enable it.
+Summary JSON records the trial flag. Menu event tests check these session choices.
+
+Run `RacePassingController.test.ts` and `RacePassingPhysics.test.ts`, the full
+suite, build and `test:long`. Pair tests use the actual GP sync adapter and normal
+hardware: require deterministic repeats, early-block abandonment, an open pass,
+zero sampled contact/body departure. The 70 s seven-CPU grid regression includes
+wear and occupancy; require all seven to finish two laps with speed >25 m/s,
+finite bodies and centre offset <25 m. The offset threshold is a catastrophic
+regression guard, not a road-safety guarantee. Separate enabled-trial pit test
+must enter, physically service and rejoin. Retain baseline pit/recovery/launch
+and multi-circuit regressions. Report runtime wall time separately from FPS.
+
+Do not infer contact-free full fields or human acceptance from these checks.
+The normal field still has road departures in the matched old/new runtime.
+Rendering, keyboard feel, full-race/pit-window traffic and browser FPS require
+human evaluation; the pair lab is supplemental. Do not merge or close #153
+without the user's normal-race review.
